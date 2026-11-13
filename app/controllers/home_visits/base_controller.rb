@@ -20,7 +20,8 @@ module HomeVisits
       citizen_not_verified: :conflict, assignment_already_ended: :conflict, device_already_revoked: :conflict,
       identity_locked: :conflict, client_uuid_conflict: :conflict,
       cbo_not_allowed: :forbidden, out_of_scope: :forbidden,
-      not_found: :not_found, person_not_found: :not_found
+      not_found: :not_found, person_not_found: :not_found,
+      too_many_requests: :too_many_requests
     }.freeze
 
     before_action :require_home_visits!

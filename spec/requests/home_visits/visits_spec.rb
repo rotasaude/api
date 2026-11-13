@@ -8,6 +8,8 @@ require "rails_helper"
 # Registro de outro escopo por id → 404; lista de microárea ou equipe alheia →
 # 403 out_of_scope; filtros repetidos só com []; nada de pessoa na query.
 RSpec.describe "Visita domiciliar — visitas da equipe", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city) { home_visit_city! }
   let(:unit) { care_unit! }
   let(:team) { registry_team!(unit) }
@@ -96,6 +98,31 @@ RSpec.describe "Visita domiciliar — visitas da equipe", type: :request do
     expect(json_body["candidates"].map { _1["patient_id"] }).to include(existing.id)
     expect(trail).to include(include("patient_id" => existing.id, "user_id" => acs.id, "access" => "home_visits"))
     expect(HomeVisit.count).to eq(0)
+  end
+
+  # Q67 (B-I1): a gravação que roda a busca de duplicados ou a checagem de
+  # CPF/CNS consome o orçamento da busca de pessoa (30/min por usuário).
+  it "Q67: 31ª sondagem (30 buscas + gravação com paciente novo) → 429 antes de gravar; patient_id não consome; volta depois da janela" do
+    allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+    typed = { "full_name" => "Benedita Alves Rocha", "birth_date" => "1951-03-08", "sex" => "female", "no_cpf_reason" => "3" }
+    existing = registry_patient!
+    sign_in_as(acs)
+    30.times { json_post "/home_visits/people/lookup", { cpf: valid_cpf(9_991) } }
+    expect(response).to have_http_status(:not_found)
+    patients = Patient.count
+
+    json_post "/home_visits", body(subject: "resident", new_patient: typed, reasons: [ 11 ])
+    expect([ response.status, json_body ]).to eq([ 429, { "error" => "too_many_requests" } ])
+    expect([ HomeVisit.count, HomeVisitDay.count, Patient.count ]).to eq([ 0, 0, patients ])
+    expect(trail).to be_empty
+
+    json_post "/home_visits", body(subject: "resident", patient_id: existing.id, reasons: [ 11 ])
+    expect(response).to have_http_status(:created)
+    travel(61.seconds) do
+      json_post "/home_visits", body(subject: "resident", new_patient: typed, reasons: [ 11 ])
+      expect(response).to have_http_status(:created)
+    end
+    expect(Patient.count).to eq(patients + 1)
   end
 
   it "GET /home_visits/:id mostra a observação ao dono e grava trilha; withdrawn.reason só ao dono e ao enfermeiro (Q17)" do

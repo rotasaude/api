@@ -10,13 +10,15 @@
 #     `{ candidates: [{ patient_id, display_name, birth_date, sex, has_cpf, has_cns }] }`
 #     (até 10, Patients::Duplicates).
 # Tudo só do corpo (query → 422 invalid_request); trilha por pessoa mostrada
-# (`person_trail`); 30 por minuto por usuário e rota (429 too_many_requests);
+# (`person_trail`); 30 por minuto por usuário (429 too_many_requests), o
+# orçamento único do HomeVisits::SearchBudget (Q67): as quatro buscas e as
+# gravações que rodam a busca de duplicados ou a checagem de CPF/CNS;
 # só quem registra no módulo (`person_registrar?`; senão 403 cbo_not_allowed).
 # Quem inclui herda o portão do módulo e os helpers de recusa do BaseController.
 module FieldPersonSearch
   extend ActiveSupport::Concern
 
-  RATE = 30
+  RATE = HomeVisits::SearchBudget::RATE
 
   # `store:` de `rate_limit` é avaliado no carregamento da classe; o delegador
   # resolve Rails.cache a cada requisição (o padrão da farmácia e da vacina).
@@ -27,11 +29,11 @@ module FieldPersonSearch
   included do
     before_action :require_person_registrar!
 
-    %i[lookup duplicates].each do |action|
-      rate_limit to: RATE, within: 1.minute, only: action, name: "#{controller_path.tr('/', '_')}_#{action}", store: RateLimitStore,
-                 by: -> { Current.user&.id || request.remote_ip },
-                 with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
-    end
+    # Sem `name` e com o `scope` do orçamento: a chave é a do
+    # HomeVisits::SearchBudget.cache_key (a mesma nas duas rotas e nos dois prefixos).
+    rate_limit to: RATE, within: HomeVisits::SearchBudget::WINDOW, only: %i[lookup duplicates], scope: HomeVisits::SearchBudget::SCOPE,
+               store: RateLimitStore, by: -> { Current.user&.id || request.remote_ip },
+               with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
   end
 
   def lookup

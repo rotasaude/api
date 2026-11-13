@@ -93,8 +93,11 @@ module CollectiveActivities
       existing = existing_patients!(participants, by)
 
       created = []
+      # Q67: uma cobrança do orçamento da busca de pessoa por gravação, no
+      # primeiro participante novo (antes de qualquer escrita).
+      budget = HomeVisits::SearchBudget.new(by)
       patients = participants.each_with_index.map do |item, index|
-        existing[index] || new_patient!(item, index, by, shown, created)
+        existing[index] || new_patient!(item, index, by, shown, created, budget)
       end
       # O Rules já recusou a mesma pessoa duas vezes pelo corpo; aqui, o mesmo
       # paciente por caminhos diferentes (o patient_client_uuid do envio do
@@ -188,14 +191,14 @@ module CollectiveActivities
     #  - senão (um dos dois sem documento) → duplicate_participant,
     #    confirmable true (duplicates_reviewed libera: o CreateReviewed nem
     #    confere o duplicado).
-    def new_patient!(item, index, by, shown, created)
+    def new_patient!(item, index, by, shown, created, budget)
       typed = item["new_patient"]
-      resolved = resolve_new(typed, item["duplicates_reviewed"], index, by)
+      resolved = resolve_new(typed, item["duplicates_reviewed"], index, by, budget)
       if resolved.failure? && %i[cpf_taken cns_taken].include?(resolved.reason) && same_document?(typed, created)
         refuse!(duplicate(index, confirmable: false))
       end
       if resolved.failure? && resolved.reason == :duplicate_suspected
-        resolved = without_created_candidates(resolved, typed, index, by, created)
+        resolved = without_created_candidates(resolved, typed, index, by, created, budget)
       end
       if resolved.ok?
         created << resolved.payload[:patient].id
@@ -206,13 +209,13 @@ module CollectiveActivities
       refuse!(Result.fail(resolved.reason, details: resolved.details.except(:candidate_ids)))
     end
 
-    def resolve_new(typed, reviewed, index, by)
-      HomeVisits::People.resolve(by: by, new_patient: typed, reviewed: reviewed, path_prefix: "participants[#{index}]")
+    def resolve_new(typed, reviewed, index, by, budget)
+      HomeVisits::People.resolve(by: by, new_patient: typed, reviewed: reviewed, path_prefix: "participants[#{index}]", budget: budget)
     end
 
     # O duplicate_suspected sem os candidatos criados nesta escrita (ver
     # new_patient!). -> Result (ok do paciente revisado ou a recusa filtrada).
-    def without_created_candidates(resolved, typed, index, by, created)
+    def without_created_candidates(resolved, typed, index, by, created, budget)
       ghosts = Array(resolved.details[:candidate_ids]) & created
       return resolved if ghosts.empty?
 
@@ -221,7 +224,7 @@ module CollectiveActivities
                                                           Patient.where(id: ghosts).all? { |ghost| ghost.cpf.present? || ghost.cns.present? }
 
       real = Array(resolved.details[:candidates]).reject { |candidate| ghosts.include?(candidate[:patient_id]) }
-      return resolve_new(typed, true, index, by) if real.empty?
+      return resolve_new(typed, true, index, by, budget) if real.empty?
 
       Result.fail(:duplicate_suspected, details: resolved.details.merge(candidates: real,
                                                                         candidate_ids: real.map { _1[:patient_id] }))

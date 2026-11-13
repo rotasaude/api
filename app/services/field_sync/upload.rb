@@ -26,7 +26,10 @@
 #    stale_version só para domicílio ou cadastro que JÁ EXISTE; cadastro NOVO
 #    cujo domicílio mudou → `rejected household_changed` (Q63 b).
 #    already_registered leva o `id` do cadastro existente só quando ele está no
-#    escopo do aparelho (6A; Q63 c).
+#    escopo do aparelho (6A; Q63 c). Q67: o item que roda a busca de
+#    duplicados ou a checagem de CPF/CNS cobra o orçamento da busca de pessoa
+#    (HomeVisits::SearchBudget); estourado → `rejected too_many_requests`, sem
+#    path e fora do livro (o reenvio tenta de novo); os outros itens seguem.
 # 4. DEPOIS da transação, com qualquer desfecho: a trilha clinical_record.viewed
 #    (access field_sync, com o aparelho) dos candidatos do duplicado suspeito e
 #    do `current` do stale_version. Os comandos recebem um coletor como `trail:`
@@ -271,6 +274,8 @@ module FieldSync
         registration = IndividualRegistration.includes(:team, :micro_area).find_by(id: params["registration_id"])
         return rejected("not_found", "registration_id") unless registration && TerritoryRegistry::Access.reads_registration?(user, registration)
       end
+      return rejected("too_many_requests") if person_search?(params) && !HomeVisits::SearchBudget.new(user).charge!
+
       result = TerritoryRegistry::SaveRegistration.call(params: params.except("registration_id"), by: user, registration: registration)
       if result.failure?
         return stale_registration(registration) if result.reason == :stale_version && registration
@@ -310,6 +315,11 @@ module FieldSync
       end
       [ params, nil ]
     end
+
+    # Q67: o cadastro do 24a roda a busca de duplicados (new_patient) ou a
+    # checagem de CPF/CNS (`cpf`/`cns` na raiz: Patients::AddCpf, cns_taken);
+    # o paciente existente por patient_id sem documento novo não consome.
+    def person_search?(params) = params["new_patient"].is_a?(Hash) || %w[cpf cns].any? { |key| params[key].present? }
 
     def cited_id(uuid, item_type, user) = FieldSyncReceipt.where(client_uuid: uuid, item_type: item_type, user_id: user.id).pick(:result_id)
 
@@ -433,7 +443,7 @@ module FieldSync
 
     def invalid_envelope(path) = Result.fail(:invalid_request, details: { path: path })
     private_class_method :process, :lock!, :ledger, :dispatch, :home_visit, :withdrawal, :collective_activity, :patient, :household,
-                         :registration, :registry_refusal, :cite, :cited_id, :acs?, :stale_household, :stale_registration,
+                         :registration, :registry_refusal, :cite, :person_search?, :cited_id, :acs?, :stale_household, :stale_registration,
                          :registration_duplicate, :already_registered, :trail!, :accepted, :failure, :rejected, :result_json, :invalid_item, :schema_path,
                          :invalid_envelope
   end

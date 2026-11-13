@@ -322,6 +322,37 @@ RSpec.describe "FieldSync::Upload", type: :model do
       .to eq([ { "patient_id" => existing.id, "user_id" => acs.id, "field_device_id" => device.id } ])
   end
 
+  # Q67 (B-I1): com o orçamento da busca de pessoa estourado, só o item que
+  # rodaria a busca de duplicados ou a checagem de CPF/CNS volta rejected
+  # too_many_requests (sem path, fora do livro); o paciente existente por
+  # patient_id não consome.
+  it "Q67: orçamento estourado → patient, cadastro com new_patient, visita e atividade com paciente novo rejected too_many_requests; por patient_id seguem" do
+    allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+    Platform::Features.set!(city: city, key: CollectiveActivities::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    existing = registry_patient!
+    household = registry_household!(micro_area: area)
+    HomeVisits::SearchBudget::RATE.times { expect(HomeVisits::SearchBudget.new(acs).charge!).to be(true) }
+
+    refused = [ item("patient", { "new_patient" => typed }),
+                item("individual_registration", registry_registration_params(team).merge("new_patient" => typed("Rosalina Prado Lopes"))),
+                item("home_visit", visit_body(subject: "resident", new_patient: typed("Cecília Moura Lima"), reasons: [ 11 ])),
+                item("collective_activity", activity_body(participants: [ { "new_patient" => typed("Joana Reis Matos") } ])) ]
+    allowed = [ item("home_visit", visit_body(subject: "resident", patient_id: existing.id, reasons: [ 11 ])),
+                item("individual_registration", registry_registration_params(household, patient: existing)),
+                item("collective_activity", activity_body(participants: [ { "patient_id" => existing.id } ])) ]
+    patients = Patient.count
+    results = upload(*refused, *allowed)
+
+    valid_response!(results)
+    expect(results.first(4).map { _1.except("client_uuid", "type") }).to eq([ { "status" => "rejected", "error" => "too_many_requests" } ] * 4)
+    expect(statuses(results.last(3))).to eq(%w[accepted accepted accepted])
+    expect(FieldSyncReceipt.pluck(:client_uuid)).to match_array(allowed.map { _1["client_uuid"] })
+    expect(Patient.count).to eq(patients)
+    expect(field_trail).to be_empty
+    expect(HomeVisits::SearchBudget.new(acs).charge!).to be(false)
+  end
+
   describe "Q63" do
     it "(a) exceção inesperada num item → só ele rejected internal_error, fora do livro; o reenvio o processa de novo" do
       bad = SecureRandom.uuid

@@ -6,6 +6,8 @@ require "rails_helper"
 # path, nada gravado; resposta 200 { results } na forma do upload-response-v1.
 # Nada de motivo, nome, CPF ou token no log.
 RSpec.describe "App de campo — POST /field/v1/uploads", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city) { home_visit_city! }
   let(:team) { registry_team! }
   let(:acs) { field_agent!(team: team) }
@@ -38,6 +40,39 @@ RSpec.describe "App de campo — POST /field/v1/uploads", type: :request do
     expect(FieldSync::Schemas.errors("upload-response-v1", json_body)).to eq([])
     expect(json_body.fetch("results").map { _1["status"] }).to eq(%w[accepted rejected accepted rejected])
     expect(HomeVisit.sole.origin).to eq("field_app")
+  end
+
+  # Q67 (B-I1): cada item que roda a busca de duplicados ou a checagem de
+  # CPF/CNS consome o orçamento da busca de pessoa da equipe (30/min por
+  # usuário, o mesmo nos dois sentidos).
+  it "Q67: 10 buscas da equipe + 21 itens com paciente novo → o 21º rejected too_many_requests, fora do livro; os outros seguem; a busca vê o mesmo orçamento; o reenvio passa depois da janela" do
+    allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+    sign_in_as(acs)
+    10.times { json_post "/home_visits/people/lookup", { cpf: valid_cpf(9_991) } }
+    expect(response).to have_http_status(:not_found)
+
+    people = Array.new(21) do |index|
+      item("patient", { "new_patient" => { "full_name" => "Benedita Alves Rocha", "birth_date" => (Date.new(1951, 3, 1) + index).iso8601,
+                                           "sex" => "female", "no_cpf_reason" => "3" } })
+    end
+    visit = item("home_visit", visit_body)
+    send_upload({ items: people + [ visit ] }.to_json)
+    expect(response).to have_http_status(:ok)
+    expect(FieldSync::Schemas.errors("upload-response-v1", json_body)).to eq([])
+    results = json_body.fetch("results")
+    expect(results.first(20).map { _1["status"] }.uniq).to eq([ "accepted" ])
+    expect(results[20]).to eq("client_uuid" => people[20]["client_uuid"], "status" => "rejected", "type" => "patient", "error" => "too_many_requests")
+    expect(results[21]).to include("status" => "accepted", "type" => "home_visit")
+    expect(FieldSyncReceipt.pluck(:client_uuid)).to match_array((people.first(20) + [ visit ]).map { _1["client_uuid"] })
+
+    json_post "/home_visits/people/lookup", { cpf: valid_cpf(9_991) }
+    expect([ response.status, json_body ]).to eq([ 429, { "error" => "too_many_requests" } ])
+
+    travel(61.seconds) do
+      send_upload({ items: [ people[20] ] }.to_json)
+      expect(json_body.fetch("results").sole).to include("status" => "accepted", "type" => "patient")
+    end
+    expect(FieldSyncReceipt.where(client_uuid: people[20]["client_uuid"])).to exist
   end
 
   it "51 itens → 422 invalid_request path items; envelope com chave desconhecida ou que não é objeto também, nada gravado" do

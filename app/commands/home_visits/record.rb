@@ -284,7 +284,10 @@ module HomeVisits
     def new_patient!(input, by, shown)
       return nil unless input["subject"] == "resident" && !input["new_patient"].nil?
 
-      created = People.resolve(by: by, new_patient: input["new_patient"], reviewed: input["duplicates_reviewed"])
+      # Q67: cobra o orçamento da busca de pessoa (uma vez; estourado → 429 /
+      # rejected too_many_requests, sem path), antes de qualquer escrita.
+      created = People.resolve(by: by, new_patient: input["new_patient"], reviewed: input["duplicates_reviewed"],
+                               budget: SearchBudget.new(by))
       return created.payload[:patient] if created.ok?
 
       shown.concat(Array(created.details[:candidate_ids]))

@@ -34,9 +34,14 @@ module HomeVisits
     module_function
 
     # `reviewed` é o `duplicates_reviewed` do corpo, opcional: nil vale false.
+    # `budget`: o orçamento da busca de pessoa (Q67), cobrado só quando o
+    # new_patient tem a forma certa e a busca de duplicados ou a checagem de
+    # CPF/CNS vai rodar; estourado → too_many_requests SEM path e sem
+    # candidatos. Quem resolve várias pessoas numa gravação passa o mesmo.
     # -> Result.ok(patient:, created:) |
-    #    Result.fail(<código>, details: { path: } | { path:, candidates:, candidate_ids: })
-    def resolve(by:, patient_id: nil, new_patient: nil, reviewed: false, path_prefix: "")
+    #    Result.fail(<código>, details: { path: } | { path:, candidates:, candidate_ids: }) |
+    #    Result.fail(:too_many_requests)
+    def resolve(by:, patient_id: nil, new_patient: nil, reviewed: false, path_prefix: "", budget: SearchBudget.new(by))
       at = ->(path) { path_prefix.to_s.empty? ? path : "#{path_prefix}.#{path}" }
       return refuse(:invalid_request, at["new_patient"]) if !patient_id.nil? && !new_patient.nil?
       return existing(patient_id, at) unless patient_id.nil? && !new_patient.nil?
@@ -48,7 +53,7 @@ module HomeVisits
       reviewed = false if reviewed.nil?
       return refuse(:invalid_request, at["duplicates_reviewed"]) unless [ true, false ].include?(reviewed)
 
-      create(new_patient.to_h.stringify_keys, reviewed, by, at)
+      create(new_patient.to_h.stringify_keys, reviewed, by, at, budget)
     end
 
     # `{ patient_id, display_name, birth_date, sex, has_cpf, has_cns }` (Q8);
@@ -94,9 +99,10 @@ module HomeVisits
       Result.ok(patient: patient, created: false)
     end
 
-    def create(typed, reviewed, by, at)
+    def create(typed, reviewed, by, at, budget)
       shape = Patients::CreateTyped.check(typed)
       return typed_failure(shape, at) if shape.failure?
+      return Result.fail(:too_many_requests) unless budget.charge!
 
       created = Patients::CreateReviewed.call(new_patient: typed, reviewed: reviewed, by: by)
       return Result.ok(patient: created.payload.fetch(:patient), created: true) if created.ok?

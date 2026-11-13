@@ -13,6 +13,8 @@ require "rails_helper"
 #   - Q55: atividade marcada por engano não é gerada de novo nem reenviada
 #     (409 activity_changed na Produção); a ficha já enfileirada segue.
 RSpec.describe "Atividade coletiva — rotas da equipe", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city) { home_visit_city!(collective: true) }
   let(:unit) { care_unit! }
   let(:team) { registry_team!(unit) }
@@ -236,6 +238,33 @@ RSpec.describe "Atividade coletiva — rotas da equipe", type: :request do
       json_post "/collective_activities?team_id=#{team.id}", body
       expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
       expect(CollectiveActivity.count).to eq(1)
+    end
+  end
+
+  # Q67 (B-I1): o participante novo consome o orçamento da busca de pessoa,
+  # uma vez por gravação.
+  describe "orçamento da busca de pessoa (Q67)" do
+    it "31ª sondagem (30 buscas + atividade com participante novo) → 429 antes de gravar; só patient_id não consome; volta depois da janela" do
+      allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+      patient = registry_patient!
+      with_new = ->(name) { group_body(patient, participants: [ { "patient_id" => patient.id }, { "new_patient" => typed(name) } ]) }
+      sign_in_as(acs)
+      30.times { json_post "/collective_activities/people/duplicates", { full_name: "Ninguém Aqui", birth_date: "1970-01-02" } }
+      expect(response).to have_http_status(:ok)
+      patients = Patient.count
+
+      json_post "/collective_activities", with_new.call("Benedita Alves Rocha")
+      expect([ response.status, json_body ]).to eq([ 429, { "error" => "too_many_requests" } ])
+      expect([ CollectiveActivity.count, CollectiveActivityParticipant.count, Patient.count ]).to eq([ 0, 0, patients ])
+      expect(trail).to be_empty
+
+      json_post "/collective_activities", group_body(patient)
+      expect(response).to have_http_status(:created)
+      travel(61.seconds) do
+        json_post "/collective_activities", with_new.call("Rosalina Prado Lopes")
+        expect(response).to have_http_status(:created)
+      end
+      expect(Patient.count).to eq(patients + 1)
     end
   end
 
