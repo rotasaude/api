@@ -19,7 +19,13 @@
 #    path do campo) e o comando, que tem savepoint próprio e devolve Result.
 # 3. Aceito → linha no livro na mesma transação. Recusado, duplicate do livro e
 #    stale_version → ActiveRecord::Rollback (nada fica; o reenvio é processado
-#    de novo).
+#    de novo). Exceção inesperada (StandardError, Q63 a) desfaz só o item e volta
+#    `rejected internal_error`, sem path e fora do livro; o lote continua. O log
+#    leva só a classe e o client_uuid (nunca a mensagem, o corpo ou pessoa).
+#    stale_version só para domicílio ou cadastro que JÁ EXISTE; cadastro NOVO
+#    cujo domicílio mudou → `rejected household_changed` (Q63 b).
+#    already_registered leva o `id` do cadastro existente só quando ele está no
+#    escopo do aparelho (6A; Q63 c).
 # 4. DEPOIS da transação, com qualquer desfecho: a trilha clinical_record.viewed
 #    (access field_sync, com o aparelho) dos candidatos do duplicado suspeito e
 #    do `current` do stale_version. Os comandos recebem um coletor como `trail:`
@@ -98,13 +104,19 @@ module FieldSync
       uuid, type, body = item.values_at("client_uuid", "type", "body")
       shown = Shown.new
       outcome = nil
-      ApplicationRecord.transaction(requires_new: true) do
-        lock!(uuid)
-        outcome = ledger(uuid, type, context[:user]) || dispatch(type, uuid, body, context, shown)
-        raise ActiveRecord::Rollback unless outcome[:receipt]
+      begin
+        ApplicationRecord.transaction(requires_new: true) do
+          lock!(uuid)
+          outcome = ledger(uuid, type, context[:user]) || dispatch(type, uuid, body, context, shown)
+          raise ActiveRecord::Rollback unless outcome[:receipt]
 
-        FieldSyncReceipt.create!(client_uuid: uuid, item_type: type, result_type: RESULT_TYPES.fetch(type), result_id: outcome[:id],
-                                 field_device: context[:device], user: context[:user])
+          FieldSyncReceipt.create!(client_uuid: uuid, item_type: type, result_type: RESULT_TYPES.fetch(type), result_id: outcome[:id],
+                                   field_device: context[:device], user: context[:user])
+        end
+      rescue StandardError => e
+        # Q63 a: só a classe e o client_uuid (a mensagem pode trazer valor do corpo).
+        Rails.logger.error("[field_sync.upload] internal_error class=#{e.class.name} client_uuid=#{uuid}")
+        outcome = rejected("internal_error")
       end
       trail!(context, shown.ids, outcome[:viewed])
       result_json(uuid, type, outcome)
@@ -240,9 +252,9 @@ module FieldSync
       result = TerritoryRegistry::SaveRegistration.call(params: params.except("registration_id"), by: user, registration: registration)
       if result.failure?
         return stale_registration(registration) if result.reason == :stale_version && registration
-        # Cadastro novo cujo domicílio mudou depois da leitura: não há o que
-        # devolver como current.
-        return rejected("stale_version", "household_id") if result.reason == :stale_version
+        # Q63 b: cadastro novo cujo domicílio mudou depois da leitura.
+        return rejected("household_changed", "household_id") if result.reason == :stale_version
+        return already_registered(result, user) if result.reason == :already_registered
         return registration_duplicate(params["new_patient"], shown) if result.reason == :duplicate_suspected && params["new_patient"].is_a?(Hash)
 
         return failure(result)
@@ -319,6 +331,15 @@ module FieldSync
       rejected("duplicate_suspected", "new_patient", candidates: patients.map { |patient| HomeVisits::People.candidate(patient, registration: true) })
     end
 
+    # Q63 c: o id do cadastro ativo só quando ele está no escopo do aparelho
+    # (6A: as microáreas que o aparelho baixa, HomeVisits::Access.scope);
+    # fora dele (ou fora de área), sem id.
+    def already_registered(result, user)
+      existing = IndividualRegistration.includes(:team).find_by(id: result.details[:registration_id])
+      in_scope = existing&.micro_area_id && HomeVisits::Access.scope(user, existing.team)[:micro_area_ids].include?(existing.micro_area_id)
+      rejected("already_registered", id: (existing.id if in_scope))
+    end
+
     def trail!(context, candidate_ids, viewed)
       HomeVisits::People.candidates_viewed!(candidate_ids: candidate_ids.uniq, by: context[:user], trail: context[:trail]) if candidate_ids.any?
       context[:trail].records_viewed!(user: context[:user], **viewed) if viewed
@@ -335,9 +356,10 @@ module FieldSync
                confirmable: (result.details[:confirmable] == true if reason == "duplicate_participant"))
     end
 
-    def rejected(error, path = nil, candidates: nil, confirmable: nil)
+    # `id` só no already_registered (Q63 c; o esquema o proíbe nos outros).
+    def rejected(error, path = nil, candidates: nil, confirmable: nil, id: nil)
       { status: "rejected", error: error, path: path.to_s.presence&.slice(0, PATH_MAX), candidates: candidates,
-        confirmable: confirmable, receipt: false }
+        confirmable: confirmable, id: (id if error == "already_registered"), receipt: false }
     end
 
     def result_json(uuid, type, outcome)
@@ -348,6 +370,7 @@ module FieldSync
         json.merge!("id" => outcome[:id], "current_version" => outcome[:current_version], "current" => outcome[:current])
       else
         json["error"] = outcome[:error]
+        json["id"] = outcome[:id] if outcome[:id]
         json["path"] = outcome[:path] if outcome[:path]
         json["candidates"] = outcome[:candidates] if outcome[:candidates]
         json["confirmable"] = outcome[:confirmable] unless outcome[:confirmable].nil?
@@ -388,7 +411,7 @@ module FieldSync
     def invalid_envelope(path) = Result.fail(:invalid_request, details: { path: path })
     private_class_method :process, :lock!, :ledger, :dispatch, :home_visit, :withdrawal, :collective_activity, :patient, :household,
                          :registration, :registry_refusal, :cite, :cited_id, :acs?, :stale_household, :stale_registration,
-                         :registration_duplicate, :trail!, :accepted, :failure, :rejected, :result_json, :invalid_item, :schema_path,
+                         :registration_duplicate, :already_registered, :trail!, :accepted, :failure, :rejected, :result_json, :invalid_item, :schema_path,
                          :invalid_envelope
   end
 end

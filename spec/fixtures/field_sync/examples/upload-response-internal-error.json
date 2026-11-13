@@ -1,0 +1,10 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee14-0000-4000-8000-000000000014",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "internal_error"
+    }
+  ]
+}

@@ -299,4 +299,67 @@ RSpec.describe "FieldSync::Upload", type: :model do
     expect(field_trail.map { _1.payload.slice("patient_id", "user_id", "field_device_id") })
       .to eq([ { "patient_id" => existing.id, "user_id" => acs.id, "field_device_id" => device.id } ])
   end
+
+  describe "Q63" do
+    it "(a) exceção inesperada num item → só ele rejected internal_error, fora do livro; o reenvio o processa de novo" do
+      bad = SecureRandom.uuid
+      batch = [ item("home_visit", visit_body), item("home_visit", visit_body(reasons: [ 27 ]), uuid: bad),
+                item("home_visit", visit_body(reasons: [ 1, 27 ])) ]
+      allow(HomeVisits::Record).to receive(:call).and_wrap_original do |original, **kwargs|
+        raise ArgumentError, "Benedita 12345678901 boom" if kwargs[:params]["client_uuid"] == bad
+
+        original.call(**kwargs)
+      end
+      results = nil
+      log = capture_log { results = upload(*batch) }
+
+      valid_response!(results)
+      expect(statuses(results)).to eq(%w[accepted rejected accepted])
+      expect(results[1]).to eq("client_uuid" => bad, "status" => "rejected", "type" => "home_visit", "error" => "internal_error")
+      expect(FieldSyncReceipt.pluck(:client_uuid)).to contain_exactly(results[0]["client_uuid"], results[2]["client_uuid"])
+      expect(HomeVisit.count).to eq(2)
+      expect(log.lines.grep(/internal_error/).map(&:strip)).to eq([ "[field_sync.upload] internal_error class=ArgumentError client_uuid=#{bad}" ])
+      [ "boom", "Benedita", "12345678901" ].each { |secret| expect(log).not_to include(secret) }
+
+      allow(HomeVisits::Record).to receive(:call).and_call_original
+      again = upload(*batch)
+      valid_response!(again)
+      expect(statuses(again)).to eq(%w[duplicate accepted duplicate])
+      expect(again.values_at(0, 2).map { _1["id"] }).to eq(results.values_at(0, 2).map { _1["id"] })
+      expect(HomeVisit.find(again[1]["id"]).client_uuid).to eq(bad)
+      expect(FieldSyncReceipt.count).to eq(3)
+    end
+
+    it "(b) cadastro NOVO cujo domicílio citado mudou entre a leitura e a trava → rejected household_changed (household_id)" do
+      household = registry_household!(micro_area: area)
+      moved_to = registry_micro_area!(code: "05", team: team, acs: acs)
+      # Outro aparelho move o domicílio entre a leitura (parse) e a trava FOR SHARE do SaveRegistration.
+      allow(Household).to receive(:lock).and_wrap_original do |original, *args|
+        household.update_columns(micro_area_id: moved_to.id)
+        original.call(*args)
+      end
+      result = upload(item("individual_registration", registry_registration_params(household, patient: registry_patient!))).sole
+
+      valid_response!([ result ])
+      expect(result.except("client_uuid")).to eq("status" => "rejected", "type" => "individual_registration", "error" => "household_changed",
+                                                 "path" => "household_id")
+      expect(IndividualRegistration.count + FieldSyncReceipt.count).to eq(0)
+    end
+
+    it "(c) already_registered leva o id do cadastro existente no escopo do aparelho; fora dele, sem id" do
+      patient = registry_patient!
+      existing = registry_registration!(patient: patient, household: registry_household!(micro_area: area))
+      inside = upload(item("individual_registration", registry_registration_params(registry_household!(micro_area: area), patient: patient))).sole
+      valid_response!([ inside ])
+      expect(inside.except("client_uuid")).to eq("status" => "rejected", "type" => "individual_registration", "error" => "already_registered",
+                                                 "id" => existing.id)
+
+      stranger = registry_patient!
+      registry_registration!(patient: stranger, household: registry_household!(micro_area: registry_micro_area!(code: "07", team: team)))
+      outside = upload(item("individual_registration", registry_registration_params(registry_household!(micro_area: area), patient: stranger))).sole
+      valid_response!([ outside ])
+      expect(outside.except("client_uuid")).to eq("status" => "rejected", "type" => "individual_registration", "error" => "already_registered")
+      expect(FieldSyncReceipt.count).to eq(0)
+    end
+  end
 end

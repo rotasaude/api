@@ -158,5 +158,14 @@ RSpec.describe "FieldSync domains-v1.json × api (Ruling A5)" do
       expect(codes.size).to be >= 20
       expect(codes - domains.dig("errors", "item")).to eq([])
     end
+
+    # Os códigos que o envio do app (Task 20) devolve por conta própria,
+    # inclusive os da Q63 (internal_error, household_changed).
+    it "errors.item tem todo código que o FieldSync::Upload recusa por conta própria (Q63)" do
+      source = File.read(Rails.root.join("app/services/field_sync/upload.rb"), encoding: "utf-8")
+      codes = source.scan(/\brejected\(\s*"([a-z_]+)"/m).flatten.uniq
+      expect(codes).to include("internal_error", "household_changed", "client_uuid_conflict", "not_found")
+      expect(codes - domains.dig("errors", "item")).to eq([])
+    end
   end
 end

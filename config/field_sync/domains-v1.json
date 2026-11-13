@@ -431,7 +431,9 @@
       "micro_area_inactive",
       "invalid_cpf",
       "invalid_cns",
-      "invalid_patient"
+      "invalid_patient",
+      "internal_error",
+      "household_changed"
     ]
   }
 }

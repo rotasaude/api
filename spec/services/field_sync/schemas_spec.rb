@@ -4,7 +4,7 @@ require "rails_helper"
 # config/field_sync/ é a do rotasaude/contracts, presa por SHA-256; os exemplos
 # do manifest do contracts (cópia em spec/fixtures/field_sync/examples/) dão o
 # mesmo resultado aqui, com o json_schemer do api. A tag field-sync-v1.0.0 ainda
-# não saiu (C-HOLD): os SHA são os do commit caebe8d do contracts, e a Task 26
+# não saiu (C-HOLD): os SHA são os do commit fb52430 do contracts, e a Task 26
 # re-prende na tag.
 RSpec.describe "FieldSync::Schemas (contrato field-sync-v1)" do
   let(:examples) { Rails.root.join("spec/fixtures/field_sync/examples") }
@@ -14,13 +14,13 @@ RSpec.describe "FieldSync::Schemas (contrato field-sync-v1)" do
     {
       "session-response-v1" => "199957bcf5b9d16645cf1a05e9cbbb210001474556a6ab3104783f49a1660bb0",
       "upload-request-v1" => "a372ebf5b53a1812d18efc2e29c735807f8cd62a5071540ba9f83363657e3e6f",
-      "upload-response-v1" => "35d20235d47d68833b9106a25ef8fcdcadbf5457e607916c2e26e2cb02b437cd",
+      "upload-response-v1" => "820bf2a8fb1fc8bb718141c6adc4663be01eda84450471fa142811fe27ce77de",
       "changes-response-v1" => "baa2022a2661a2eb928133912e0eebc7d820d9a2fcfa6cba43a437098effc022",
-      "domains-v1" => "3c20b8b5374e5a855742d67365f68059bcad6a558e398821fe182fc52c81759e"
+      "domains-v1" => "f13abb21a96ff7946c27e2859f26d529e33d6f0f727c59571d1091f179e5510c"
     }
   end
 
-  it "a cópia bate com o SHA-256 do commit caebe8d do contracts (a T26 re-prende na tag)" do
+  it "a cópia bate com o SHA-256 do commit fb52430 do contracts (a T26 re-prende na tag)" do
     expect(Dir[Rails.root.join("config/field_sync/*.json")].map { |path| File.basename(path, ".json") }).to match_array(pinned.keys)
     pinned.each do |name, sha|
       expect(Digest::SHA256.file(Rails.root.join("config/field_sync/#{name}.json")).hexdigest).to eq(sha), name
@@ -38,7 +38,7 @@ RSpec.describe "FieldSync::Schemas (contrato field-sync-v1)" do
   it "os exemplos do manifest do contracts validam" do
     manifest = JSON.parse(File.read(examples.join("manifest.json")))
     files = manifest.fetch("suites").flat_map { |suite| suite.fetch("cases").map { |c| c.fetch("file") } }
-    expect(files.size).to eq(80)
+    expect(files.size).to eq(86)
     expect(Dir[examples.join("*.json")].map { |path| File.basename(path) } - [ "manifest.json" ]).to match_array(files)
 
     outcomes = manifest.fetch("suites").flat_map do |suite|
@@ -51,7 +51,7 @@ RSpec.describe "FieldSync::Schemas (contrato field-sync-v1)" do
       end
     end
     expect(outcomes.reject { |_, ok| ok }).to eq([])
-    expect(outcomes.count { |_, _, expected| expected == "valid" }).to eq(29)
+    expect(outcomes.count { |_, _, expected| expected == "valid" }).to eq(33)
   end
 
   describe "em execução (preflight 1.16, usado pela Task 20)" do

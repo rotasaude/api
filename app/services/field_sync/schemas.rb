@@ -6,7 +6,7 @@
 # `#/$defs/item`, Task 20). Os erros saem só com ponteiro e palavra-chave do
 # esquema, nunca com o valor (o corpo traz pessoa, motivo e medida).
 #
-# Os SHA são os do commit caebe8d do contracts (a tag field-sync-v1.0.0 ainda
+# Os SHA são os do commit fb52430 do contracts (a tag field-sync-v1.0.0 ainda
 # não saiu, C-HOLD); a Task 26 re-prende na tag.
 module FieldSync
   module Schemas
@@ -14,9 +14,9 @@ module FieldSync
     SHA256 = {
       "session-response-v1" => "199957bcf5b9d16645cf1a05e9cbbb210001474556a6ab3104783f49a1660bb0",
       "upload-request-v1" => "a372ebf5b53a1812d18efc2e29c735807f8cd62a5071540ba9f83363657e3e6f",
-      "upload-response-v1" => "35d20235d47d68833b9106a25ef8fcdcadbf5457e607916c2e26e2cb02b437cd",
+      "upload-response-v1" => "820bf2a8fb1fc8bb718141c6adc4663be01eda84450471fa142811fe27ce77de",
       "changes-response-v1" => "baa2022a2661a2eb928133912e0eebc7d820d9a2fcfa6cba43a437098effc022",
-      "domains-v1" => "3c20b8b5374e5a855742d67365f68059bcad6a558e398821fe182fc52c81759e"
+      "domains-v1" => "f13abb21a96ff7946c27e2859f26d529e33d6f0f727c59571d1091f179e5510c"
     }.freeze
 
     class Tampered < StandardError; end

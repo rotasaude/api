@@ -1,0 +1,10 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee17-0000-4000-8000-000000000017",
+      "status": "rejected",
+      "type": "individual_registration",
+      "error": "already_registered"
+    }
+  ]
+}

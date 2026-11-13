@@ -222,6 +222,22 @@
           "expect": "valid"
         },
         {
+          "file": "upload-response-internal-error.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-household-changed.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-already-registered-with-id.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-already-registered-without-id.json",
+          "expect": "valid"
+        },
+        {
           "file": "upload-response-stale-household.json",
           "expect": "valid"
         },
@@ -252,6 +268,14 @@
         {
           "file": "invalid-response-rejected-with-id.json",
           "expect": "/results/0/id schema"
+        },
+        {
+          "file": "invalid-response-id-on-rejected-other-error.json",
+          "expect": "/results/0/id schema"
+        },
+        {
+          "file": "invalid-response-unknown-error-code.json",
+          "expect": "/results/0/error pattern"
         },
         {
           "file": "invalid-response-candidates-without-duplicate-suspected.json",

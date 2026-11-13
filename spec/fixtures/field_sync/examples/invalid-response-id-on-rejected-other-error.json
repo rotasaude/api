@@ -1,0 +1,12 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee15-0000-4000-8000-000000000015",
+      "status": "rejected",
+      "type": "individual_registration",
+      "error": "household_changed",
+      "path": "household_id",
+      "id": "2a3b4c5d-6e7f-4a8b-8c9d-0e1f2a3b4c5d"
+    }
+  ]
+}
