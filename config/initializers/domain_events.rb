@@ -513,4 +513,11 @@ Rails.application.config.to_prepare do
   # (HomeVisits::Record) — home_visit_id, home_visit_day_id e user_id, nunca
   # motivo, medida, observação ou pessoa; sem consumidor.
   DomainEvents.bind "home_visit.recorded", to: []
+  # Módulo 24b (ADR 0052; contrato §1, §2, §4; Task 13): a gravação da
+  # atividade coletiva (CollectiveActivities::Record) e o "registrada por
+  # engano" (CollectiveActivities::MarkMistaken) — collective_activity_id e
+  # user_id, nunca tema, público, prática, procedimento, motivo ou pessoa; sem
+  # consumidor.
+  DomainEvents.bind "collective_activity.recorded", to: []
+  DomainEvents.bind "collective_activity.marked_mistaken", to: []
 end

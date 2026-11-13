@@ -710,4 +710,15 @@ RSpec.describe "home visit bindings (ADR 0052)" do
     expect(DomainEvents.registry.keys).to include("home_visit.recorded")
     expect(DomainEvents.registry["home_visit.recorded"]).to be_empty
   end
+
+  # Task 13: a gravação da atividade coletiva (CollectiveActivities::Record) e
+  # o "registrada por engano" (CollectiveActivities::MarkMistaken) —
+  # collective_activity_id e user_id, nunca tema, público, prática, motivo ou
+  # pessoa.
+  it "declares collective_activity.recorded and collective_activity.marked_mistaken with no consumer" do
+    names = CollectiveActivities::Catalog::DOMAIN_EVENTS
+    expect(names).to eq(%w[collective_activity.recorded collective_activity.marked_mistaken])
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |name| DomainEvents.registry[name] }).to be_empty
+  end
 end
