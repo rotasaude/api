@@ -23,52 +23,63 @@ RSpec.describe LabCrew do
     Current.city = City.find_by!(slug: TEST_CITY_A.slug)
   end
 
-  it "monta o laboratório, a equipe e o catálogo; segunda rodada não duplica" do
-    described_class.seed_platform!
-    result = described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!)
-    lab = ExamProvider.find_by!(name: LabCrew::LAB)
-    expect(lab).to have_attributes(uses_municipal_lab: true, phone: "4133501200")
-    expect(HealthUnit.find_by!(name: "UBS Jardim das Flores").collects_samples).to be(true)
-    expect(HealthUnit.find_by!(name: "UBS Vila Esperança").collects_samples).to be(false)
-    glucose = LabExam.find_by!(exam_provider: lab, sigtap_code: "0202010473")
-    expect(glucose.current_version).to have_attributes(version: 2, instrument_test_code: "GLI")
-    expect(glucose.current_version.analyte("glicose")).to include("critical_high" => 400.0, "entry_max" => 1500.0)
-    expect(LabExam.where(exam_provider: lab).count).to eq(16)
-    expect(LabRejectionReason.where(exam_provider: lab).count).to eq(6)
-    bio = User.find_by!(email_address: "biomedica@curitiba.demo")
-    doctor = User.find_by!(email_address: "patologista@curitiba.demo")
-    expect(bio.professional.council).to eq("CRBM")
-    expect(LabReleaser.active.find_by!(user: bio)).to have_attributes(technical_lead: true)
-    expect(LabReleaser.active.find_by!(user: doctor)).to have_attributes(technical_deputy: true)
-    expect(CitizenIdentity::Cpf.normalize(doctor.professional.cpf)).to be_present
-    expect(User.find_by!(email_address: "tecnica-lab@curitiba.demo").has_role?("lab_staff")).to be(true)
-    expect(LabMiddlewareToken.active.find_by!(exam_provider: lab)).to have_attributes(simulated: true,
-      token_digest: LabMiddlewareToken.digest(LabCrew::DEFAULT_FAKE_MIDDLEWARE_TOKEN))
-    expect(result[:users].map { |u| u[:email] }).to contain_exactly("tecnica-lab@curitiba.demo", "biomedica@curitiba.demo", "patologista@curitiba.demo")
-    expect(result.to_s).not_to include(LabCrew::DEFAULT_FAKE_MIDDLEWARE_TOKEN)
-    expect { described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!) }
-      .not_to(change { [ LabExam.count, LabExamVersion.count, LabReleaser.count, LabMiddlewareToken.count, LabRejectionReason.count ] })
+  # A semente sob teste roda uma vez para os exemplos abaixo (api#159): cada
+  # um parte do estado que ela deixou, e `seeded` é o que ela devolveu. Quem
+  # chama a semente de novo prova a segunda rodada (idempotência). O admin é o
+  # mesmo `lab_admin!` do preparo (a variável chega aos exemplos).
+  describe "depois da semente de Curitiba" do
+    seed_once do
+      CityCatalog.reset_cache!
+      described_class.seed_platform!
+      @seeded = described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!)
+    end
+
+    def seeded = @seeded
+
+    it "monta o laboratório, a equipe e o catálogo; segunda rodada não duplica" do
+      result = seeded
+      lab = ExamProvider.find_by!(name: LabCrew::LAB)
+      expect(lab).to have_attributes(uses_municipal_lab: true, phone: "4133501200")
+      expect(HealthUnit.find_by!(name: "UBS Jardim das Flores").collects_samples).to be(true)
+      expect(HealthUnit.find_by!(name: "UBS Vila Esperança").collects_samples).to be(false)
+      glucose = LabExam.find_by!(exam_provider: lab, sigtap_code: "0202010473")
+      expect(glucose.current_version).to have_attributes(version: 2, instrument_test_code: "GLI")
+      expect(glucose.current_version.analyte("glicose")).to include("critical_high" => 400.0, "entry_max" => 1500.0)
+      expect(LabExam.where(exam_provider: lab).count).to eq(16)
+      expect(LabRejectionReason.where(exam_provider: lab).count).to eq(6)
+      bio = User.find_by!(email_address: "biomedica@curitiba.demo")
+      doctor = User.find_by!(email_address: "patologista@curitiba.demo")
+      expect(bio.professional.council).to eq("CRBM")
+      expect(LabReleaser.active.find_by!(user: bio)).to have_attributes(technical_lead: true)
+      expect(LabReleaser.active.find_by!(user: doctor)).to have_attributes(technical_deputy: true)
+      expect(CitizenIdentity::Cpf.normalize(doctor.professional.cpf)).to be_present
+      expect(User.find_by!(email_address: "tecnica-lab@curitiba.demo").has_role?("lab_staff")).to be(true)
+      expect(LabMiddlewareToken.active.find_by!(exam_provider: lab)).to have_attributes(simulated: true,
+        token_digest: LabMiddlewareToken.digest(LabCrew::DEFAULT_FAKE_MIDDLEWARE_TOKEN))
+      expect(result[:users].map { |u| u[:email] }).to contain_exactly("tecnica-lab@curitiba.demo", "biomedica@curitiba.demo", "patologista@curitiba.demo")
+      expect(result.to_s).not_to include(LabCrew::DEFAULT_FAKE_MIDDLEWARE_TOKEN)
+      expect { described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!) }
+        .not_to(change { [ LabExam.count, LabExamVersion.count, LabReleaser.count, LabMiddlewareToken.count, LabRejectionReason.count ] })
+    end
+
+    it "instrument codes são os do fake-middleware, um RT e um substituto, e a segunda rodada não muda nada (B46)" do
+      lab = ExamProvider.find_by!(name: LabCrew::LAB)
+      expect(LabCrew::INSTRUMENT_CODES.values).to match_array(%w[HEM GLI A1C COL HDL LDL TRI CRE URE TGO TGP TSH T4L HCG])
+      expect(LabReleaser.active.where(exam_provider: lab, technical_lead: true).count).to eq(1)
+      expect(LabReleaser.active.where(exam_provider: lab, technical_deputy: true).count).to eq(1)
+      snapshot = lambda do
+        [ lab.reload.attributes, User.where("email_address LIKE '%@curitiba.demo'").order(:id).map(&:attributes), LabExam.order(:id).map(&:attributes),
+          LabExamVersion.order(:id).map(&:attributes), LabReleaser.order(:id).map(&:attributes), LabMiddlewareToken.order(:id).map(&:attributes),
+          Membership.order(:id).map(&:attributes), HealthUnit.order(:id).map(&:attributes) ]
+      end
+      before = snapshot.call
+      described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!)
+      expect(snapshot.call).to eq(before)
+    end
   end
 
   it "fora de Curitiba não liga nada" do
     expect(described_class.seed_current_city(slug: "maringa", password: "x", admin: lab_admin!)[:switch]).to start_with("desligado")
-  end
-
-  it "instrument codes são os do fake-middleware, um RT e um substituto, e a segunda rodada não muda nada (B46)" do
-    described_class.seed_platform!
-    described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!)
-    lab = ExamProvider.find_by!(name: LabCrew::LAB)
-    expect(LabCrew::INSTRUMENT_CODES.values).to match_array(%w[HEM GLI A1C COL HDL LDL TRI CRE URE TGO TGP TSH T4L HCG])
-    expect(LabReleaser.active.where(exam_provider: lab, technical_lead: true).count).to eq(1)
-    expect(LabReleaser.active.where(exam_provider: lab, technical_deputy: true).count).to eq(1)
-    snapshot = lambda do
-      [ lab.reload.attributes, User.where("email_address LIKE '%@curitiba.demo'").order(:id).map(&:attributes), LabExam.order(:id).map(&:attributes),
-        LabExamVersion.order(:id).map(&:attributes), LabReleaser.order(:id).map(&:attributes), LabMiddlewareToken.order(:id).map(&:attributes),
-        Membership.order(:id).map(&:attributes), HealthUnit.order(:id).map(&:attributes) ]
-    end
-    before = snapshot.call
-    described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!)
-    expect(snapshot.call).to eq(before)
   end
 
   it "o portal do 21a (laboratorio@) não pertence ao laboratório municipal (E18)" do

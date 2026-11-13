@@ -52,93 +52,100 @@ RSpec.describe TransportCrew do
       CityFeature.count ]
   end
 
-  it "liga os dois interruptores e deixa a frota, os motoristas, os destinos e os parâmetros prontos" do
-    result = seed
-    settings = Transport::Settings.current
-    unit = HealthUnit.find_by!(name: "Secretaria Municipal de Saúde")
+  # A semente sob teste roda uma vez para os exemplos abaixo (api#159): cada
+  # um parte do estado que ela deixou, e `seeded` é o que ela devolveu. Quem
+  # chama `seed` de novo prova a segunda rodada (idempotência).
+  describe "depois da semente de Curitiba" do
+    seed_once { @seeded = seed }
 
-    aggregate_failures do
-      expect(result[:switch]).to eq("ligado (sanitary_transport e tfd)")
-      expect(Transport::Gate.usable?(city)).to be(true)
-      expect(Tfd::Gate.usable?(city)).to be(true)
-      expect(TransportVehicle.pluck(:plate, :seats, :wheelchair_spots, :kind).sort)
-        .to eq([ [ "ABC1D23", 15, 1, "van" ], [ "BRA2E19", 4, 0, "car" ] ])
-      expect(TransportDestination.pluck(:ibge_code, :distance_km, :metropolitan).sort)
-        .to eq([ [ "4101804", 27, true ], [ "4106902", 0, false ], [ "4113700", 380, false ], [ "4119905", 117, false ] ])
-      expect(unit).to have_attributes(kind: "health_management")
-      expect(unit.cnes).to match(/\A\d{7}\z/)
-      expect(settings.tfd_billing_health_unit_id).to eq(unit.id)
-      davi = TransportDriver.find_by!(user: User.find_by!(email_address: "motorista@curitiba.dev"))
-      caio = TransportDriver.find_by!(user: User.find_by!(email_address: "condutor@curitiba.dev"))
-      expect(davi).to have_attributes(license_category: "D", license_expires_on: Time.zone.today + 3 * 365)
-      expect(caio).to have_attributes(license_category: "B", license_expires_on: Time.zone.today + 20)
+    def seeded = @seeded
+
+    it "liga os dois interruptores e deixa a frota, os motoristas, os destinos e os parâmetros prontos" do
+      result = seeded
+      settings = Transport::Settings.current
+      unit = HealthUnit.find_by!(name: "Secretaria Municipal de Saúde")
+
+      aggregate_failures do
+        expect(result[:switch]).to eq("ligado (sanitary_transport e tfd)")
+        expect(Transport::Gate.usable?(city)).to be(true)
+        expect(Tfd::Gate.usable?(city)).to be(true)
+        expect(TransportVehicle.pluck(:plate, :seats, :wheelchair_spots, :kind).sort)
+          .to eq([ [ "ABC1D23", 15, 1, "van" ], [ "BRA2E19", 4, 0, "car" ] ])
+        expect(TransportDestination.pluck(:ibge_code, :distance_km, :metropolitan).sort)
+          .to eq([ [ "4101804", 27, true ], [ "4106902", 0, false ], [ "4113700", 380, false ], [ "4119905", 117, false ] ])
+        expect(unit).to have_attributes(kind: "health_management")
+        expect(unit.cnes).to match(/\A\d{7}\z/)
+        expect(settings.tfd_billing_health_unit_id).to eq(unit.id)
+        davi = TransportDriver.find_by!(user: User.find_by!(email_address: "motorista@curitiba.dev"))
+        caio = TransportDriver.find_by!(user: User.find_by!(email_address: "condutor@curitiba.dev"))
+        expect(davi).to have_attributes(license_category: "D", license_expires_on: Time.zone.today + 3 * 365)
+        expect(caio).to have_attributes(license_category: "B", license_expires_on: Time.zone.today + 20)
+      end
     end
-  end
 
-  it "os usuários têm o papel e o TOTP fixo, e a saída leva só e-mail, papel e otpauth" do
-    result = seed
-    roles = result[:users].to_h { |user| [ user[:email], user[:role] ] }
+    it "os usuários têm o papel e o TOTP fixo, e a saída leva só e-mail, papel e otpauth" do
+      result = seeded
+      roles = result[:users].to_h { |user| [ user[:email], user[:role] ] }
 
-    expect(roles).to eq("transporte@curitiba.dev" => "transport_dispatcher", "tfd@curitiba.dev" => "tfd_committee",
-                        "motorista@curitiba.dev" => "driver", "condutor@curitiba.dev" => "driver")
-    expect(result[:users].map { |user| user[:otpauth_uri] }).to all(start_with("otpauth://totp/"))
-    expect(User.where(email_address: roles.keys).map(&:mfa_enrolled?)).to all(be(true))
-  end
-
-  it "a série de hemodiálise gerou viagens seg/qua/sex nas próximas três semanas" do
-    seed
-    series = TransportSeries.sole
-    days = TransportTrip.where(status: "planned").pluck(:date)
-    horizon = Time.zone.today..(Time.zone.today + Transport::Catalog::SERIES_HORIZON_DAYS - 1)
-
-    aggregate_failures do
-      expect(series).to have_attributes(weekdays: [ 1, 3, 5 ], starts_on: Time.zone.today)
-      expect(series.transport_destination.ibge_code).to eq("4119905")
-      expect(days).not_to be_empty
-      expect(days).to all(satisfy { |day| horizon.cover?(day) && [ 1, 3, 5 ].include?(day.cwday) })
-      expect(days.sort).to eq(horizon.select { |day| [ 1, 3, 5 ].include?(day.cwday) })
-      expect(TransportTripPassenger.where(transport_series_id: series.id).count).to eq(days.size)
-      # C9: prestador neutro, sem especialidade (chega à lista, ao motorista e ao cidadão).
-      expect(series.provider_name).to eq("Prestador de Ponta Grossa")
-      expect(TransportTripPassenger.where(transport_series_id: series.id).pluck(:provider_name).uniq).to eq([ "Prestador de Ponta Grossa" ])
-      expect(series.provider_name).not_to match(/nefro|clínica|diálise/i)
+      expect(roles).to eq("transporte@curitiba.dev" => "transport_dispatcher", "tfd@curitiba.dev" => "tfd_committee",
+                          "motorista@curitiba.dev" => "driver", "condutor@curitiba.dev" => "driver")
+      expect(result[:users].map { |user| user[:otpauth_uri] }).to all(start_with("otpauth://totp/"))
+      expect(User.where(email_address: roles.keys).map(&:mfa_enrolled?)).to all(be(true))
     end
-  end
 
-  it "o TFD de Londrina está authorized, com atendimento em 7 dias e a unidade de faturamento nos parâmetros" do
-    result = seed
-    tfd = TfdCase.sole
+    it "a série de hemodiálise gerou viagens seg/qua/sex nas próximas três semanas" do
+      series = TransportSeries.sole
+      days = TransportTrip.where(status: "planned").pluck(:date)
+      horizon = Time.zone.today..(Time.zone.today + Transport::Catalog::SERIES_HORIZON_DAYS - 1)
 
-    aggregate_failures do
-      expect(result[:tfd]).to eq("authorized" => 1)
-      expect(tfd.status).to eq("authorized")
-      expect(tfd.transport_destination.ibge_code).to eq("4113700")
-      expect(tfd.requester_cbo).to start_with("225")
-      expect(tfd.appointment_at.to_date).to eq(Time.zone.today + 7)
-      expect(tfd.appointment_at).to be_future
-      expect(tfd.tfd_case_events.pluck(:kind)).to include("created", "submitted", "appointment_set", "authorized")
-      expect(Transport::Settings.current.tfd_billing_health_unit_id).to eq(HealthUnit.find_by!(name: "Secretaria Municipal de Saúde").id)
+      aggregate_failures do
+        expect(series).to have_attributes(weekdays: [ 1, 3, 5 ], starts_on: Time.zone.today)
+        expect(series.transport_destination.ibge_code).to eq("4119905")
+        expect(days).not_to be_empty
+        expect(days).to all(satisfy { |day| horizon.cover?(day) && [ 1, 3, 5 ].include?(day.cwday) })
+        expect(days.sort).to eq(horizon.select { |day| [ 1, 3, 5 ].include?(day.cwday) })
+        expect(TransportTripPassenger.where(transport_series_id: series.id).count).to eq(days.size)
+        # C9: prestador neutro, sem especialidade (chega à lista, ao motorista e ao cidadão).
+        expect(series.provider_name).to eq("Prestador de Ponta Grossa")
+        expect(TransportTripPassenger.where(transport_series_id: series.id).pluck(:provider_name).uniq).to eq([ "Prestador de Ponta Grossa" ])
+        expect(series.provider_name).not_to match(/nefro|clínica|diálise/i)
+      end
     end
-  end
 
-  it "duas rodadas dão as mesmas contagens" do
-    seed
-    first = counts
-    seed
+    it "o TFD de Londrina está authorized, com atendimento em 7 dias e a unidade de faturamento nos parâmetros" do
+      result = seeded
+      tfd = TfdCase.sole
 
-    expect(counts).to eq(first)
-  end
+      aggregate_failures do
+        expect(result[:tfd]).to eq("authorized" => 1)
+        expect(tfd.status).to eq("authorized")
+        expect(tfd.transport_destination.ibge_code).to eq("4113700")
+        expect(tfd.requester_cbo).to start_with("225")
+        expect(tfd.appointment_at.to_date).to eq(Time.zone.today + 7)
+        expect(tfd.appointment_at).to be_future
+        expect(tfd.tfd_case_events.pluck(:kind)).to include("created", "submitted", "appointment_set", "authorized")
+        expect(Transport::Settings.current.tfd_billing_health_unit_id).to eq(HealthUnit.find_by!(name: "Secretaria Municipal de Saúde").id)
+      end
+    end
 
-  it "nenhuma linha da saída leva CPF nem nome de paciente" do
-    result = seed
-    text = described_class.summary_lines(result, password: "dev-password").join("\n")
-    secrets = Patient.all.flat_map { |patient| [ patient.cpf, patient.full_name ] }.compact
+    it "duas rodadas dão as mesmas contagens" do
+      first = counts
+      seed
 
-    aggregate_failures do
-      expect(secrets).not_to be_empty
-      secrets.each { |secret| expect(text).not_to include(secret) }
-      expect(text).not_to match(/\b\d{11}\b/)
-      expect(text).to include("transporte@curitiba.dev (transport_dispatcher)")
+      expect(counts).to eq(first)
+    end
+
+    it "nenhuma linha da saída leva CPF nem nome de paciente" do
+      result = seeded
+      text = described_class.summary_lines(result, password: "dev-password").join("\n")
+      secrets = Patient.all.flat_map { |patient| [ patient.cpf, patient.full_name ] }.compact
+
+      aggregate_failures do
+        expect(secrets).not_to be_empty
+        secrets.each { |secret| expect(text).not_to include(secret) }
+        expect(text).not_to match(/\b\d{11}\b/)
+        expect(text).to include("transporte@curitiba.dev (transport_dispatcher)")
+      end
     end
   end
 

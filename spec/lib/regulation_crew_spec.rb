@@ -74,89 +74,111 @@ RSpec.describe RegulationCrew, type: :request do
       .not_to(change { TerminologyRelease.count })
   end
 
-  it "os dez pedidos na situação da tabela, a fila com os vencidos no topo e a cota da ortopedia esgotada" do
-    result = seed
-    statuses = (1..10).to_h { |n| [ n, request(n).status ] }
-
-    aggregate_failures do
-      expect(result[:switch]).to eq("ligado (care_regulation)")
-      expect(statuses).to eq(1 => "pending", 2 => "pending", 3 => "pending", 4 => "pending", 5 => "authorized", 6 => "authorized",
-                             7 => "scheduled", 8 => "returned", 9 => "external", 10 => "completed")
-      expect(result[:requests]).to eq("authorized" => 2, "completed" => 1, "external" => 1, "pending" => 4, "returned" => 1, "scheduled" => 1)
-      expect((1..10).map { |n| request(n).effective_color })
-        .to eq(%w[red yellow green yellow yellow green yellow green blue green])
-      expect([ request(1).requested_at.to_date, request(2).requested_at.to_date ]).to eq([ Time.zone.today - 10, Time.zone.today - 40 ])
-      expect((1..10).select { |n| request(n).overdue? }).to eq([ 1, 2 ])
-      expect(CareRegulation::Queue.counts).to include(pending: 4, overdue: 2, returned: 1, authorized: 2, external: 1)
-      expect(CareRegulation::Queue.page(filters: {}, before: nil, limit: 50)[:rows].map(&:id)).to eq([ 1, 2, 4, 3 ].map { |n| request(n).id })
-
-      # 5: a cota do consórcio esgotada (used = quantity = 1).
-      orthopedics = offer(RegulationCrew::ORTHOPEDICS)
-      expect([ CareRegulation::Quota.used([ orthopedics.id ]).fetch(orthopedics.id), orthopedics.quantity ]).to eq([ 1, 1 ])
-      expect(orthopedics.care_provider.kind).to eq("consortium")
-
-      # 6: rede própria, José, pedido de agendamento aberto no Centro de Especialidades.
-      six = request(6)
-      appointment = AppointmentRequest.find(six.appointment_request_id)
-      expect([ appointment.status, appointment.kind, appointment.target_unit.name ]).to eq([ "open", "regulated", RegulationCrew::OWN_UNIT ])
-      expect(appointment.citizen.cpf).to eq(CareLinesCrew.cpf_for("curitiba", :jose))
-      expect(offer(RegulationCrew::CARDIOLOGY).care_provider).to have_attributes(kind: "own", cnes: appointment.target_unit.cnes)
-
-      # 7: agendado na contratada daqui a 12 dias; 10: atendido.
-      expect(request(7).scheduled_at.to_date).to eq(Time.zone.today + 12)
-      expect(RegulationAuthorization.find_by!(regulation_request_id: request(7).id).care_offer.care_provider.name).to eq("Clínica de Olhos Araucária")
-      expect(request(10).scheduled_at).to be < Time.current
-
-      # 8: a EGD devolvida (alvo de procedimento, PPI com oferta); 9: no SISREG.
-      expect([ request(8).target_type, request(8).target_code ]).to eq(%w[procedure 0209010037])
-      expect(offer("0209010037").care_provider.kind).to eq("ppi")
-      expect(request(9)).to have_attributes(state_regulated: true, external_system: "sisreg", external_number: "202610280001")
-
-      # A médica pede com CID-10 (G12); a lista do enfermeiro; os prazos padrão.
-      expect((1..10).map { |n| request(n).cid10 }).to all(be_present)
-      expect(NurseRequestableItem.pluck(:target_code)).to match_array(%w[225250 225124])
-      expect(RegulationRiskDeadline.count).to eq(4)
+  # A semente sob teste roda uma vez para os exemplos abaixo (api#159): cada
+  # um parte do estado que ela deixou, e `seeded` é o que ela devolveu. Quem
+  # chama `seed` de novo prova a segunda rodada (idempotência).
+  describe "depois da semente de Curitiba" do
+    seed_once do
+      CityCatalog.reset_cache!
+      Current.city = City.find_by!(slug: TEST_CITY_A.slug)
+      @seeded = seed
     end
-    # O relógio voltou ao real.
-    expect(Time.current).to be_within(5.minutes).of(Time.at(Process.clock_gettime(Process::CLOCK_REALTIME)))
-  end
 
-  it "motivo de pular: o 4 exige motivo enquanto o 1 e o 2 esperam, e continua exigindo depois de autorizar o 1 (pelo 2)" do
-    seed
-    cardiology = offer(RegulationCrew::CARDIOLOGY)
-    four = request(4)
-    authorize = ->(req) { CareRegulation::Authorize.call(request: req.reload, offer_id: cardiology.id, version: req.version, by: regulator) }
+    def seeded = @seeded
 
-    expect(authorize.call(four).reason).to eq(:skip_reason_required)
-    expect(authorize.call(request(1))).to be_ok
-    expect(authorize.call(four).reason).to eq(:skip_reason_required)
-  end
+    it "os dez pedidos na situação da tabela, a fila com os vencidos no topo e a cota da ortopedia esgotada" do
+      result = seeded
+      statuses = (1..10).to_h { |n| [ n, request(n).status ] }
 
-  it "a reguladora: papel care_regulator, OTP fixo do plano, e o regulacao@ do 21a não é tocado" do
-    seed
-    expect(regulator.has_role?("care_regulator")).to be(true)
-    expect(regulator.otp_secret).to eq("REGULACAOMUNICIPALSEMENTEDEVCWBA")
-    expect(User.exists?(email_address: "regulacao@curitiba.demo")).to be(false)
-  end
+      aggregate_failures do
+        expect(result[:switch]).to eq("ligado (care_regulation)")
+        expect(statuses).to eq(1 => "pending", 2 => "pending", 3 => "pending", 4 => "pending", 5 => "authorized", 6 => "authorized",
+                               7 => "scheduled", 8 => "returned", 9 => "external", 10 => "completed")
+        expect(result[:requests]).to eq("authorized" => 2, "completed" => 1, "external" => 1, "pending" => 4, "returned" => 1, "scheduled" => 1)
+        expect((1..10).map { |n| request(n).effective_color })
+          .to eq(%w[red yellow green yellow yellow green yellow green blue green])
+        expect([ request(1).requested_at.to_date, request(2).requested_at.to_date ]).to eq([ Time.zone.today - 10, Time.zone.today - 40 ])
+        expect((1..10).select { |n| request(n).overdue? }).to eq([ 1, 2 ])
+        expect(CareRegulation::Queue.counts).to include(pending: 4, overdue: 2, returned: 1, authorized: 2, external: 1)
+        expect(CareRegulation::Queue.page(filters: {}, before: nil, limit: 50)[:rows].map(&:id)).to eq([ 1, 2, 4, 3 ].map { |n| request(n).id })
 
-  it "a segunda rodada não cria nada" do
-    first = seed
-    tables = [ User, Membership, Citizen, Patient, Attendance, Consultation, RegulationRequest, RegulationRequestEvent,
-               RegulationAuthorization, AppointmentRequest, CareProvider, CareOffer, NurseRequestableItem, RegulationRiskDeadline,
-               HealthUnit, DomainEvent, TerminologyRelease ]
-    expect { expect(seed).to eq(first) }.not_to(change { tables.map(&:count) })
-  end
+        # 5: a cota do consórcio esgotada (used = quantity = 1).
+        orthopedics = offer(RegulationCrew::ORTHOPEDICS)
+        expect([ CareRegulation::Quota.used([ orthopedics.id ]).fetch(orthopedics.id), orthopedics.quantity ]).to eq([ 1, 1 ])
+        expect(orthopedics.care_provider.kind).to eq("consortium")
 
-  it "a saída: só e-mail, papel e otpauth — nunca CPF nem nome de paciente" do
-    lines = described_class.summary_lines(seed, password: "dev-password")
-    text = ([ lines ] + [ seed.inspect ]).join("\n")
-    names = described_class::PEOPLE.values.map { |p| p[:name] } + %i[jose sebastiao].map { |key| CareLinesCrew::PEOPLE.fetch(key)[:name] }
-    cpfs = described_class::PEOPLE.keys.map { |key| described_class.cpf_for("curitiba", key) } +
-           %i[jose sebastiao].map { |key| CareLinesCrew.cpf_for("curitiba", key) }
+        # 6: rede própria, José, pedido de agendamento aberto no Centro de Especialidades.
+        six = request(6)
+        appointment = AppointmentRequest.find(six.appointment_request_id)
+        expect([ appointment.status, appointment.kind, appointment.target_unit.name ]).to eq([ "open", "regulated", RegulationCrew::OWN_UNIT ])
+        expect(appointment.citizen.cpf).to eq(CareLinesCrew.cpf_for("curitiba", :jose))
+        expect(offer(RegulationCrew::CARDIOLOGY).care_provider).to have_attributes(kind: "own", cnes: appointment.target_unit.cnes)
 
-    expect(text).to include("regulacao.municipal@curitiba.demo (care_regulator)", "otpauth://")
-    expect(names.select { |name| text.include?(name) }).to eq([])
-    expect(cpfs.select { |cpf| text.include?(cpf) }).to eq([])
+        # 7: agendado na contratada daqui a 12 dias; 10: atendido.
+        expect(request(7).scheduled_at.to_date).to eq(Time.zone.today + 12)
+        expect(RegulationAuthorization.find_by!(regulation_request_id: request(7).id).care_offer.care_provider.name).to eq("Clínica de Olhos Araucária")
+        expect(request(10).scheduled_at).to be < Time.current
+
+        # 8: a EGD devolvida (alvo de procedimento, PPI com oferta); 9: no SISREG.
+        expect([ request(8).target_type, request(8).target_code ]).to eq(%w[procedure 0209010037])
+        expect(offer("0209010037").care_provider.kind).to eq("ppi")
+        expect(request(9)).to have_attributes(state_regulated: true, external_system: "sisreg", external_number: "202610280001")
+
+        # A médica pede com CID-10 (G12); a lista do enfermeiro; os prazos padrão.
+        expect((1..10).map { |n| request(n).cid10 }).to all(be_present)
+        expect(NurseRequestableItem.pluck(:target_code)).to match_array(%w[225250 225124])
+        expect(RegulationRiskDeadline.count).to eq(4)
+      end
+      # O relógio voltou ao real.
+      expect(Time.current).to be_within(5.minutes).of(Time.at(Process.clock_gettime(Process::CLOCK_REALTIME)))
+    end
+
+    it "motivo de pular: o 4 exige motivo enquanto o 1 e o 2 esperam, e continua exigindo depois de autorizar o 1 (pelo 2)" do
+      cardiology = offer(RegulationCrew::CARDIOLOGY)
+      four = request(4)
+      authorize = ->(req) { CareRegulation::Authorize.call(request: req.reload, offer_id: cardiology.id, version: req.version, by: regulator) }
+
+      expect(authorize.call(four).reason).to eq(:skip_reason_required)
+      expect(authorize.call(request(1))).to be_ok
+      expect(authorize.call(four).reason).to eq(:skip_reason_required)
+    end
+
+    it "a reguladora: papel care_regulator, OTP fixo do plano, e o regulacao@ do 21a não é tocado" do
+      expect(regulator.has_role?("care_regulator")).to be(true)
+      expect(regulator.otp_secret).to eq("REGULACAOMUNICIPALSEMENTEDEVCWBA")
+      expect(User.exists?(email_address: "regulacao@curitiba.demo")).to be(false)
+    end
+
+    it "a segunda rodada não cria nada" do
+      first = seeded
+      tables = [ User, Membership, Citizen, Patient, Attendance, Consultation, RegulationRequest, RegulationRequestEvent,
+                 RegulationAuthorization, AppointmentRequest, CareProvider, CareOffer, NurseRequestableItem, RegulationRiskDeadline,
+                 HealthUnit, DomainEvent, TerminologyRelease ]
+      expect { expect(seed).to eq(first) }.not_to(change { tables.map(&:count) })
+    end
+
+    it "a saída: só e-mail, papel e otpauth — nunca CPF nem nome de paciente" do
+      lines = described_class.summary_lines(seeded, password: "dev-password")
+      text = ([ lines ] + [ seed.inspect ]).join("\n")
+      names = described_class::PEOPLE.values.map { |p| p[:name] } + %i[jose sebastiao].map { |key| CareLinesCrew::PEOPLE.fetch(key)[:name] }
+      cpfs = described_class::PEOPLE.keys.map { |key| described_class.cpf_for("curitiba", key) } +
+             %i[jose sebastiao].map { |key| CareLinesCrew.cpf_for("curitiba", key) }
+
+      expect(text).to include("regulacao.municipal@curitiba.demo (care_regulator)", "otpauth://")
+      expect(names.select { |name| text.include?(name) }).to eq([])
+      expect(cpfs.select { |cpf| text.include?(cpf) }).to eq([])
+    end
+
+    it "o José com óbito depois da primeira rodada: o pedido dele fica como está e a segunda rodada não quebra" do
+      before = request(6).attributes.slice("status", "version")
+      nurse = User.find_by!(email_address: "enfermeira@curitiba.demo")
+      jose = Citizen.find_by!(cpf: CareLinesCrew.cpf_for("curitiba", :jose))
+      enrollment = CareLineEnrollment.active_enrollments.find_by!(patient_id: jose.patient_id)
+      expect(CareLines::EndEnrollment.call(enrollment: enrollment, reason: "death", note: nil, by: nurse)).to be_ok
+
+      expect { expect { seed }.to output(/jose com óbito/).to_stderr }.not_to(change { RegulationRequest.count })
+      expect(request(6).attributes.slice("status", "version")).to eq(before)
+    end
   end
 
   # O óbito de uma pessoa do CareLinesCrew (teste manual) não derruba o db:seed:
@@ -175,18 +197,6 @@ RSpec.describe RegulationCrew, type: :request do
       expect(((1..10).to_a - [ 6 ]).map { |n| request(n)&.status }).to eq(%w[pending pending pending pending authorized scheduled returned external completed][0, 9])
       expect(RegulationRequest.where.not(status: "draft").count).to eq(9)
     end
-  end
-
-  it "o José com óbito depois da primeira rodada: o pedido dele fica como está e a segunda rodada não quebra" do
-    seed
-    before = request(6).attributes.slice("status", "version")
-    nurse = User.find_by!(email_address: "enfermeira@curitiba.demo")
-    jose = Citizen.find_by!(cpf: CareLinesCrew.cpf_for("curitiba", :jose))
-    enrollment = CareLineEnrollment.active_enrollments.find_by!(patient_id: jose.patient_id)
-    expect(CareLines::EndEnrollment.call(enrollment: enrollment, reason: "death", note: nil, by: nurse)).to be_ok
-
-    expect { expect { seed }.to output(/jose com óbito/).to_stderr }.not_to(change { RegulationRequest.count })
-    expect(request(6).attributes.slice("status", "version")).to eq(before)
   end
 
   it "sem o mantenedor de dev não liga nada" do

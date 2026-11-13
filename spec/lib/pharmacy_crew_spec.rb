@@ -115,230 +115,241 @@ RSpec.describe PharmacyCrew, type: :request do
   end
 
   describe ".seed_current_city" do
-    it "liga o interruptor, cria os dois locais e vincula a equipe: farmacêutica com CBO 223405, auxiliar e o Luiz nos dois locais" do
-      result = seed
-      unit = HealthUnit.find_by!(name: CareLinesCrew::UNIT)
-      aggregate_failures do
-        expect(result[:switch]).to eq("ligado (pharmacy)")
-        expect(Pharmacy::Gate.usable?(Current.city)).to be(true)
-        expect(PharmacySetting.find(1).attributes.slice(*Pharmacy::Catalog::DEFAULT_SETTINGS.keys)).to eq(Pharmacy::Catalog::DEFAULT_SETTINGS)
+    # A semente sob teste roda uma vez para os exemplos abaixo (api#159): cada
+    # um parte do estado que ela deixou, e `seeded` é o que ela devolveu. Quem
+    # chama `seed` de novo prova a segunda rodada (idempotência).
+    describe "depois da semente de Curitiba" do
+      seed_once do
+        CityCatalog.reset_cache!
+        Current.city = City.find_by!(slug: TEST_CITY_A.slug)
+        @seeded = seed
+      end
 
-        expect(central).to have_attributes(name: "Central de Abastecimento Farmacêutico de Curitiba", health_unit_id: nil, active: true)
-        expect(pharmacy).to have_attributes(name: "Farmácia da UBS Jardim das Flores", health_unit_id: unit.id, active: true)
-        expect(unit.reload.dispenses).to be(true)
-        expect(result[:locations]).to eq([ central.name, pharmacy.name ])
+      def seeded = @seeded
 
-        expect(result[:users].map { |u| [ u[:email], u[:role] ] }).to eq(
-          [ %w[farmacia@curitiba.demo pharmacist], %w[farmacia.auxiliar@curitiba.demo pharmacy_assistant],
-            %w[almoxarifado@curitiba.demo stock_keeper], %w[almoxarifado.2@curitiba.demo stock_keeper] ]
-        )
-        expect(result[:users].map { |u| u[:otpauth_uri] }).to all(start_with("otpauth://totp/"))
+      it "liga o interruptor, cria os dois locais e vincula a equipe: farmacêutica com CBO 223405, auxiliar e o Luiz nos dois locais" do
+        result = seeded
+        unit = HealthUnit.find_by!(name: CareLinesCrew::UNIT)
+        aggregate_failures do
+          expect(result[:switch]).to eq("ligado (pharmacy)")
+          expect(Pharmacy::Gate.usable?(Current.city)).to be(true)
+          expect(PharmacySetting.find(1).attributes.slice(*Pharmacy::Catalog::DEFAULT_SETTINGS.keys)).to eq(Pharmacy::Catalog::DEFAULT_SETTINGS)
 
-        pharmacist = user("farmacia")
-        expect(pharmacist.professional).to have_attributes(professional_name: "Ana Paula Wisniewski", council: "CRF", council_state: "PR")
-        expect(Professionals::Cns.valid?(pharmacist.professional.cns)).to be(true)
-        expect(CitizenIdentity::Cpf.normalize(pharmacist.professional.cpf)).to be_present
-        expect(pharmacist.professional.links.active.pluck(:health_unit_id, :cbo_code)).to eq([ [ unit.id, "223405" ] ])
+          expect(central).to have_attributes(name: "Central de Abastecimento Farmacêutico de Curitiba", health_unit_id: nil, active: true)
+          expect(pharmacy).to have_attributes(name: "Farmácia da UBS Jardim das Flores", health_unit_id: unit.id, active: true)
+          expect(unit.reload.dispenses).to be(true)
+          expect(result[:locations]).to eq([ central.name, pharmacy.name ])
 
-        %w[farmacia.auxiliar almoxarifado almoxarifado.2].zip([ "Marcos Vinícius Andrade", "Luiz Fernando Kuster", "Cristiane Bortolini" ]).each do |prefix, name|
-          profile = user(prefix).professional
-          expect(profile).to have_attributes(professional_name: name, council: nil)
-          expect(Professionals::Cns.valid?(profile.cns)).to be(true)
-          expect(CitizenIdentity::Cpf.normalize(profile.cpf)).to be_present
-          expect(profile.links).to be_empty
-          expect(Pharmacy::Json.person(user(prefix))).to eq(user_id: user(prefix).id, name: name)
-          expect(user(prefix).has_role?("health_professional")).to be(false)
+          expect(result[:users].map { |u| [ u[:email], u[:role] ] }).to eq(
+            [ %w[farmacia@curitiba.demo pharmacist], %w[farmacia.auxiliar@curitiba.demo pharmacy_assistant],
+              %w[almoxarifado@curitiba.demo stock_keeper], %w[almoxarifado.2@curitiba.demo stock_keeper] ]
+          )
+          expect(result[:users].map { |u| u[:otpauth_uri] }).to all(start_with("otpauth://totp/"))
+
+          pharmacist = user("farmacia")
+          expect(pharmacist.professional).to have_attributes(professional_name: "Ana Paula Wisniewski", council: "CRF", council_state: "PR")
+          expect(Professionals::Cns.valid?(pharmacist.professional.cns)).to be(true)
+          expect(CitizenIdentity::Cpf.normalize(pharmacist.professional.cpf)).to be_present
+          expect(pharmacist.professional.links.active.pluck(:health_unit_id, :cbo_code)).to eq([ [ unit.id, "223405" ] ])
+
+          %w[farmacia.auxiliar almoxarifado almoxarifado.2].zip([ "Marcos Vinícius Andrade", "Luiz Fernando Kuster", "Cristiane Bortolini" ]).each do |prefix, name|
+            profile = user(prefix).professional
+            expect(profile).to have_attributes(professional_name: name, council: nil)
+            expect(Professionals::Cns.valid?(profile.cns)).to be(true)
+            expect(CitizenIdentity::Cpf.normalize(profile.cpf)).to be_present
+            expect(profile.links).to be_empty
+            expect(Pharmacy::Json.person(user(prefix))).to eq(user_id: user(prefix).id, name: name)
+            expect(user(prefix).has_role?("health_professional")).to be(false)
+          end
+
+          roles = ->(email, location) { Pharmacy::Access.roles_at(user: user(email), location: location).to_a }
+          expect(roles.call("farmacia", pharmacy)).to eq([ "pharmacist" ])
+          expect(roles.call("farmacia", central)).to eq([])
+          expect(roles.call("farmacia.auxiliar", pharmacy)).to eq([ "pharmacy_assistant" ])
+          expect(roles.call("almoxarifado", central)).to eq([ "stock_keeper" ])
+          expect(roles.call("almoxarifado", pharmacy)).to eq([ "stock_keeper" ])
+          expect(roles.call("almoxarifado.2", central)).to eq([ "stock_keeper" ])
+          expect(roles.call("almoxarifado.2", pharmacy)).to eq([])
+
+          expect(%w[farmacia farmacia.auxiliar almoxarifado almoxarifado.2].map { |email| user(email).otp_secret }).to eq(
+            %w[FARMACEUTICASEMENTEDEVCWBAPHARMA AUXILIARFARMACIASEMENTEDEVCWBAPH ALMOXARIFESEMENTEDEVCWBAPHARMACY ALMOXARIFEDOISSEMENTEDEVCWBAPHAR]
+          )
+          expect(%w[farmacia farmacia.auxiliar almoxarifado almoxarifado.2].map { |email| user(email).mfa_enrolled? }).to all(be(true))
         end
-
-        roles = ->(email, location) { Pharmacy::Access.roles_at(user: user(email), location: location).to_a }
-        expect(roles.call("farmacia", pharmacy)).to eq([ "pharmacist" ])
-        expect(roles.call("farmacia", central)).to eq([])
-        expect(roles.call("farmacia.auxiliar", pharmacy)).to eq([ "pharmacy_assistant" ])
-        expect(roles.call("almoxarifado", central)).to eq([ "stock_keeper" ])
-        expect(roles.call("almoxarifado", pharmacy)).to eq([ "stock_keeper" ])
-        expect(roles.call("almoxarifado.2", central)).to eq([ "stock_keeper" ])
-        expect(roles.call("almoxarifado.2", pharmacy)).to eq([])
-
-        expect(%w[farmacia farmacia.auxiliar almoxarifado almoxarifado.2].map { |email| user(email).otp_secret }).to eq(
-          %w[FARMACEUTICASEMENTEDEVCWBAPHARMA AUXILIARFARMACIASEMENTEDEVCWBAPH ALMOXARIFESEMENTEDEVCWBAPHARMACY ALMOXARIFEDOISSEMENTEDEVCWBAPHAR]
-        )
-        expect(%w[farmacia farmacia.auxiliar almoxarifado almoxarifado.2].map { |email| user(email).mfa_enrolled? }).to all(be(true))
       end
-    end
 
-    it "estoque: abertura, nota com conversão de embalagem, três transferências, ajuste pendente, lote vencendo e item abaixo do mínimo" do
-      result = seed
+      it "estoque: abertura, nota com conversão de embalagem, três transferências, ajuste pendente, lote vencendo e item abaixo do mínimo" do
+        result = seeded
 
-      aggregate_failures do
-        expect(result[:transfers]).to eq("received" => 1, "received_with_difference" => 1, "sent" => 1)
-        expect(result[:adjustments]).to eq("pending" => 1)
-        expect(result[:dispensations]).to eq(2)
+        aggregate_failures do
+          expect(result[:transfers]).to eq("received" => 1, "received_with_difference" => 1, "sent" => 1)
+          expect(result[:adjustments]).to eq("pending" => 1)
+          expect(result[:dispensations]).to eq(2)
 
-        # Abertura há 40 dias no central: um por item, dois lotes de losartana.
-        expect(StockOpening.where(stock_location_id: central.id).count).to eq(7)
-        openings = StockMovement.where(stock_location_id: central.id, kind: "opening")
-        expect(openings.count).to eq(8)
-        expect(openings.pluck(:recorded_at).map { |at| at.in_time_zone.to_date }.uniq).to eq([ today - 40 ])
-        expect(StockLot.where(catalog_item_id: item(:losartana).id).order(:expires_on).pluck(:lot_number, :expires_on))
-          .to eq([ [ "LS2411-A", today + 60 ], [ "LS2705-B", today + 540 ], [ "LS2706-C", today + 600 ] ])
+          # Abertura há 40 dias no central: um por item, dois lotes de losartana.
+          expect(StockOpening.where(stock_location_id: central.id).count).to eq(7)
+          openings = StockMovement.where(stock_location_id: central.id, kind: "opening")
+          expect(openings.count).to eq(8)
+          expect(openings.pluck(:recorded_at).map { |at| at.in_time_zone.to_date }.uniq).to eq([ today - 40 ])
+          expect(StockLot.where(catalog_item_id: item(:losartana).id).order(:expires_on).pluck(:lot_number, :expires_on))
+            .to eq([ [ "LS2411-A", today + 60 ], [ "LS2705-B", today + 540 ], [ "LS2706-C", today + 600 ] ])
 
-        # Nota 000123456: 30 por caixa × 20 caixas, há 20 dias.
-        entry = StockEntry.find_by!(stock_location_id: central.id, kind: "invoice", document_number: "000123456")
-        expect(entry.supplier).to eq("Distribuidora de Medicamentos Paraná Ltda.")
-        movement = StockMovement.find_by!(stock_entry_id: entry.id)
-        expect(movement).to have_attributes(kind: "receipt", quantity: 600, package_units: 30, packages: 20, stock_lot_id: lot("LS2706-C").id)
-        expect(movement.recorded_at.in_time_zone.to_date).to eq(today - 20)
+          # Nota 000123456: 30 por caixa × 20 caixas, há 20 dias.
+          entry = StockEntry.find_by!(stock_location_id: central.id, kind: "invoice", document_number: "000123456")
+          expect(entry.supplier).to eq("Distribuidora de Medicamentos Paraná Ltda.")
+          movement = StockMovement.find_by!(stock_entry_id: entry.id)
+          expect(movement).to have_attributes(kind: "receipt", quantity: 600, package_units: 30, packages: 20, stock_lot_id: lot("LS2706-C").id)
+          expect(movement.recorded_at.in_time_zone.to_date).to eq(today - 20)
 
-        # Unidade de dispensação gravada no lote.
-        expect(StockLot.pluck(:catmat_code, :dispensing_unit).to_h)
-          .to eq(268_856 => "comprimido", 267_690 => "comprimido", 267_747 => "comprimido", 271_089 => "cápsula",
-                 273_009 => "cápsula", 267_197 => "comprimido", 294_887 => "frasco")
+          # Unidade de dispensação gravada no lote.
+          expect(StockLot.pluck(:catmat_code, :dispensing_unit).to_h)
+            .to eq(268_856 => "comprimido", 267_690 => "comprimido", 267_747 => "comprimido", 271_089 => "cápsula",
+                   273_009 => "cápsula", 267_197 => "comprimido", 294_887 => "frasco")
 
-        # Transferências: inteira (há 30 dias), com diferença (há 10) e em trânsito (hoje).
-        by_status = StockTransfer.all.index_by(&:status)
-        expect(by_status.values.map { |t| [ t.from_location_id, t.to_location_id ] }.uniq).to eq([ [ central.id, pharmacy.id ] ])
-        expect(by_status.fetch("received").sent_at.in_time_zone.to_date).to eq(today - 30)
-        difference = by_status.fetch("received_with_difference")
-        expect(difference.sent_at.in_time_zone.to_date).to eq(today - 10)
-        expect(difference.items.map { |i| [ i.stock_lot_id, i.quantity_sent, i.quantity_received ] }).to eq([ [ lot("LS2706-C").id, 300, 240 ] ])
-        expect(difference.items.sole.difference_reason).to eq("Duas caixas avariadas no transporte")
-        expect(StockMovement.where(stock_transfer_id: difference.id, kind: "loss").sole).to have_attributes(quantity: -60, stock_location_id: pharmacy.id)
-        expect(by_status.fetch("sent").items.map { |i| [ i.stock_lot_id, i.quantity_sent ] }).to eq([ [ lot("MF2702-A").id, 300 ] ])
-        expect(by_status.fetch("sent").sent_at.in_time_zone.to_date).to eq(today)
+          # Transferências: inteira (há 30 dias), com diferença (há 10) e em trânsito (hoje).
+          by_status = StockTransfer.all.index_by(&:status)
+          expect(by_status.values.map { |t| [ t.from_location_id, t.to_location_id ] }.uniq).to eq([ [ central.id, pharmacy.id ] ])
+          expect(by_status.fetch("received").sent_at.in_time_zone.to_date).to eq(today - 30)
+          difference = by_status.fetch("received_with_difference")
+          expect(difference.sent_at.in_time_zone.to_date).to eq(today - 10)
+          expect(difference.items.map { |i| [ i.stock_lot_id, i.quantity_sent, i.quantity_received ] }).to eq([ [ lot("LS2706-C").id, 300, 240 ] ])
+          expect(difference.items.sole.difference_reason).to eq("Duas caixas avariadas no transporte")
+          expect(StockMovement.where(stock_transfer_id: difference.id, kind: "loss").sole).to have_attributes(quantity: -60, stock_location_id: pharmacy.id)
+          expect(by_status.fetch("sent").items.map { |i| [ i.stock_lot_id, i.quantity_sent ] }).to eq([ [ lot("MF2702-A").id, 300 ] ])
+          expect(by_status.fetch("sent").sent_at.in_time_zone.to_date).to eq(today)
 
-        # Ajuste pendente de 20% (contagem de SINVASTATINA) no central, pedido pelo Luiz.
-        adjustment = StockAdjustment.sole
-        expect(adjustment).to have_attributes(status: "pending", kind: "adjustment", stock_location_id: central.id, stock_lot_id: lot("SV2705-A").id,
-                                              counted_quantity: 480, balance_at_request: 600, quantity: -120, requested_by_user_id: user("almoxarifado").id)
+          # Ajuste pendente de 20% (contagem de SINVASTATINA) no central, pedido pelo Luiz.
+          adjustment = StockAdjustment.sole
+          expect(adjustment).to have_attributes(status: "pending", kind: "adjustment", stock_location_id: central.id, stock_lot_id: lot("SV2705-A").id,
+                                                counted_quantity: 480, balance_at_request: 600, quantity: -120, requested_by_user_id: user("almoxarifado").id)
 
-        # Alertas: lote vencendo em 60 dias (alerta de 90), mínimo de metformina acima do saldo, trânsito e ajuste.
+          # Alertas: lote vencendo em 60 dias (alerta de 90), mínimo de metformina acima do saldo, trânsito e ajuste.
+          settings = Pharmacy::Settings.current
+          expect(Pharmacy::Alerts.call(location: central, today: today, settings: settings))
+            .to eq(expiring: 1, expired: 0, below_minimum: 0, in_transit: 0, pending_adjustments: 1, urgency_shortfalls: 0)
+          expect(Pharmacy::Alerts.call(location: pharmacy, today: today, settings: settings))
+            .to eq(expiring: 0, expired: 0, below_minimum: 1, in_transit: 1, pending_adjustments: 0, urgency_shortfalls: 0)
+          expect(StockMinimum.find_by!(stock_location_id: pharmacy.id, catalog_item_id: item(:metformina).id).minimum).to eq(600)
+          expect(balance(pharmacy, lot("MF2702-A"))).to eq(400)
+
+          # Saldo de nenhum (local, lote) fica negativo.
+          expect(StockMovement.group(:stock_location_id, :stock_lot_id).sum(:quantity).values.min).to be >= 0
+        end
+      end
+
+      it "uso contínuo: o José retirou há 26 dias (próxima retirada liberada) e o Sebastião há 10 (cedo demais, só daqui a 15 dias)" do
         settings = Pharmacy::Settings.current
-        expect(Pharmacy::Alerts.call(location: central, today: today, settings: settings))
-          .to eq(expiring: 1, expired: 0, below_minimum: 0, in_transit: 0, pending_adjustments: 1, urgency_shortfalls: 0)
-        expect(Pharmacy::Alerts.call(location: pharmacy, today: today, settings: settings))
-          .to eq(expiring: 0, expired: 0, below_minimum: 1, in_transit: 1, pending_adjustments: 0, urgency_shortfalls: 0)
-        expect(StockMinimum.find_by!(stock_location_id: pharmacy.id, catalog_item_id: item(:metformina).id).minimum).to eq(600)
-        expect(balance(pharmacy, lot("MF2702-A"))).to eq(400)
+        jose_doc = prescription_of(jose, catalog: item(:losartana))
+        sebastiao_doc = prescription_of(sebastiao, catalog: item(:losartana))
 
-        # Saldo de nenhum (local, lote) fica negativo.
-        expect(StockMovement.group(:stock_location_id, :stock_lot_id).sum(:quantity).values.min).to be >= 0
+        aggregate_failures do
+          expect([ jose_doc, sebastiao_doc ].map(&:status)).to eq(%w[issued issued])
+          expect([ jose_doc, sebastiao_doc ].map { |doc| doc.prescription_items.map(&:continuous) }).to eq([ [ true ], [ true ] ])
+          expect(Dispensation.where(clinical_document_id: jose_doc.id).sole.dispensed_at.in_time_zone.to_date).to eq(today - 26)
+          expect(Dispensation.where(clinical_document_id: sebastiao_doc.id).sole.dispensed_at.in_time_zone.to_date).to eq(today - 10)
+
+          last = ->(doc) { Pharmacy::Dispensed.summary(view(doc)).values.sole[:last_on] }
+          expect(last.call(jose_doc) + settings.continuous_interval_days).to be <= today
+          expect(last.call(sebastiao_doc) + settings.continuous_interval_days).to eq(today + 15)
+
+          refused = try_dispense(sebastiao_doc, lot("LS2705-B"))
+          expect([ refused.reason, refused.details[:problems].map { |p| p[:error] } ]).to eq([ :too_early, %w[too_early] ])
+          expect(refused.details[:problems].first[:next_allowed_on]).to eq((today + 15).iso8601)
+          expect(Dispensation.count).to eq(2)
+          # Quem retirou: o José com a auxiliar, o Sebastião com a farmacêutica.
+          expect(Dispensation.where(clinical_document_id: jose_doc.id).sole).to have_attributes(dispensed_by_role: "pharmacy_assistant", retained: false)
+          expect(Dispensation.where(clinical_document_id: sebastiao_doc.id).sole).to have_attributes(dispensed_by_role: "pharmacist", retained: false)
+        end
       end
-    end
 
-    it "uso contínuo: o José retirou há 26 dias (próxima retirada liberada) e o Sebastião há 10 (cedo demais, só daqui a 15 dias)" do
-      seed
-      settings = Pharmacy::Settings.current
-      jose_doc = prescription_of(jose, catalog: item(:losartana))
-      sebastiao_doc = prescription_of(sebastiao, catalog: item(:losartana))
+      it "receitas da prova: cancelada, texto livre, antimicrobiano válido e vencido, controle especial de FLUOXETINA e externa de DIAZEPAM B1" do
+        result = seeded
+        expect(result[:skipped]).to eq([])
+        lot_amoxicilina = lot("AM2701-A")
 
-      aggregate_failures do
-        expect([ jose_doc, sebastiao_doc ].map(&:status)).to eq(%w[issued issued])
-        expect([ jose_doc, sebastiao_doc ].map { |doc| doc.prescription_items.map(&:continuous) }).to eq([ [ true ], [ true ] ])
-        expect(Dispensation.where(clinical_document_id: jose_doc.id).sole.dispensed_at.in_time_zone.to_date).to eq(today - 26)
-        expect(Dispensation.where(clinical_document_id: sebastiao_doc.id).sole.dispensed_at.in_time_zone.to_date).to eq(today - 10)
+        aggregate_failures do
+          cancelled = prescription_of(person(:valdir), catalog: item(:losartana))
+          expect(cancelled).to have_attributes(status: "cancelled", cancelled_by_user_id: user("profissional").id)
+          expect(try_dispense(cancelled, lot("LS2705-B")).reason).to eq(:prescription_cancelled)
 
-        last = ->(doc) { Pharmacy::Dispensed.summary(view(doc)).values.sole[:last_on] }
-        expect(last.call(jose_doc) + settings.continuous_interval_days).to be <= today
-        expect(last.call(sebastiao_doc) + settings.continuous_interval_days).to eq(today + 15)
+          free = prescription_of(person(:iolanda), catalog: nil)
+          expect(free.prescription_items.sole).to have_attributes(medication_catalog_item_id: nil, free_text: be_present)
+          expect(try_dispense(free, lot("SV2705-A")).details[:problems].map { |p| p[:path] }).to eq([ "items[0].catalog_item_id" ])
+          expect(try_dispense(free, lot("SV2705-A"), role: "pharmacy_assistant").reason).to eq(:free_text_requires_pharmacist)
 
-        refused = try_dispense(sebastiao_doc, lot("LS2705-B"))
-        expect([ refused.reason, refused.details[:problems].map { |p| p[:error] } ]).to eq([ :too_early, %w[too_early] ])
-        expect(refused.details[:problems].first[:next_allowed_on]).to eq((today + 15).iso8601)
-        expect(Dispensation.count).to eq(2)
-        # Quem retirou: o José com a auxiliar, o Sebastião com a farmacêutica.
-        expect(Dispensation.where(clinical_document_id: jose_doc.id).sole).to have_attributes(dispensed_by_role: "pharmacy_assistant", retained: false)
-        expect(Dispensation.where(clinical_document_id: sebastiao_doc.id).sole).to have_attributes(dispensed_by_role: "pharmacist", retained: false)
+          # Antimicrobiano válido (Paulo, há 3 dias): a retenção é obrigatória, auxiliar ou farmacêutico.
+          valid = prescription_of(person(:paulo), catalog: item(:amoxicilina))
+          expect(valid.content_data).to include("category" => "antimicrobial", "antimicrobial" => true)
+          expect(valid.prescription_items.sole.antimicrobial).to be(true)
+          expect(view(valid).items.sole).to have_attributes(antimicrobial: true, controlled: false, retention_required: true)
+          expect(try_dispense(valid, lot_amoxicilina, role: "pharmacy_assistant").details[:problems].map { |p| p[:error] }).to eq(%w[retention_required])
+          expect(Dispensation.where(clinical_document_id: valid.id)).to be_empty
+
+          # Antimicrobiano comum emitido há 40 dias (Márcia): vencido.
+          expired = prescription_of(person(:marcia), catalog: item(:amoxicilina))
+          expect(expired.issued_at.in_time_zone.to_date).to eq(today - 40)
+          expect(try_dispense(expired, lot_amoxicilina).details[:problems].map { |p| p[:error] }).to include("prescription_expired")
+
+          # Controle especial (Roberto): só a farmacêutica, com retenção.
+          special = prescription_of(person(:roberto), catalog: item(:fluoxetina))
+          expect(special.content_data).to include("category" => "special_control")
+          # A médica de dev não tem certificado ligado: papel, sem número SNCR.
+          expect(special).to have_attributes(issue_mode: "paper")
+          expect(special.content_data["sncr"]).to be_nil
+          expect(view(special).items.sole).to have_attributes(controlled: true, controlled_list: "C1", retention_required: true)
+          expect(try_dispense(special, lot("FL2704-A"), role: "pharmacy_assistant").reason).to eq(:controlled_requires_pharmacist)
+          expect(try_dispense(special, lot("FL2704-A")).details[:problems].map { |p| p[:error] }).to eq(%w[retention_required])
+          expect(Dispensation.where(clinical_document_id: special.id)).to be_empty
+
+          # Receita externa de DIAZEPAM B1 no UBS, para paciente sem CPF.
+          external = ExternalPrescription.sole
+          expect(external).to have_attributes(stock_location_id: pharmacy.id, notification_number: "PR-2026-000777", council: "CRM", council_state: "PR")
+          expect(external.items.sole).to have_attributes(catalog_item_id: item(:diazepam).id, controlled_list: "B1")
+          expect(external.patient).to have_attributes(cpf: nil, no_cpf_reason: "5")
+          expect(Pharmacy::Prescription.find(kind: "external", id: external.id, settings: Pharmacy::Settings.current).items.sole)
+            .to have_attributes(controlled: true, retention_required: true)
+          expect(Dispensation.where(external_prescription_id: external.id)).to be_empty
+        end
       end
-    end
 
-    it "receitas da prova: cancelada, texto livre, antimicrobiano válido e vencido, controle especial de FLUOXETINA e externa de DIAZEPAM B1" do
-      result = seed
-      expect(result[:skipped]).to eq([])
-      lot_amoxicilina = lot("AM2701-A")
-
-      aggregate_failures do
-        cancelled = prescription_of(person(:valdir), catalog: item(:losartana))
-        expect(cancelled).to have_attributes(status: "cancelled", cancelled_by_user_id: user("profissional").id)
-        expect(try_dispense(cancelled, lot("LS2705-B")).reason).to eq(:prescription_cancelled)
-
-        free = prescription_of(person(:iolanda), catalog: nil)
-        expect(free.prescription_items.sole).to have_attributes(medication_catalog_item_id: nil, free_text: be_present)
-        expect(try_dispense(free, lot("SV2705-A")).details[:problems].map { |p| p[:path] }).to eq([ "items[0].catalog_item_id" ])
-        expect(try_dispense(free, lot("SV2705-A"), role: "pharmacy_assistant").reason).to eq(:free_text_requires_pharmacist)
-
-        # Antimicrobiano válido (Paulo, há 3 dias): a retenção é obrigatória, auxiliar ou farmacêutico.
-        valid = prescription_of(person(:paulo), catalog: item(:amoxicilina))
-        expect(valid.content_data).to include("category" => "antimicrobial", "antimicrobial" => true)
-        expect(valid.prescription_items.sole.antimicrobial).to be(true)
-        expect(view(valid).items.sole).to have_attributes(antimicrobial: true, controlled: false, retention_required: true)
-        expect(try_dispense(valid, lot_amoxicilina, role: "pharmacy_assistant").details[:problems].map { |p| p[:error] }).to eq(%w[retention_required])
-        expect(Dispensation.where(clinical_document_id: valid.id)).to be_empty
-
-        # Antimicrobiano comum emitido há 40 dias (Márcia): vencido.
-        expired = prescription_of(person(:marcia), catalog: item(:amoxicilina))
-        expect(expired.issued_at.in_time_zone.to_date).to eq(today - 40)
-        expect(try_dispense(expired, lot_amoxicilina).details[:problems].map { |p| p[:error] }).to include("prescription_expired")
-
-        # Controle especial (Roberto): só a farmacêutica, com retenção.
-        special = prescription_of(person(:roberto), catalog: item(:fluoxetina))
-        expect(special.content_data).to include("category" => "special_control")
-        # A médica de dev não tem certificado ligado: papel, sem número SNCR.
-        expect(special).to have_attributes(issue_mode: "paper")
-        expect(special.content_data["sncr"]).to be_nil
-        expect(view(special).items.sole).to have_attributes(controlled: true, controlled_list: "C1", retention_required: true)
-        expect(try_dispense(special, lot("FL2704-A"), role: "pharmacy_assistant").reason).to eq(:controlled_requires_pharmacist)
-        expect(try_dispense(special, lot("FL2704-A")).details[:problems].map { |p| p[:error] }).to eq(%w[retention_required])
-        expect(Dispensation.where(clinical_document_id: special.id)).to be_empty
-
-        # Receita externa de DIAZEPAM B1 no UBS, para paciente sem CPF.
-        external = ExternalPrescription.sole
-        expect(external).to have_attributes(stock_location_id: pharmacy.id, notification_number: "PR-2026-000777", council: "CRM", council_state: "PR")
-        expect(external.items.sole).to have_attributes(catalog_item_id: item(:diazepam).id, controlled_list: "B1")
-        expect(external.patient).to have_attributes(cpf: nil, no_cpf_reason: "5")
-        expect(Pharmacy::Prescription.find(kind: "external", id: external.id, settings: Pharmacy::Settings.current).items.sole)
-          .to have_attributes(controlled: true, retention_required: true)
-        expect(Dispensation.where(external_prescription_id: external.id)).to be_empty
+      it "a segunda rodada não cria nada: nem movimento, transferência, ajuste, dispensação, receita, usuário ou vínculo" do
+        first = seeded
+        tables = [ User, Membership, Professional, ProfessionalLink, StockLocation, StockLocationStaff, StockLot, StockEntry, StockOpening, StockMovement,
+                   StockTransfer, StockTransferItem, StockAdjustment, StockMinimum, Dispensation, DispensationItem, ExternalPrescription,
+                   ExternalPrescriptionItem, ClinicalDocument, PrescriptionItem, Patient, DomainEvent ]
+        expect { expect(seed).to eq(first) }.not_to(change { tables.map(&:count) })
+        expect(first[:transfers]).to eq("received" => 1, "received_with_difference" => 1, "sent" => 1)
+        expect(first[:adjustments]).to eq("pending" => 1)
       end
-    end
 
-    it "a segunda rodada não cria nada: nem movimento, transferência, ajuste, dispensação, receita, usuário ou vínculo" do
-      first = seed
-      tables = [ User, Membership, Professional, ProfessionalLink, StockLocation, StockLocationStaff, StockLot, StockEntry, StockOpening, StockMovement,
-                 StockTransfer, StockTransferItem, StockAdjustment, StockMinimum, Dispensation, DispensationItem, ExternalPrescription,
-                 ExternalPrescriptionItem, ClinicalDocument, PrescriptionItem, Patient, DomainEvent ]
-      expect { expect(seed).to eq(first) }.not_to(change { tables.map(&:count) })
-      expect(first[:transfers]).to eq("received" => 1, "received_with_difference" => 1, "sent" => 1)
-      expect(first[:adjustments]).to eq("pending" => 1)
-    end
+      it "retoma o que a prova mexeu: transferência em trânsito já recebida e ajuste já aprovado não voltam" do
+        sent = StockTransfer.find_by!(status: "sent")
+        received = Pharmacy::ReceiveTransfer.call(transfer: sent, by: user("almoxarifado"),
+                                                  items: sent.items.map { |i| { "lot_id" => i.stock_lot_id, "quantity_received" => i.quantity_sent.to_s("F") } })
+        expect(received).to be_ok
+        approved = Pharmacy::DecideAdjustment.call(adjustment: StockAdjustment.sole, decision: "approve", reason: nil, by: user("almoxarifado.2"))
+        expect(approved).to be_ok
 
-    it "retoma o que a prova mexeu: transferência em trânsito já recebida e ajuste já aprovado não voltam" do
-      seed
-      sent = StockTransfer.find_by!(status: "sent")
-      received = Pharmacy::ReceiveTransfer.call(transfer: sent, by: user("almoxarifado"),
-                                                items: sent.items.map { |i| { "lot_id" => i.stock_lot_id, "quantity_received" => i.quantity_sent.to_s("F") } })
-      expect(received).to be_ok
-      approved = Pharmacy::DecideAdjustment.call(adjustment: StockAdjustment.sole, decision: "approve", reason: nil, by: user("almoxarifado.2"))
-      expect(approved).to be_ok
+        result = nil
+        expect { result = seed }.not_to(change { [ StockTransfer.count, StockAdjustment.count, StockMovement.count, Dispensation.count ] })
+        expect(result[:transfers]).to eq("received" => 2, "received_with_difference" => 1)
+        expect(result[:adjustments]).to eq("approved" => 1)
+      end
 
-      result = nil
-      expect { result = seed }.not_to(change { [ StockTransfer.count, StockAdjustment.count, StockMovement.count, Dispensation.count ] })
-      expect(result[:transfers]).to eq("received" => 2, "received_with_difference" => 1)
-      expect(result[:adjustments]).to eq("approved" => 1)
-    end
+      it "a saída: só e-mail, papel e otpauth — nunca CPF, CNS, nome nem código de receita de paciente" do
+        result = seeded
+        lines = described_class.summary_lines(result, password: "dev-password")
+        text = ([ lines ] + [ result.inspect ]).join("\n")
+        patients = [ jose, sebastiao ] + %i[valdir iolanda paulo marcia roberto].map { |key| person(key) } + [ ExternalPrescription.sole.patient ]
+        codes = ClinicalDocument.where(kind: "prescription").pluck(:short_code)
 
-    it "a saída: só e-mail, papel e otpauth — nunca CPF, CNS, nome nem código de receita de paciente" do
-      result = seed
-      lines = described_class.summary_lines(result, password: "dev-password")
-      text = ([ lines ] + [ result.inspect ]).join("\n")
-      patients = [ jose, sebastiao ] + %i[valdir iolanda paulo marcia roberto].map { |key| person(key) } + [ ExternalPrescription.sole.patient ]
-      codes = ClinicalDocument.where(kind: "prescription").pluck(:short_code)
-
-      expect(text).to include("farmacia@curitiba.demo (pharmacist)", "almoxarifado.2@curitiba.demo (stock_keeper)", "otpauth://")
-      expect(patients.map(&:full_name).select { |name| text.include?(name) }).to eq([])
-      expect(patients.filter_map(&:cpf).select { |cpf| text.include?(cpf) }).to eq([])
-      expect(patients.filter_map(&:cns).select { |cns| text.include?(cns) }).to eq([])
-      expect(codes.select { |code| text.include?(code) }).to eq([])
-      expect(text).not_to include("PR-2026-000777")
+        expect(text).to include("farmacia@curitiba.demo (pharmacist)", "almoxarifado.2@curitiba.demo (stock_keeper)", "otpauth://")
+        expect(patients.map(&:full_name).select { |name| text.include?(name) }).to eq([])
+        expect(patients.filter_map(&:cpf).select { |cpf| text.include?(cpf) }).to eq([])
+        expect(patients.filter_map(&:cns).select { |cns| text.include?(cns) }).to eq([])
+        expect(codes.select { |code| text.include?(code) }).to eq([])
+        expect(text).not_to include("PR-2026-000777")
+      end
     end
 
     it "sem controlled_prescriptions em Curitiba, a FLUOXETINA é pulada e a saída diz por quê; o resto segue" do
