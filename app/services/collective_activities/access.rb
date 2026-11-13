@@ -12,6 +12,15 @@ module CollectiveActivities
       member.present? && Catalog::CBOS.include?(member.cbo_code.to_s)
     end
 
+    # Registra atividade em alguma equipe ativa (as buscas de pessoa do §5,
+    # que não têm equipe): vínculo ativo com CBO da Tabela 5.
+    def registers_somewhere?(user)
+      return false unless user&.professional && user.has_role?("health_professional")
+
+      HealthTeamMember.active.joins(:health_team)
+                      .where(professional_id: user.professional.id, cbo_code: Catalog::CBOS.to_a, health_teams: { active: true }).exists?
+    end
+
     def reads?(user, team)
       return true if registers?(user, team)
 

@@ -79,6 +79,10 @@ module HomeVisits
     # Atribui e encerra microárea na equipe: o enfermeiro (2235*) dela.
     def assigner?(user, team) = member(user, team)&.cbo_code.to_s.start_with?(NURSE_PREFIX) == true
 
+    # Registra visita em alguma equipe (as buscas de pessoa do §5, que não têm
+    # equipe): o mesmo vínculo do aparelho (Tabela 7 em equipe ativa 70/76).
+    def registers_somewhere?(user) = device_owner?(user).present?
+
     # Cadastra aparelho de campo: Tabela 7 com vínculo ativo em equipe ativa
     # 70/76 → esse vínculo (o mais antigo, se houver mais de um); senão nil.
     # Usuário inativo fica para quem chama (o aparelho distingue user_disabled).

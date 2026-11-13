@@ -998,6 +998,15 @@ Rails.application.routes.draw do
     get  "assignments",             to: "assignments#index"
     post "assignments",             to: "assignments#create"
     post "assignments/:id/end",     to: "assignments#end_assignment", constraints: { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
+    post "people/lookup",           to: "people#lookup"
+    post "people/duplicates",       to: "people#duplicates"
+  end
+
+  # Módulo 24b (ADR 0052; contrato §7): atividade coletiva, sessão do
+  # dashboard, gate `collective_activities`. Dado de pessoa e texto só no corpo.
+  scope "/collective_activities", module: :collective_activities, as: :collective_activities do
+    post "people/lookup",           to: "people#lookup"
+    post "people/duplicates",       to: "people#duplicates"
   end
 
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo
