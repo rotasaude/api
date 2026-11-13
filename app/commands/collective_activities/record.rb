@@ -31,8 +31,8 @@
 # (§11, Q42; Task 14). A trilha dos candidatos do duplicado suspeito é gravada
 # DEPOIS da transação, com qualquer desfecho (People.candidates_viewed!).
 # Q68: antes da transação, as N unidades dos participantes novos no
-# ParticipantBudget (equipe) ou 1 do SearchBudget (envio do app, Q67); sem
-# saldo → too_many_requests, nada gravado e sem trilha (`budget!`).
+# ParticipantBudget (equipe e envio do app); sem saldo → too_many_requests,
+# nada gravado e sem trilha (`budget!`).
 # Tema, público, prática, procedimento, avaliação, medida, local, nome e
 # documento nunca em Result.details, log ou evento.
 module CollectiveActivities
@@ -74,7 +74,7 @@ module CollectiveActivities
       return Result.fail(:out_of_scope) unless member
       return Result.fail(:cbo_not_allowed) unless Access.registers?(by, team)
 
-      budget = budget!(params, by, origin)
+      budget = budget!(params, by)
       return Result.fail(:too_many_requests) unless budget
 
       shown = []
@@ -94,14 +94,12 @@ module CollectiveActivities
     # O orçamento da busca de pessoa desta escrita, depois das regras e do
     # acesso (o corpo recusado antes não consome) e antes de qualquer trava,
     # escrita ou trilha. -> o budget do People | nil (estourou)
-    #  - equipe (dashboard; Q68): as N unidades de uma vez no
-    #    ParticipantBudget (200/min, N = participantes new_patient); o People
-    #    não cobra de novo (SearchBudget::PAID);
-    #  - envio do app (field_app; Q67): o SearchBudget de 30/min, uma vez por
-    #    item, no primeiro participante novo.
-    def budget!(input, by, origin)
-      return HomeVisits::SearchBudget.new(by) if origin == "field_app"
-
+    # Na equipe e no envio do app (Q68), as N unidades de uma vez no
+    # ParticipantBudget (200/min, N = participantes new_patient); o People não
+    # cobra de novo (SearchBudget::PAID) e a atividade não usa o de 30/min. No
+    # envio, sem saldo → o item volta rejected too_many_requests (sem path,
+    # fora do livro).
+    def budget!(input, by)
       units = Rules.list(input["participants"]).count { |item| item.is_a?(Hash) && !item["new_patient"].nil? }
       HomeVisits::SearchBudget::PAID if ParticipantBudget.new(by).reserve!(units)
     end

@@ -30,6 +30,8 @@
 #    duplicados ou a checagem de CPF/CNS cobra o orçamento da busca de pessoa
 #    (HomeVisits::SearchBudget); estourado → `rejected too_many_requests`, sem
 #    path e fora do livro (o reenvio tenta de novo); os outros itens seguem.
+#    Q68: o collective_activity cobra, em vez dele, N unidades do
+#    CollectiveActivities::ParticipantBudget (no CollectiveActivities::Record).
 # 4. DEPOIS da transação, com qualquer desfecho: a trilha clinical_record.viewed
 #    (access field_sync, com o aparelho) dos candidatos do duplicado suspeito e
 #    do `current` do stale_version. Os comandos recebem um coletor como `trail:`

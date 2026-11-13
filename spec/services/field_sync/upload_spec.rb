@@ -326,7 +326,7 @@ RSpec.describe "FieldSync::Upload", type: :model do
   # rodaria a busca de duplicados ou a checagem de CPF/CNS volta rejected
   # too_many_requests (sem path, fora do livro); o paciente existente por
   # patient_id não consome.
-  it "Q67: orçamento estourado → patient, cadastro com new_patient, visita e atividade com paciente novo rejected too_many_requests; por patient_id seguem" do
+  it "Q67: orçamento estourado → patient, cadastro com new_patient e visita com paciente novo rejected too_many_requests; por patient_id e a atividade (Q68) seguem" do
     allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
     Platform::Features.set!(city: city, key: CollectiveActivities::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
     CityCatalog.reset_cache!
@@ -336,21 +336,60 @@ RSpec.describe "FieldSync::Upload", type: :model do
 
     refused = [ item("patient", { "new_patient" => typed }),
                 item("individual_registration", registry_registration_params(team).merge("new_patient" => typed("Rosalina Prado Lopes"))),
-                item("home_visit", visit_body(subject: "resident", new_patient: typed("Cecília Moura Lima"), reasons: [ 11 ])),
-                item("collective_activity", activity_body(participants: [ { "new_patient" => typed("Joana Reis Matos") } ])) ]
+                item("home_visit", visit_body(subject: "resident", new_patient: typed("Cecília Moura Lima"), reasons: [ 11 ])) ]
+    # Q68: a atividade não é cobrada no de 30/min (o participante novo vai ao ParticipantBudget).
     allowed = [ item("home_visit", visit_body(subject: "resident", patient_id: existing.id, reasons: [ 11 ])),
                 item("individual_registration", registry_registration_params(household, patient: existing)),
-                item("collective_activity", activity_body(participants: [ { "patient_id" => existing.id } ])) ]
+                item("collective_activity", activity_body(participants: [ { "patient_id" => existing.id } ])),
+                item("collective_activity", activity_body(participants: [ { "new_patient" => typed("Joana Reis Matos") } ])) ]
     patients = Patient.count
     results = upload(*refused, *allowed)
 
     valid_response!(results)
-    expect(results.first(4).map { _1.except("client_uuid", "type") }).to eq([ { "status" => "rejected", "error" => "too_many_requests" } ] * 4)
-    expect(statuses(results.last(3))).to eq(%w[accepted accepted accepted])
+    expect(results.first(3).map { _1.except("client_uuid", "type") }).to eq([ { "status" => "rejected", "error" => "too_many_requests" } ] * 3)
+    expect(statuses(results.last(4))).to eq(%w[accepted accepted accepted accepted])
     expect(FieldSyncReceipt.pluck(:client_uuid)).to match_array(allowed.map { _1["client_uuid"] })
-    expect(Patient.count).to eq(patients)
+    expect(Patient.count).to eq(patients + 1)
     expect(field_trail).to be_empty
     expect(HomeVisits::SearchBudget.new(acs).charge!).to be(false)
+  end
+
+  # Q68: o item collective_activity cobra o ParticipantBudget (200/min), N
+  # unidades pelos N participantes new_patient, de uma vez e antes de gravar;
+  # não cabe → só ele rejected too_many_requests (sem path, fora do livro).
+  describe "Q68: participantes novos da atividade no envio" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let(:participant_key) { CollectiveActivities::ParticipantBudget.cache_key(acs.id) }
+
+    before do
+      allow(Rails).to receive(:cache).and_return(cache)
+      Platform::Features.set!(city: city, key: CollectiveActivities::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
+      CityCatalog.reset_cache!
+    end
+
+    def three_new(prefix) = activity_body(participants: %w[Alves Prado Moura].map { |name| { "new_patient" => typed("#{prefix} #{name} Rocha") } })
+
+    it "3 participantes novos custam 3 unidades do de 200 e nenhuma do de 30" do
+      result = upload(item("collective_activity", three_new("Benedita"))).sole
+      expect(result["status"]).to eq("accepted")
+      expect([ cache.read(participant_key, raw: true).to_i, cache.read(HomeVisits::SearchBudget.cache_key(acs.id), raw: true).to_i ]).to eq([ 3, 0 ])
+    end
+
+    it "198 usadas: o item com 3 novos → rejected too_many_requests, nada dele gravado; os outros do lote seguem" do
+      cache.increment(participant_key, 198, expires_in: CollectiveActivities::ParticipantBudget::WINDOW)
+      activity = item("collective_activity", three_new("Benedita"))
+      others = [ item("patient", { "new_patient" => typed("Rosalina Prado Lopes") }), item("home_visit", visit_body) ]
+      patients = Patient.count # depois dos corpos (o activity_body cria um paciente de padrão)
+      results = upload(others[0], activity, others[1])
+
+      valid_response!(results)
+      expect(results[1]).to eq("client_uuid" => activity["client_uuid"], "status" => "rejected", "type" => "collective_activity",
+                               "error" => "too_many_requests")
+      expect(statuses(results.values_at(0, 2))).to eq(%w[accepted accepted])
+      expect(FieldSyncReceipt.pluck(:client_uuid)).to match_array(others.map { _1["client_uuid"] })
+      expect([ CollectiveActivity.count, CollectiveActivityParticipant.count, Patient.count ]).to eq([ 0, 0, patients + 1 ])
+      expect(field_trail).to be_empty
+    end
   end
 
   describe "Q63" do

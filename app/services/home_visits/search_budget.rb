@@ -4,9 +4,9 @@
 #     /home_visits/people e /collective_activities/people);
 #   - toda gravação que roda a busca de duplicados ou a checagem de CPF/CNS:
 #     POST /home_visits (429 too_many_requests) e cada item do envio do app
-#     (rejected too_many_requests, fora do livro). A atividade da equipe
-#     (POST /collective_activities) cobra o seu, por participante novo (Q68:
-#     CollectiveActivities::ParticipantBudget).
+#     (rejected too_many_requests, fora do livro). A atividade coletiva (POST
+#     /collective_activities e o item collective_activity do envio) cobra o
+#     seu, por participante novo (Q68: CollectiveActivities::ParticipantBudget).
 # A chave e o Rails.cache.increment são os do `rate_limit` do Rails
 # ("rate-limit:<scope>:<usuário>", sem `name`), então consumir num lado
 # reduz o outro. Sem contagem (cache nulo) aceita, como o rate_limit.
@@ -21,7 +21,7 @@ module HomeVisits
     def self.cache_key(user_id) = "rate-limit:#{SCOPE}:#{user_id}"
 
     # O orçamento já cobrado por quem chama (Q68: os participantes novos da
-    # atividade da equipe, no CollectiveActivities::ParticipantBudget): o
+    # atividade coletiva, no CollectiveActivities::ParticipantBudget): o
     # People não cobra de novo.
     class Paid
       def charge! = true

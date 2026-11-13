@@ -1,4 +1,5 @@
-# Orçamento dos participantes novos da atividade coletiva da equipe (módulo
+# Orçamento dos participantes novos da atividade coletiva, da equipe e do
+# item collective_activity do envio do app (módulo
 # 24b, ADR 0052; Q68, que refina a Q67; revisão final B-I1): cada participante
 # `new_patient` roda a busca de duplicados e a checagem de CPF/CNS, então
 # consome 1 unidade de um orçamento SEPARADO de 200 por minuto por usuário (só
