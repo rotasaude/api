@@ -182,10 +182,42 @@ RSpec.describe CollectiveActivities::Rules, type: :model do
     expect(first(body(target_audience: 1))).to eq(error: :invalid_collective_activity, path: "target_audience")
   end
 
-  it "participante repetido por patient_id → duplicate_participant com o path do segundo" do
-    id = SecureRandom.uuid
-    twice = [ { "patient_id" => id }, { "patient_id" => SecureRandom.uuid }, { "patient_id" => id } ]
-    expect(first(body(participants: twice))).to eq(error: :duplicate_participant, path: "participants[2].patient_id")
+  describe "a mesma pessoa duas vezes na atividade → duplicate_participant em participants[i] (Ruling T13-DUP)" do
+    def typed(**over)
+      { "full_name" => "Benedita Alves Rocha", "birth_date" => "1951-03-08", "sex" => "female", "no_cpf_reason" => "3" }
+        .merge(over.stringify_keys)
+    end
+
+    def twice(first, second) = body(participants: [ { "patient_id" => SecureRandom.uuid }, first, second ])
+
+    it "o mesmo patient_id → path do segundo" do
+      id = SecureRandom.uuid
+      expect(first(twice({ "patient_id" => id }, { "patient_id" => id })))
+        .to eq(error: :duplicate_participant, path: "participants[2]")
+    end
+
+    it "dois new_patient com o mesmo CPF ou o mesmo CNS (com ou sem pontuação)" do
+      cpf = { "new_patient" => typed(cpf: "123.456.789-09", no_cpf_reason: nil).compact }
+      same_cpf = { "new_patient" => typed(full_name: "Outra Pessoa", cpf: "12345678909", no_cpf_reason: nil).compact }
+      expect(first(twice(cpf, same_cpf))).to eq(error: :duplicate_participant, path: "participants[2]")
+      cns = { "new_patient" => typed(cns: "700 0000 0000 0001") }
+      same_cns = { "new_patient" => typed(full_name: "Outra Pessoa", cns: "700000000000001") }
+      expect(first(twice(cns, same_cns))).to eq(error: :duplicate_participant, path: "participants[2]")
+    end
+
+    it "sem documento: a chave do 24a (nome normalizado + nascimento) e a mãe" do
+      plain = { "new_patient" => typed(mother_name: "Rita Rocha") }
+      same = { "new_patient" => typed(full_name: "  benedita alves-ROCHA ", mother_name: "rita rocha"), "duplicates_reviewed" => true }
+      expect(first(twice(plain, same))).to eq(error: :duplicate_participant, path: "participants[2]")
+      expect(check(twice(plain, { "new_patient" => typed(mother_name: "Ana Rocha") }))).to eq([])
+      expect(check(twice(plain, { "new_patient" => typed(birth_date: "1951-03-09", mother_name: "Rita Rocha") }))).to eq([])
+    end
+
+    it "documentos diferentes são pessoas diferentes, mesmo com o mesmo nome" do
+      a = { "new_patient" => typed(cpf: "12345678909", no_cpf_reason: nil).compact }
+      b = { "new_patient" => typed(cpf: "98765432100", no_cpf_reason: nil).compact }
+      expect(check(twice(a, b))).to eq([])
+    end
   end
 
   it "participante: patient_id ou new_patient (exatamente um), chaves conhecidas, medidas na faixa" do

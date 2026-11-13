@@ -193,7 +193,9 @@ module CollectiveActivities
 
     # Participantes: a lista é uma (a tabela do tipo já viu se vazia pode);
     # patient_id ou new_patient, exatamente um (a forma do new_patient é do
-    # HomeVisits::People); patient_id repetido → duplicate_participant.
+    # HomeVisits::People). A mesma pessoa duas vezes → duplicate_participant
+    # em participants[i] (Ruling T13-DUP), antes de qualquer escrita: o mesmo
+    # patient_id, ou dois new_patient com a mesma chave (`identity`).
     def participants(input)
       items = input["participants"]
       return nil if items.nil?
@@ -206,12 +208,28 @@ module CollectiveActivities
         error = participant(item, at, smoking_allowed)
         return error if error
 
-        id = item["patient_id"]
-        return err(:duplicate_participant, "#{at}.patient_id") if id && seen.include?(id)
+        key = item["patient_id"] ? [ :patient, item["patient_id"] ] : identity(item["new_patient"])
+        return err(:duplicate_participant, at) if key && seen.include?(key)
 
-        seen << id if id
+        seen << key if key
       end
       nil
+    end
+
+    # A chave de pessoa do new_patient: o CPF; sem ele, o CNS (só dígitos);
+    # sem documento, a chave do 24a (Patients::MatchKey: nome normalizado +
+    # nascimento) e a mãe normalizada. nil se a forma não dá chave (o
+    # HomeVisits::People recusa a forma depois).
+    def identity(typed)
+      return nil unless typed.is_a?(Hash)
+
+      %w[cpf cns].each do |doc|
+        digits = typed[doc].is_a?(String) ? typed[doc].gsub(/\D/, "") : ""
+        return [ doc.to_sym, digits ] if digits.present?
+      end
+      name, birth, mother = typed.values_at("full_name", "birth_date", "mother_name")
+      key = Patients::MatchKey.for(name, birth) if name.is_a?(String) && birth.is_a?(String)
+      key && [ :match_key, key, mother.is_a?(String) ? Patients::MatchKey.normalize(mother) : nil ]
     end
 
     def participant(item, at, smoking_allowed)
@@ -271,6 +289,6 @@ module CollectiveActivities
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
     def err(code, path) = { error: code, path: path }
     private_class_method :keys, :fields, :date, :place, :lists, :by_type, :practices, :professionals, :participants,
-                         :participant, :participant_measurements, :participant_smoking, :count, :valid_measure?, :uuid?, :err
+                         :participant, :identity, :participant_measurements, :participant_smoking, :count, :valid_measure?, :uuid?, :err
   end
 end

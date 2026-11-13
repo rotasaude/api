@@ -18,7 +18,9 @@
 #    vínculo (o da equipe da atividade, se houver); participantes existentes
 #    pela guarda do HomeVisits::People (not_found, patient_unidentified).
 # 5. Só então as escritas: pacientes novos (People.resolve, savepoint próprio;
-#    a recusa de um desfaz o item inteiro, Q15, Q49), a atividade (altered_count
+#    a recusa de um desfaz o item inteiro, Q15, Q49; o candidato que é o
+#    paciente criado por outro participante → duplicate_participant, nunca
+#    na trilha, Ruling T13-DUP), a atividade (altered_count
 #    derivado da lista, Q38), profissionais e participantes (o trigger da T4 só
 #    os aceita nesta transação), a ficha 6 pela fonte "CollectiveActivity"
 #    (Ledi::FichaSources; Ledi::CollectiveActivityFicha, Task 14) e o evento
@@ -89,12 +91,16 @@ module CollectiveActivities
       colleagues = professionals!(Rules.list(input["professionals"]), by, team)
       existing = existing_patients!(participants, by)
 
-      patients = participants.each_with_index.map { |item, index| existing[index] || new_patient!(item, index, by, shown) }
-      # O Rules já recusou patient_id repetido; aqui, o mesmo paciente por
-      # caminhos diferentes (o patient_client_uuid do envio do app, Task 20).
+      created = []
+      patients = participants.each_with_index.map do |item, index|
+        existing[index] || new_patient!(item, index, by, shown, created)
+      end
+      # O Rules já recusou a mesma pessoa duas vezes pelo corpo; aqui, o mesmo
+      # paciente por caminhos diferentes (o patient_client_uuid do envio do
+      # app, Task 20).
       ids = patients.map(&:id)
       repeated = ids.each_index.find { |index| ids.index(ids[index]) != index }
-      refuse!(refuse(:duplicate_participant, "participants[#{repeated}].patient_id")) if repeated
+      refuse!(refuse(:duplicate_participant, "participants[#{repeated}]")) if repeated
 
       activity = insert!(input, by, team, member, origin, device, participants)
       colleagues.each do |professional, cbo|
@@ -166,13 +172,24 @@ module CollectiveActivities
       end
     end
 
-    def new_patient!(item, index, by, shown)
-      created = HomeVisits::People.resolve(by: by, new_patient: item["new_patient"], reviewed: item["duplicates_reviewed"],
-                                           path_prefix: "participants[#{index}]")
-      return created.payload[:patient] if created.ok?
+    # `created`: os pacientes novos desta escrita. O Patients::Duplicates de
+    # um participante vê, dentro da transação, o paciente que outro acabou de
+    # criar: candidato que some no rollback. Então é a mesma pessoa duas vezes
+    # (duplicate_participant, Ruling T13-DUP), e nenhum id criado aqui vai a
+    # `candidates` nem à trilha.
+    def new_patient!(item, index, by, shown, created)
+      resolved = HomeVisits::People.resolve(by: by, new_patient: item["new_patient"], reviewed: item["duplicates_reviewed"],
+                                            path_prefix: "participants[#{index}]")
+      if resolved.ok?
+        created << resolved.payload[:patient].id
+        return resolved.payload[:patient]
+      end
 
-      shown.concat(Array(created.details[:candidate_ids]))
-      refuse!(Result.fail(created.reason, details: created.details.except(:candidate_ids)))
+      candidate_ids = Array(resolved.details[:candidate_ids])
+      refuse!(refuse(:duplicate_participant, "participants[#{index}]")) if candidate_ids.intersect?(created)
+
+      shown.concat(candidate_ids)
+      refuse!(Result.fail(resolved.reason, details: resolved.details.except(:candidate_ids)))
     end
 
     def insert!(input, by, team, member, origin, device, participants)

@@ -91,7 +91,7 @@ RSpec.describe CollectiveActivities::Record, type: :model do
   it "participante repetido → duplicate_participant, nada gravado" do
     patient = registry_patient!
     params = body(participants: [ { "patient_id" => patient.id }, { "patient_id" => patient.id } ])
-    expect { expect(failure(record(params))).to eq([ :duplicate_participant, "participants[1].patient_id" ]) }
+    expect { expect(failure(record(params))).to eq([ :duplicate_participant, "participants[1]" ]) }
       .not_to change { counts }
   end
 
@@ -162,6 +162,34 @@ RSpec.describe CollectiveActivities::Record, type: :model do
     reviewed = params.merge("participants" => [ { "new_patient" => typed }, { "new_patient" => suspect, "duplicates_reviewed" => true } ])
     expect(record(reviewed)).to be_ok
     expect(CollectiveActivityParticipant.count).to eq(2)
+  end
+
+  it "dois new_patient iguais → duplicate_participant antes de qualquer escrita, sem trilha (Ruling T13-DUP)" do
+    params = body(participants: [ { "new_patient" => typed }, { "new_patient" => typed, "duplicates_reviewed" => true } ])
+    result = nil
+    expect { result = record(params) }.not_to change { counts }
+    expect(failure(result)).to eq([ :duplicate_participant, "participants[1]" ])
+    expect(DomainEvent.where(name: "clinical_record.viewed")).to be_empty
+  end
+
+  it "o paciente criado pelo 1º participante nunca é candidato do 2º: duplicate_participant e a trilha sem o id desfeito" do
+    # Chaves diferentes no Rules (a mãe só no 2º), mas o Patients::Duplicates
+    # do 2º vê o recém-criado pelo 1º (sem mãe gravada) dentro da transação.
+    first_one = { "new_patient" => typed }
+    second = { "new_patient" => typed.merge("mother_name" => "Rita Alves") }
+    created = []
+    allow(Patients::CreateTyped).to receive(:call).and_wrap_original do |original, **args|
+      original.call(**args).tap { |result| created << result.payload[:patient].id if result.ok? }
+    end
+    params = body(participants: [ first_one, second ])
+    result = nil
+    expect { result = record(params) }.not_to change { counts }
+    expect(failure(result)).to eq([ :duplicate_participant, "participants[1]" ])
+    expect(result.details).not_to have_key(:candidates)
+    expect(created.size).to eq(1)
+    expect(Patient.where(id: created)).to be_empty
+    viewed = DomainEvent.where(name: "clinical_record.viewed").map { _1.payload["patient_id"] }
+    expect(viewed & created).to be_empty
   end
 
   it "registro rápido inválido → invalid_patient com o path do participante (Q49), nada gravado" do
