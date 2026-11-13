@@ -211,19 +211,37 @@ RSpec.describe CollectiveActivities::Record, type: :model do
     expect { record(body, origin: "outro") }.to raise_error(ArgumentError)
   end
 
-  it "gera a ficha na mesma transação pela fonte CollectiveActivity (Task 14); falha da ficha desfaz a gravação" do
-    ficha = double("Ledi::CollectiveActivityFicha")
-    allow(Ledi::FichaSources).to receive(:for).and_call_original
-    allow(Ledi::FichaSources).to receive(:for).with("CollectiveActivity").and_return(ficha)
+  it "gera a ficha 6 na mesma transação pela fonte CollectiveActivity, sem dublê (Task 14); falha da ficha desfaz a gravação" do
+    expect(Ledi::FichaSources.for(described_class::SOURCE_TYPE)).to eq(Ledi::CollectiveActivityFicha)
     seen = nil
-    allow(ficha).to receive(:generate) { |activity| seen = [ activity.id, CollectiveActivityParticipant.where(collective_activity_id: activity.id).count ] }
+    allow(Ledi::Enqueue).to receive(:call).and_wrap_original do |original, ficha, **opts|
+      id = ficha.source[:id]
+      seen = [ CollectiveActivity.exists?(id), CollectiveActivityParticipant.where(collective_activity_id: id).count ]
+      original.call(ficha, **opts)
+    end
     result = record
     expect(result).to be_ok
-    expect(seen).to eq([ result.payload[:activity].id, 1 ])
+    activity = result.payload[:activity]
+    expect(seen).to eq([ true, 1 ])
+    entry = LediOutboxEntry.find_by!(source_type: "CollectiveActivity", source_id: activity.id)
+    expect([ entry.ficha_type, entry.competence ]).to eq([ "atividade_coletiva", today.strftime("%Y%m") ])
+    inner = Ledi::Version.deserialize(Ledi::FichaTypes.klass("atividade_coletiva"), Ledi::Transport.read(entry.bytes).dadoSerializado)
+    expect([ inner.atividadeTipo, inner.numParticipantes, inner.participantes.size ]).to eq([ 5, 12, 1 ])
 
-    allow(ficha).to receive(:generate).and_raise(ActiveRecord::StatementInvalid, "ficha")
-    expect { record }.to raise_error(ActiveRecord::StatementInvalid)
-    expect(CollectiveActivity.count).to eq(1)
+    allow(Ledi::Enqueue).to receive(:call).and_raise(ActiveRecord::StatementInvalid, "ficha")
+    params = body(professionals: [ { "professional_id" => registry_nurse!(team: registry_team!).professional.id } ])
+    expect { expect { record(params) }.to raise_error(ActiveRecord::StatementInvalid) }.not_to change { counts }
+    expect(LediOutboxEntry.where(source_type: "CollectiveActivity").count).to eq(1)
+    expect(recorded_events.count).to eq(1)
+  end
+
+  it "tipo 5 com participante sem CPF e sem CNS: grava e a ficha fica não gerada participant_without_identifier (§11)" do
+    result = record(body(participants: [ { "new_patient" => typed } ]))
+    expect(result).to be_ok
+    activity = result.payload[:activity]
+    failure = LediGenerationFailure.find_by!(source_type: "CollectiveActivity", source_id: activity.id)
+    expect(failure.reason_codes).to eq(%w[participant_without_identifier])
+    expect(LediOutboxEntry.where(source_type: "CollectiveActivity")).to be_empty
   end
 
   it "o Result de recusa não leva tema, local, nome nem documento" do

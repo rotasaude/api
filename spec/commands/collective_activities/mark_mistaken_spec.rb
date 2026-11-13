@@ -23,14 +23,9 @@ RSpec.describe CollectiveActivities::MarkMistaken, type: :model do
     result.payload[:activity]
   end
 
-  # A ficha da atividade enfileirada (a Task 14 gera pelo Record; aqui a linha
-  # direto, para provar que o engano não a toca).
-  def queued_ficha!(activity)
-    LediOutboxEntry.create!(uuid: "#{team.health_unit.cnes}-#{SecureRandom.uuid}", ficha_type: "atividade_coletiva",
-                            competence: activity.held_on.strftime("%Y%m"), source_type: "CollectiveActivity",
-                            source_id: activity.id, ledi_version: "8.7.0", status: "pending", next_attempt_at: Time.current,
-                            attempts: 0, bytes: "x".b)
-  end
+  # A ficha da atividade enfileirada pelo próprio Record (Task 14: a fonte
+  # CollectiveActivity gera na transação da gravação).
+  def queued_ficha!(activity) = LediOutboxEntry.find_by!(source_type: "CollectiveActivity", source_id: activity.id)
 
   def mark(activity, by: acs, expected_state: "recorded", reason: self.reason)
     described_class.call(activity, by: by, expected_state: expected_state, reason: reason)

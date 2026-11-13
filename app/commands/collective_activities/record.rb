@@ -112,7 +112,7 @@ module CollectiveActivities
           measurements: Rules.measurements(item["measurements"]), smoking: Rules.smoking(item["smoking"])
         )
       end
-      Ledi::FichaSources.for(SOURCE_TYPE)&.generate(activity)
+      Ledi::FichaSources.for(SOURCE_TYPE).generate(activity)
       DomainEvents.publish(EVENT, collective_activity_id: activity.id, user_id: by.id)
       Result.ok(activity: activity, replayed: false)
     end

@@ -3,11 +3,13 @@
 module Ledi
   module FichaSources
     # Módulo 24a: as versões imutáveis do cadastro individual e do domicílio.
-    # Módulo 24b (ADR 0052): a folha do dia da visita domiciliar (ficha 8).
+    # Módulo 24b (ADR 0052): a folha do dia da visita domiciliar (ficha 8) e a
+    # atividade coletiva (ficha 6).
     REGISTRY = { "Screening" => "Ledi::ScreeningFicha", "Consultation" => "Ledi::ConsultationFicha",
                  "IndividualRegistrationVersion" => "Ledi::IndividualRegistrationFicha",
                  "HouseholdVersion" => "Ledi::HouseholdRegistrationFicha",
-                 "HomeVisitDay" => "Ledi::HomeVisitDayFicha" }.freeze
+                 "HomeVisitDay" => "Ledi::HomeVisitDayFicha",
+                 "CollectiveActivity" => "Ledi::CollectiveActivityFicha" }.freeze
 
     module_function
 
