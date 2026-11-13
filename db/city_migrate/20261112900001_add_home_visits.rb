@@ -69,7 +69,7 @@ class AddHomeVisits < ActiveRecord::Migration[8.1]
                                                                  name: "idx_home_visit_days_one_open"
     add_index :home_visit_days, %i[state day], where: "state = 'open'", name: "idx_home_visit_days_open_by_day"
     add_check_constraint :home_visit_days,
-                         "state IN (#{quoted(STATES)}) AND sequence >= 1 AND (closed_by IS NULL OR closed_by IN (#{quoted(CLOSED_BY)}))",
+                         "#{varchar_in('state', STATES)} AND sequence >= 1 AND (closed_by IS NULL OR #{varchar_in('closed_by', CLOSED_BY)})",
                          name: "ck_home_visit_days_values"
     add_check_constraint :home_visit_days,
                          "(state = 'closed') = (closed_at IS NOT NULL) AND (state = 'closed') = (closed_by IS NOT NULL) " \
@@ -111,22 +111,26 @@ class AddHomeVisits < ActiveRecord::Migration[8.1]
     add_index :home_visits, :home_visit_day_id, name: "idx_home_visits_day"
     add_check_constraint :home_visits,
                          "outcome IN (#{OUTCOMES.join(', ')}) AND shift IN (#{SHIFTS.join(', ')}) " \
-                         "AND property_type IN (#{quoted(PROPERTY_TYPES)})",
+                         "AND #{varchar_in('property_type', PROPERTY_TYPES)}",
                          name: "ck_home_visits_values"
     add_check_constraint :home_visits, "(micro_area_id IS NULL) = out_of_area", name: "ck_home_visits_area"
     add_check_constraint :home_visits,
-                         "subject IN (#{quoted(SUBJECTS)}) AND ((subject = 'none') = (patient_id IS NULL))",
+                         "#{varchar_in('subject', SUBJECTS)} AND ((subject = 'none') = (patient_id IS NULL))",
                          name: "ck_home_visits_subject"
     add_check_constraint :home_visits, "subject <> 'family_responsible' OR family_id IS NOT NULL", name: "ck_home_visits_family"
     add_check_constraint :home_visits, "outcome = 1 OR NOT has_reason", name: "ck_home_visits_outcome_reason"
     add_check_constraint :home_visits, "(withdrawn_at IS NULL) = (withdrawn_by_user_id IS NULL) AND (withdrawn_at IS NULL) = (withdrawal_reason IS NULL)", name: "ck_home_visits_withdrawn"
     add_check_constraint :home_visits,
-                         "property_type NOT IN (#{quoted(NON_RESIDENTIAL)}) OR (patient_id IS NULL AND family_id IS NULL)",
+                         "#{varchar_not_in('property_type', NON_RESIDENTIAL)} OR (patient_id IS NULL AND family_id IS NULL)",
                          name: "ck_home_visits_non_residential"
     add_check_constraint :home_visits,
-                         "origin IN (#{quoted(ORIGINS)}) AND (origin = 'field_app') = (field_device_id IS NOT NULL)",
+                         "#{varchar_in('origin', ORIGINS)} AND (origin = 'field_app') = (field_device_id IS NOT NULL)",
                          name: "ck_home_visits_origin"
   end
 
-  def quoted(list) = list.map { |item| "'#{item}'" }.join(", ")
+  # varchar IN (...) como o PG16 o devolve (e como o dump o grava): migração e
+  # carga do esquema acabam com o mesmo texto de CHECK.
+  def varchar_in(column, list) = "(#{column})::text = ANY (ARRAY[#{varchar_items(list)}])"
+  def varchar_not_in(column, list) = "(#{column})::text <> ALL (ARRAY[#{varchar_items(list)}])"
+  def varchar_items(list) = list.map { |item| "'#{item}'::character varying::text" }.join(", ")
 end

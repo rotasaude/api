@@ -72,7 +72,7 @@ class AddCollectiveActivities < ActiveRecord::Migration[8.1]
                          "(mistaken_at IS NULL) = (mistaken_by_user_id IS NULL) AND (mistaken_at IS NULL) = (mistaken_reason IS NULL)",
                          name: "ck_collective_activities_mistaken"
     add_check_constraint :collective_activities,
-                         "origin IN (#{quoted(ORIGINS)}) AND (origin = 'field_app') = (field_device_id IS NOT NULL)",
+                         "#{varchar_in('origin', ORIGINS)} AND (origin = 'field_app') = (field_device_id IS NOT NULL)",
                          name: "ck_collective_activities_origin"
   end
 
@@ -101,5 +101,9 @@ class AddCollectiveActivities < ActiveRecord::Migration[8.1]
     add_index :collective_activity_participants, :patient_id, name: "idx_collective_activity_participants_patient"
   end
 
-  def quoted(list) = list.map { |item| "'#{item}'" }.join(", ")
+  # varchar IN (...) como o PG16 o devolve (e como o dump o grava): migração e
+  # carga do esquema acabam com o mesmo texto de CHECK.
+  def varchar_in(column, list) = "(#{column})::text = ANY (ARRAY[#{varchar_items(list)}])"
+  def varchar_not_in(column, list) = "(#{column})::text <> ALL (ARRAY[#{varchar_items(list)}])"
+  def varchar_items(list) = list.map { |item| "'#{item}'::character varying::text" }.join(", ")
 end

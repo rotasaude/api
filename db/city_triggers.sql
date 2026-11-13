@@ -4069,6 +4069,33 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 
+-- Profissionais e participantes entram só na transação que gravou a atividade
+-- (a gravação é a atividade inteira, §4) e nunca numa atividade marcada por
+-- engano. A atividade é lida com FOR SHARE; a linha-mãe visível e de transação
+-- "in progress" só pode ser desta mesma transação (ou subtransação), porque a
+-- de outra sessão ainda não commitada não é visível. A re-cifra passa antes.
+CREATE OR REPLACE FUNCTION rota_collective_activity_child_guard() RETURNS trigger AS $fn$
+DECLARE
+  parent record;
+BEGIN
+  IF current_setting('rota.reencrypting', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+  SELECT mistaken_at, xmin::text AS born INTO parent FROM collective_activities
+    WHERE id = (to_jsonb(NEW) ->> 'collective_activity_id')::uuid FOR SHARE;
+  IF NOT FOUND THEN
+    RETURN NEW; -- a FK recusa
+  END IF;
+  IF parent.mistaken_at IS NOT NULL THEN
+    RAISE EXCEPTION '%: the activity is marked mistaken', TG_TABLE_NAME;
+  END IF;
+  IF pg_xact_status((((pg_current_xact_id()::text::bigint >> 32) << 32) | parent.born::bigint)::text::xid8) IS DISTINCT FROM 'in progress' THEN
+    RAISE EXCEPTION '%: rows enter only in the transaction that recorded the activity', TG_TABLE_NAME;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
 DO $do$
 DECLARE
   item text;
@@ -4083,6 +4110,11 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS collective_activity_participants_reencryption_only ON collective_activity_participants';
     EXECUTE 'CREATE TRIGGER collective_activity_participants_reencryption_only BEFORE UPDATE OR DELETE ON collective_activity_participants
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''altered_evaluation'', ''measurements'', ''smoking'')';
+    FOREACH item IN ARRAY ARRAY['collective_activity_professionals', 'collective_activity_participants'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_child_guard', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE INSERT ON %I FOR EACH ROW EXECUTE FUNCTION rota_collective_activity_child_guard()',
+                     item || '_child_guard', item);
+    END LOOP;
     FOREACH item IN ARRAY ARRAY['collective_activities', 'collective_activity_professionals', 'collective_activity_participants'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',

@@ -63,7 +63,7 @@ RSpec.describe "Esquema da atividade coletiva (ADR 0052)", type: :model do
     activity = activity!(meeting_topics: [ 1, 2 ])
     refused(/collective_activities/) { activity.update_columns(shift: 2) }
     refused(/collective_activities/) { activity.update_columns(participants_count: 11) }
-    refused(/collective_activities/) { activity.update_columns(mistaken_at: Time.current) } # sem usuário e sem motivo (CHECK)
+    refused(/collective_activities/) { activity.update_columns(mistaken_at: Time.current) } # o trigger recusa antes do CHECK
     refused(/collective_activities/) { activity.update_columns(mistaken_at: Time.current, mistaken_by_user_id: agent.id) }
     refused(/collective_activities/) do
       activity.update_columns(mistaken_at: Time.current, mistaken_by_user_id: agent.id, mistaken_reason: "lançada por engano", shift: 2)
@@ -76,6 +76,63 @@ RSpec.describe "Esquema da atividade coletiva (ADR 0052)", type: :model do
     refused(/collective_activities/) { activity.update_columns(mistaken_at: Time.current + 1.minute) }
     refused(/collective_activities/) { activity.update_columns(mistaken_at: nil, mistaken_by_user_id: nil, mistaken_reason: nil) }
     refused(/collective_activities/) { activity.update_columns(mistaken_reason: "outro motivo qualquer") }
+  end
+
+  it "marca de engano: os três campos juntos (CHECK, por INSERT direto)" do
+    refused(/ck_collective_activities_mistaken/) { activity!(mistaken_at: Time.current, mistaken_by_user: agent) }
+    refused(/ck_collective_activities_mistaken/) { activity!(mistaken_by_user: agent, mistaken_reason: "lançada por engano") }
+    refused(/ck_collective_activities_mistaken/) { activity!(mistaken_reason: "lançada por engano") }
+    accepted { activity!(mistaken_at: Time.current, mistaken_by_user: agent, mistaken_reason: "lançada por engano") }
+  end
+
+  it "profissionais e participantes entram na transação da atividade, nunca depois e nunca em atividade por engano" do
+    activity = activity!(participants_count: 2)
+    accepted { CollectiveActivityProfessional.create!(collective_activity: activity, professional: agent.professional, cbo: "322255") }
+    accepted { participant!(activity) }
+    # subtransação já liberada continua sendo a mesma transação
+    sub = nil
+    ApplicationRecord.transaction(requires_new: true) { sub = activity!(participants_count: 2) }
+    accepted { participant!(sub) }
+
+    activity.update!(mistaken_at: Time.current, mistaken_by_user: agent, mistaken_reason: "lançada por engano")
+    refused(/activity is marked mistaken/) { participant!(activity) }
+    refused(/activity is marked mistaken/) do
+      CollectiveActivityProfessional.create!(collective_activity: activity, professional: field_agent!(team: team).professional, cbo: "322255")
+    end
+  end
+
+  # Atividade gravada e commitada por OUTRA conexão (a de um pedido anterior). As
+  # FKs da linha-mãe ficam de fora com session_replication_role = replica (só nessa
+  # conexão), e a linha é apagada do mesmo jeito no fim.
+  it "profissional e participante de uma atividade gravada em transação anterior → recusado" do
+    info = ApplicationRecord.connection.raw_connection.conninfo_hash.compact
+    other = PG.connect(info.slice(:host, :port, :dbname, :user, :password))
+    id = SecureRandom.uuid
+    begin
+      other.exec("BEGIN")
+      other.exec("SET LOCAL session_replication_role = replica")
+      other.exec_params("INSERT INTO collective_activities (id, client_uuid, team_id, health_unit_id, professional_id, cbo, " \
+                        "recorded_by_user_id, held_on, shift, activity_type, place_text, participants_count, origin, created_at) " \
+                        "VALUES ($1, $2, $3, $3, $3, '322255', $3, current_date, 1, 1, 'Praça', 5, 'dashboard', now())",
+                        [ id, SecureRandom.uuid, SecureRandom.uuid ])
+      other.exec("COMMIT")
+      activity = CollectiveActivity.find(id)
+      refused(/rows enter only in the transaction that recorded the activity/) { participant!(activity) }
+      refused(/rows enter only in the transaction that recorded the activity/) do
+        CollectiveActivityProfessional.create!(collective_activity: activity, professional: agent.professional, cbo: "322255")
+      end
+    ensure
+      other.exec("BEGIN")
+      other.exec("SET LOCAL session_replication_role = replica")
+      other.exec_params("DELETE FROM collective_activities WHERE id = $1", [ id ])
+      other.exec("COMMIT")
+      other.close
+    end
+  end
+
+  it "a re-cifra passa pelo guard de entrada (SET LOCAL rota.reencrypting)" do
+    body = ApplicationRecord.connection.select_value("SELECT pg_get_functiondef('rota_collective_activity_child_guard'::regproc)")
+    expect(body.index("rota.reencrypting")).to be < body.index("FOR SHARE")
   end
 
   it "nada se apaga: DELETE e TRUNCATE recusados nas três" do
