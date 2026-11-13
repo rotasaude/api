@@ -108,4 +108,20 @@ RSpec.describe TerritoryRegistry::Access do
     expect(described_class.visible_micro_area_ids(registry_acs!(care_unit!), team)).to eq([])
     expect(described_class.visible_micro_area_ids(member_with("322205"), team)).to eq([])
   end
+
+  # Módulo 24b (Q11; ruling A5b): o CBO de campo que não é ACS lê (só lê) as
+  # microáreas atribuídas a ele; ACS, enfermeiro e quem é de fora, nenhuma por
+  # aqui. A escrita não muda.
+  it "field_reader_micro_area_ids: só as microáreas com atribuição ativa do CBO de campo; encerrada sai na hora" do
+    area
+    tacs = member_with("322255")
+    assignment = MicroAreaFieldAssignment.create!(micro_area: other_area, professional: tacs.professional, assigned_by_user: acs)
+    expect(described_class.field_reader_micro_area_ids(tacs, team)).to eq([ other_area.id ])
+    expect(described_class.field_reader_micro_area_ids(acs, team)).to eq([])
+    expect(described_class.field_reader_micro_area_ids(care_admin!, team)).to eq([])
+    expect(described_class.visible_micro_area_ids(tacs, team)).to eq([])
+    expect(described_class.registrar?(tacs, team, micro_area: other_area, ficha: :individual)).to eq(:cbo_not_allowed)
+    assignment.update!(ended_at: Time.current, ended_by_user: acs)
+    expect(described_class.field_reader_micro_area_ids(tacs, team)).to eq([])
+  end
 end

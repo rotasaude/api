@@ -497,4 +497,10 @@ Rails.application.config.to_prepare do
   # ofício ou ao aceitar o pedido do cidadão) — só manifestation_id; sem
   # consumidor.
   DomainEvents.bind "ombudsman.reopened", to: []
+  # Módulo 24b (ADR 0052; contrato §1, §6; Task 6): a atribuição de microárea a
+  # um CBO de campo e o encerramento dela (HomeVisits::AssignMicroArea,
+  # HomeVisits::EndAssignment) — micro_area_id, professional_id, user_id e
+  # ended, nunca nome nem CBO; sem consumidor (o download do app recalcula o
+  # escopo e responde reset, §9.3).
+  DomainEvents.bind "micro_area.field_assignment_changed", to: []
 end

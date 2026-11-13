@@ -990,6 +990,16 @@ Rails.application.routes.draw do
     get   "registry_status/count",   to: "registry_status#count"
   end
 
+  # Módulo 24b (ADR 0052; contrato §6): visita domiciliar, sessão do dashboard,
+  # gate `home_visits`. Rotas de membro só com id UUID (ruling A9); dado de
+  # pessoa e texto só no corpo.
+  scope "/home_visits", module: :home_visits, as: :home_visits do
+    get  "context",                 to: "context#show"
+    get  "assignments",             to: "assignments#index"
+    post "assignments",             to: "assignments#create"
+    post "assignments/:id/end",     to: "assignments#end_assignment", constraints: { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
+  end
+
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo
   # único: uma entrada só no proxy de dev do dashboard.
   scope "/territory" do

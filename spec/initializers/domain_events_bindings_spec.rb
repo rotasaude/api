@@ -688,3 +688,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry["ombudsman.anonymous_cap_reached"].map(&:job)).to eq([ "Ombudsman::CapAlertJob" ])
   end
 end
+
+# Módulo 24b (ADR 0052; contrato §1; Task 6): a atribuição de microárea, só ids.
+RSpec.describe "home visit bindings (ADR 0052)" do
+  it "declares micro_area.field_assignment_changed with no consumer" do
+    expect(DomainEvents.registry.keys).to include("micro_area.field_assignment_changed")
+    expect(DomainEvents.registry["micro_area.field_assignment_changed"]).to be_empty
+  end
+end

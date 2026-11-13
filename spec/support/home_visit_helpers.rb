@@ -15,9 +15,17 @@ module HomeVisitHelpers
     city
   end
 
-  # Usuário `health_professional` com vínculo ativo na equipe e o CBO dado.
+  # Usuário `health_professional` com vínculo ativo na equipe e o CBO dado. O
+  # vínculo com a unidade (ProfessionalLink) só aceita CBO do catálogo da
+  # plataforma (config/professionals/cbo_saude.yml), que não tem todos da
+  # Tabela 7 (322255 TACS, 515310…); o da equipe (HealthTeamMember, vindo do
+  # CNES) aceita: fora do catálogo, a unidade leva o 515105 e a equipe o CBO dado.
   def field_agent!(cbo: HomeVisits::Catalog::ACS_CBO, team: nil)
-    registry_field_professional!(team&.health_unit, team: team, cbo: cbo, council: false)
+    linkable = Professionals::Cbo.all.any? { |row| row.code == cbo }
+    user = registry_field_professional!(team&.health_unit, team: team, cbo: linkable ? cbo : HomeVisits::Catalog::ACS_CBO,
+                                        council: false)
+    HealthTeamMember.active.where(professional: user.professional).update_all(cbo_code: cbo) unless linkable
+    user
   end
 
   # Folha direto nas linhas. `agent` é o usuário (field_agent!); a equipe é a do

@@ -13,16 +13,21 @@ module TerritoryRegistry
       household_id = params[:household_id]
       return render_error("invalid_request") unless [ patient_id, household_id ].compact.one? && uuid?(patient_id || household_id)
 
+      field_ids = []
       if household_id
         household = Household.includes(micro_area: :team).find_by(id: household_id)
-        return not_found unless household && Access.visible_micro_area_ids(Current.user, household.micro_area.team).include?(household.micro_area_id)
+        team = household&.micro_area&.team
+        # Q11: o CBO de campo atribuído à microárea lê os moradores (só aqui).
+        field_ids = team ? Access.field_reader_micro_area_ids(Current.user, team) : []
+        visible = team && (Access.visible_micro_area_ids(Current.user, team) + field_ids).include?(household.micro_area_id)
+        return not_found unless visible
 
         scope = IndividualRegistration.active_registrations.where(household_id: household.id)
       else
         scope = IndividualRegistration.where(patient_id: patient_id)
       end
       rows = scope.includes(:patient, :team, :micro_area, registered_by_user: :professional).order(registered_at: :desc, id: :desc)
-                  .select { |registration| readable?(registration) }
+                  .select { |registration| readable?(registration) || field_ids.include?(registration.micro_area_id) }
       rows.map(&:patient_id).uniq.each { |id| Trail.person_viewed!(user: Current.user, patient_id: id) }
       render json: { registrations: rendered(rows) }
     end

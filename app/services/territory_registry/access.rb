@@ -60,6 +60,17 @@ module TerritoryRegistry
       end
     end
 
+    # Módulo 24b (Q11; ruling A5b): microáreas da equipe que o CBO de campo
+    # que não é ACS (Tabela 7, :field do HomeVisits::Access) LÊ pelas rotas de
+    # leitura do 24a — as atribuídas a ele e ativas (micro_area_field_assignments
+    # sem ended_at). Só leitura: index/show de domicílios e o index de
+    # cadastros por domicílio. A escrita (registrar?), visible_micro_area_ids,
+    # reads_registration? e as buscas não mudam: o TACS segue cbo_not_allowed.
+    def field_reader_micro_area_ids(user, team)
+      scope = HomeVisits::Access.scope(user, team)
+      scope[:kind] == "assigned" ? scope[:micro_area_ids] : []
+    end
+
     # Gestão que lê a contagem da validade sem ser da equipe (L10).
     def manager?(user) = admin?(user) || user.has_role?("analyst")
 

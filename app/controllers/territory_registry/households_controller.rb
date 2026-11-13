@@ -74,7 +74,12 @@ module TerritoryRegistry
       household if household && visible?(household.micro_area_id, household.micro_area.team)
     end
 
-    def visible?(micro_area_id, team) = Access.visible_micro_area_ids(Current.user, team).include?(micro_area_id)
+    # Quem cadastra na microárea, ou o CBO de campo atribuído a ela (só leitura;
+    # Q11): index e show. A escrita passa pelo SaveHousehold (registrar?).
+    def visible?(micro_area_id, team)
+      Access.visible_micro_area_ids(Current.user, team).include?(micro_area_id) ||
+        Access.field_reader_micro_area_ids(Current.user, team).include?(micro_area_id)
+    end
 
     # A última versão de cada domicílio e as famílias, sem N+1.
     def rendered(households, full:)
