@@ -42,7 +42,7 @@ RSpec.describe HomeVisits::People, type: :model do
     expect([ refused.reason, refused.details ]).to eq([ :patient_unidentified, { path: "participants[2].patient_id" } ])
   end
 
-  it "nome+nascimento de alguém existente sem duplicates_reviewed → duplicate_suspected com até 10 candidatos e trilha" do
+  it "nome+nascimento de alguém existente sem duplicates_reviewed → duplicate_suspected com até 10 candidatos; trilha só no candidates_viewed!" do
     twins = Array.new(11) do
       registry_no_cpf_patient!(cns: valid_cns(registry_seq!)).tap { |patient| patient.update!(full_name: "Marta Gomes Pereira", birth_date: "1980-03-04") }
     end
@@ -54,17 +54,36 @@ RSpec.describe HomeVisits::People, type: :model do
     expect(candidates.size).to eq(10)
     expect(candidates.first).to eq(patient_id: twins.first.id, display_name: "Marta Gomes Pereira", birth_date: "1980-03-04",
                                    sex: "female", has_cpf: false, has_cns: true)
+    expect(result.details[:candidate_ids]).to eq(twins.first(10).map(&:id))
+    expect(trail).to be_empty
+
+    described_class.candidates_viewed!(candidate_ids: result.details[:candidate_ids], by: by, trail: HomeVisits::Trail)
     expect(trail.map { |payload| payload["patient_id"] }).to eq(twins.first(10).map(&:id))
     expect(trail).to all(include("access" => "home_visits", "user_id" => by.id))
 
-    collective = resolve(new_patient: typed, trail: CollectiveActivities::Trail)
-    expect(collective.reason).to eq(:duplicate_suspected)
-    expect(collective.details[:path]).to eq("new_patient")
-    expect(trail.last).to include("access" => "collective_activities")
+    described_class.candidates_viewed!(candidate_ids: [ twins.first.id ], by: by, trail: CollectiveActivities::Trail)
+    expect(trail.last).to include("access" => "collective_activities", "patient_id" => twins.first.id)
   end
 
-  it "com duplicates_reviewed true cria; reviewed não booleano → invalid_request com o path" do
+  it "transação de fora desfeita depois do duplicate_suspected: a trilha dos candidatos, gravada depois, fica" do
+    twin = registry_no_cpf_patient!(cns: valid_cns(registry_seq!)).tap { |patient| patient.update!(full_name: "Marta Gomes Pereira", birth_date: "1980-03-04") }
+    result = nil
+    ApplicationRecord.transaction(requires_new: true) do
+      first = resolve(new_patient: typed(full_name: "Clara Nunes Dias"), path_prefix: "participants[0]")
+      expect(first).to be_ok
+      result = resolve(new_patient: typed, path_prefix: "participants[1]")
+      raise ActiveRecord::Rollback
+    end
+    expect(result.reason).to eq(:duplicate_suspected)
+    expect(Patient.count).to eq(1)
+    described_class.candidates_viewed!(candidate_ids: result.details[:candidate_ids], by: by, trail: CollectiveActivities::Trail)
+    expect(trail).to eq([ { "access" => "collective_activities", "patient_id" => twin.id, "user_id" => by.id, "reason_code" => nil,
+                            "person_ref" => "patient:#{twin.id}" } ])
+  end
+
+  it "com duplicates_reviewed true cria; nil vale false; reviewed não booleano → invalid_request com o path" do
     registry_no_cpf_patient!(cns: valid_cns(registry_seq!)).update!(full_name: "Marta Gomes Pereira", birth_date: "1980-03-04")
+    expect(resolve(new_patient: typed, reviewed: nil).reason).to eq(:duplicate_suspected)
     result = resolve(new_patient: typed, reviewed: true)
     expect(result).to be_ok
     expect(result.payload[:created]).to be(true)
@@ -90,7 +109,8 @@ RSpec.describe HomeVisits::People, type: :model do
       typed(cpf: nil) => [ :cpf_or_reason_required, "new_patient.no_cpf_reason" ],
       typed(cpf: "123") => [ :invalid_cpf, "new_patient.cpf" ],
       typed(cpf: nil, no_cpf_reason: "3", cns: "123") => [ :invalid_cns, "new_patient.cns" ],
-      typed(nickname: "Ma") => [ :invalid_request, "new_patient.nickname" ]
+      typed(nickname: "Ma") => [ :invalid_request, "new_patient.nickname" ],
+      typed(social_name: "Ma") => [ :invalid_request, "new_patient.social_name" ]
     }
     cases.each do |new_patient, (reason, path)|
       refused = resolve(new_patient: new_patient)

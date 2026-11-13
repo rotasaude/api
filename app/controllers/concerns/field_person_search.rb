@@ -53,8 +53,8 @@ module FieldPersonSearch
     return render_refusal("invalid_request", path: "birth_date") unless Patients::MatchKey.iso_date(birth_date)
     return render_refusal("invalid_request", path: "mother_name") unless mother_name.nil? || mother_name.is_a?(String)
 
-    candidates = HomeVisits::People.duplicates(full_name: full_name, birth_date: birth_date, mother_name: mother_name, by: Current.user,
-                                               trail: person_trail)
+    candidates = HomeVisits::People.duplicates(full_name: full_name, birth_date: birth_date, mother_name: mother_name)
+    HomeVisits::People.candidates_viewed!(candidate_ids: candidates.map { |json| json[:patient_id] }, by: Current.user, trail: person_trail)
     render json: { candidates: candidates }
   end
 

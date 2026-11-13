@@ -14,13 +14,16 @@
 # nascimento, sexo, mãe, CPF e CNS não vão a Result.details, log nem evento.
 #
 # Duplicado suspeito: até 10 candidatos (a regra do Patients::Duplicates; com
-# CPF digitado, só os sem CPF) na forma `candidate`, com trilha por candidato
-# mostrado (`trail:`, o módulo da trilha do chamador). A trilha é gravada na
-# transação de quem chama: quem recusa o item sem ROLLBACK (nada gravado antes
-# da pessoa) a mantém.
+# CPF digitado, só os sem CPF) na forma `candidate`, mais os `candidate_ids`.
+# `resolve` NÃO grava a trilha: quem chama desfaz a transação quando outro
+# participante ou o item é recusado, e a trilha iria junto. Quem mostra os
+# candidatos chama `candidates_viewed!` DEPOIS da sua transação, qualquer que
+# seja o desfecho (o padrão do Urgency::NewPatient + Urgency::BaseController
+# #duplicate_candidates), com o módulo da trilha do seu acesso.
 module HomeVisits
   module People
-    ALLOWED = Patients::CreateTyped::STRINGS
+    # A forma do §5 (sem social_name, que o registro rápido não tem).
+    ALLOWED = %w[full_name birth_date sex mother_name cpf no_cpf_reason cns].freeze
     KEY_PATH_MAX = 64
     CANDIDATES_MAX = Patients::Duplicates::MAX
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
@@ -30,8 +33,10 @@ module HomeVisits
 
     module_function
 
-    # -> Result.ok(patient:, created:) | Result.fail(<código>, details: { path: } | { path:, candidates: })
-    def resolve(by:, patient_id: nil, new_patient: nil, reviewed: false, path_prefix: "", trail: Trail)
+    # `reviewed` é o `duplicates_reviewed` do corpo, opcional: nil vale false.
+    # -> Result.ok(patient:, created:) |
+    #    Result.fail(<código>, details: { path: } | { path:, candidates:, candidate_ids: })
+    def resolve(by:, patient_id: nil, new_patient: nil, reviewed: false, path_prefix: "")
       at = ->(path) { path_prefix.to_s.empty? ? path : "#{path_prefix}.#{path}" }
       return refuse(:invalid_request, at["new_patient"]) if !patient_id.nil? && !new_patient.nil?
       return existing(patient_id, at) unless patient_id.nil? && !new_patient.nil?
@@ -40,9 +45,10 @@ module HomeVisits
 
       unknown = (new_patient.keys.map(&:to_s) - ALLOWED).first
       return refuse(:invalid_request, at["new_patient.#{unknown}"][0, KEY_PATH_MAX]) if unknown
+      reviewed = false if reviewed.nil?
       return refuse(:invalid_request, at["duplicates_reviewed"]) unless [ true, false ].include?(reviewed)
 
-      create(new_patient.to_h.stringify_keys, reviewed, by, at, trail)
+      create(new_patient.to_h.stringify_keys, reviewed, by, at)
     end
 
     # `{ patient_id, display_name, birth_date, sex, has_cpf, has_cns }` (Q8);
@@ -61,12 +67,19 @@ module HomeVisits
         **Patients::IdentifierJson.call(patient) }
     end
 
-    # Os candidatos de nome + nascimento (+ mãe), com a trilha de cada um.
-    def duplicates(full_name:, birth_date:, by:, trail:, mother_name: nil, only_without_cpf: false)
-      found = Patients::Duplicates.call(full_name: full_name, birth_date: birth_date, mother_name: mother_name, limit: CANDIDATES_MAX,
-                                        only_without_cpf: only_without_cpf).first(CANDIDATES_MAX)
-      found.each { |patient| trail.person_viewed!(user: by, patient_id: patient.id) }
-      found.map { |patient| candidate(patient) }
+    # Os candidatos de nome + nascimento (+ mãe), na forma `candidate`, sem
+    # trilha: quem os mostra chama `candidates_viewed!`.
+    def duplicates(full_name:, birth_date:, mother_name: nil, only_without_cpf: false)
+      Patients::Duplicates.call(full_name: full_name, birth_date: birth_date, mother_name: mother_name, limit: CANDIDATES_MAX,
+                                only_without_cpf: only_without_cpf).first(CANDIDATES_MAX).map { |patient| candidate(patient) }
+    end
+
+    # Trilha dos candidatos mostrados (um clinical_record.viewed por id), fora
+    # da transação que gravaria a pessoa. `trail:` é obrigatório: o módulo do
+    # acesso de quem mostra (HomeVisits::Trail, CollectiveActivities::Trail, o
+    # do envio do app).
+    def candidates_viewed!(candidate_ids:, by:, trail:)
+      Array(candidate_ids).each { |id| trail.person_viewed!(user: by, patient_id: id) }
     end
 
     def existing(id, at)
@@ -81,7 +94,7 @@ module HomeVisits
       Result.ok(patient: patient, created: false)
     end
 
-    def create(typed, reviewed, by, at, trail)
+    def create(typed, reviewed, by, at)
       shape = Patients::CreateTyped.check(typed)
       return typed_failure(shape, at) if shape.failure?
 
@@ -90,8 +103,9 @@ module HomeVisits
       return typed_failure(created, at) unless created.reason == :duplicate_suspected
 
       candidates = duplicates(full_name: typed["full_name"], birth_date: typed["birth_date"], mother_name: typed["mother_name"],
-                              only_without_cpf: typed["cpf"].present?, by: by, trail: trail)
-      Result.fail(:duplicate_suspected, details: { path: at["new_patient"], candidates: candidates })
+                              only_without_cpf: typed["cpf"].present?)
+      Result.fail(:duplicate_suspected, details: { path: at["new_patient"], candidates: candidates,
+                                                   candidate_ids: candidates.map { |json| json[:patient_id] } })
     end
 
     def typed_failure(result, at)
