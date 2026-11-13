@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_900003) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_12_900004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -801,7 +801,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900003) do
     t.index ["team_id", "held_on"], name: "idx_collective_activities_team_held_on"
     t.check_constraint "(mistaken_at IS NULL) = (mistaken_by_user_id IS NULL) AND (mistaken_at IS NULL) = (mistaken_reason IS NULL)", name: "ck_collective_activities_mistaken"
     t.check_constraint "(origin)::text = ANY (ARRAY['dashboard'::character varying::text, 'field_app'::character varying::text]) AND ((origin)::text = 'field_app'::text) = (field_device_id IS NOT NULL)", name: "ck_collective_activities_origin"
-    t.check_constraint "activity_type >= 1 AND activity_type <= 7 AND (shift = ANY (ARRAY[1, 2, 3]))", name: "ck_collective_activities_values"
+    t.check_constraint "activity_type BETWEEN 1 AND 7 AND (shift = ANY (ARRAY[1, 2, 3]))", name: "ck_collective_activities_values"
     t.check_constraint "altered_count >= 0 AND altered_count <= participants_count", name: "ck_collective_activities_altered_count"
     t.check_constraint "num_nonnulls(place_health_unit_id, place_text) = 1", name: "ck_collective_activities_place"
     t.check_constraint "participants_count >= 1 AND participants_count <= 999", name: "ck_collective_activities_participants_count"
@@ -1543,6 +1543,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900003) do
     t.boolean "moved_out", default: false, null: false
     t.uuid "responsible_patient_id", null: false
     t.datetime "updated_at", null: false
+    t.index ["household_id"], name: "idx_families_household"
     t.index ["household_id", "responsible_patient_id"], name: "idx_families_one_responsible", unique: true, where: "(NOT moved_out)"
     t.index ["responsible_patient_id"], name: "idx_families_responsible_patient"
     t.check_constraint "members_count IS NULL OR (members_count >= 1 AND members_count <= 999)", name: "ck_families_members_count"
@@ -1875,7 +1876,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900003) do
     t.integer "version", null: false
     t.index ["patient_id"], name: "idx_individual_registrations_deaths", where: "((exit_reason)::text = 'death'::text)"
     t.index ["household_id"], name: "idx_individual_registrations_household"
+    t.index ["micro_area_id"], name: "idx_individual_registrations_micro_area"
     t.index ["patient_id"], name: "idx_individual_registrations_one_active", unique: true, where: "(exit_reason IS NULL)"
+    t.index ["patient_id"], name: "idx_individual_registrations_patient"
     t.index ["team_id", "registered_at"], name: "idx_individual_registrations_team"
     t.check_constraint "version >= 1 AND (household_id IS NULL OR micro_area_id IS NOT NULL) AND (exit_reason IS NULL OR exit_reason::text = ANY (ARRAY['moved'::text, 'death'::text])) AND ((exit_reason IS NULL) = (exited_on IS NULL)) AND ((exit_reason IS NOT NULL AND exit_reason::text = 'death'::text) = (death_on IS NOT NULL)) AND (death_certificate IS NULL OR death_on IS NOT NULL)", name: "ck_individual_registrations_values"
   end
