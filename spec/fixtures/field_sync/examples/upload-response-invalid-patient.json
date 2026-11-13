@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee05-0000-4000-8000-000000000005",
+      "status": "rejected",
+      "type": "patient",
+      "error": "invalid_patient",
+      "path": "new_patient.full_name"
+    }
+  ]
+}

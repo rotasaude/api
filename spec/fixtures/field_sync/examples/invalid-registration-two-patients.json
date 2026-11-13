@@ -1,0 +1,58 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee10-0000-4000-8000-000000000010",
+      "type": "patient",
+      "body": {
+        "new_patient": {
+          "full_name": "Benedita Aparecida Rocha",
+          "birth_date": "1948-05-02",
+          "sex": "female",
+          "mother_name": "Maria José Rocha",
+          "no_cpf_reason": "2",
+          "cns": "702000000000001"
+        }
+      }
+    },
+    {
+      "client_uuid": "c0ffee20-0000-4000-8000-000000000020",
+      "type": "household",
+      "body": {
+        "micro_area_id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+        "property_type": "1",
+        "refused": false,
+        "contact_phone": "41999990000",
+        "address": {
+          "zip": "80010000",
+          "street_type": "RUA",
+          "street": "das Flores",
+          "number": "120",
+          "no_number": false,
+          "complement": null,
+          "neighborhood_id": null,
+          "district": "Centro",
+          "reference": "Perto da praça"
+        },
+        "living_conditions": {}
+      }
+    },
+    {
+      "client_uuid": "c0ffee22-0000-4000-8000-000000000022",
+      "type": "individual_registration",
+      "body": {
+        "is_responsible": false,
+        "identification": {},
+        "patient_demographics": {
+          "race_color": "01",
+          "ethnicity": null
+        },
+        "sociodemographic": {},
+        "health_conditions": {},
+        "refused": false,
+        "patient_client_uuid": "c0ffee10-0000-4000-8000-000000000010",
+        "household_client_uuid": "c0ffee20-0000-4000-8000-000000000020",
+        "patient_id": "1f2a3b4c-5d6e-4f7a-9b8c-9d0e1f2a3b4c"
+      }
+    }
+  ]
+}

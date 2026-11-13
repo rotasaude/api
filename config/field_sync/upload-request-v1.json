@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rota-saude/schemas/field-sync/upload-request-v1.json",
+  "title": "rotasaude.field_sync.upload_request.v1",
+  "description": "POST /field/v1/uploads (contrato do 24b §9.3): de 1 a 50 itens, processados em ordem, cada um na sua transação; idempotente pelo client_uuid do item. O esquema descreve o item VÁLIDO e confere a forma (tipos, domínios, faixas, objetos fechados); as relações entre campos (desfecho × motivos, imóvel × pessoa, tipo de atividade × temas, quem pode o quê) estão em dado em domains-v1.json e são decididas pelo api, que devolve o item rejected com o código. Erros de forma (Q31): envelope inválido (corpo que não é objeto; items ausente, vazio, não-lista ou com mais de 50; chave desconhecida no envelope) = 422 invalid_request para o lote inteiro, nada gravado; item fora deste esquema (campo desconhecido, tipo errado, type desconhecido, client_uuid ausente ou inválido) = só ele volta rejected com error invalid_request e o path, e os outros seguem.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "$ref": "#/$defs/item" } }
+  },
+  "$defs": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "uuid_or_null": { "type": ["string", "null"], "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "datetime": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$", "description": "ISO 8601 com segundos e fuso explícito (Z ou ±hh:mm); nunca hora local sem fuso." },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "property_type": { "enum": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "99"], "description": "TerritoryRegistry::Catalog::PROPERTY_TYPES (texto, como no 24a). Não residencial: 2, 3, 4, 5, 6, 12, 13." },
+    "no_cpf_reason": { "enum": ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"], "description": "TerritoryRegistry::Catalog::NO_CPF_REASONS (justificativa de não ter CPF, contrato do 24a §15)." },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Chaves de TerritoryRegistry::Address::KEYS (24a L6). Objeto vazio no domicílio recusado sem endereço. Tamanhos são do api (invalid_household com path).",
+      "properties": {
+        "zip": { "type": ["string", "null"], "pattern": "^[0-9]{8}$" },
+        "street_type": { "type": ["string", "null"] },
+        "street": { "type": ["string", "null"] },
+        "number": { "type": ["string", "null"] },
+        "no_number": { "type": ["boolean", "null"] },
+        "complement": { "type": ["string", "null"] },
+        "neighborhood_id": { "$ref": "#/$defs/uuid_or_null" },
+        "district": { "type": ["string", "null"] },
+        "reference": { "type": ["string", "null"] }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client_uuid", "type", "body"],
+      "properties": {
+        "client_uuid": { "$ref": "#/$defs/uuid", "description": "Gerado pelo app, um por item; chave de idempotência (field_sync_receipts). Só itens aceitos vão ao livro." },
+        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "individual_registration"] },
+        "body": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "required": ["type"], "properties": { "type": { "const": "home_visit" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/home_visit_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "home_visit_withdrawal" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/home_visit_withdrawal_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "collective_activity" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/collective_activity_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "patient" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/patient_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "household" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/household_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "individual_registration" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/individual_registration_body" } } } }
+      ]
+    },
+    "home_visit_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Corpo do POST /home_visits (§6) sem client_uuid (vai no item). shift nunca vem: o api deriva de occurred_at no fuso da cidade. patient_client_uuid cita um item patient aceito antes (C11). latitude e longitude ficam para o 24c.",
+      "required": ["team_id", "occurred_at", "subject", "outcome", "reasons", "shared"],
+      "properties": {
+        "team_id": { "$ref": "#/$defs/uuid" },
+        "occurred_at": { "$ref": "#/$defs/datetime" },
+        "household_id": { "$ref": "#/$defs/uuid" },
+        "household_client_uuid": { "$ref": "#/$defs/uuid", "description": "Cita um item household aceito antes, no mesmo lote ou em outro (Q27, §9.3). No máximo um entre household_id e household_client_uuid." },
+        "micro_area_id": { "$ref": "#/$defs/uuid" },
+        "out_of_area": { "type": "boolean" },
+        "property_type": { "$ref": "#/$defs/property_type" },
+        "subject": { "enum": ["resident", "family_responsible", "none"] },
+        "patient_id": { "$ref": "#/$defs/uuid" },
+        "patient_client_uuid": { "$ref": "#/$defs/uuid" },
+        "new_patient": { "$ref": "#/$defs/new_patient" },
+        "family_id": { "$ref": "#/$defs/uuid" },
+        "duplicates_reviewed": { "type": "boolean" },
+        "outcome": { "enum": [1, 2, 3], "description": "1 Realizada, 2 Recusada, 3 Ausente." },
+        "reasons": { "type": "array", "uniqueItems": true, "maxItems": 36, "items": { "$ref": "#/$defs/visit_reason" }, "description": "No máximo 36 (motivosVisita do LEDI; Q36); estourar → no app, rejected invalid_request com path reasons (Q31); na rota da equipe, 422 invalid_home_visit." },
+        "shared": { "type": "boolean" },
+        "measurements": { "$ref": "#/$defs/visit_measurements" },
+        "note": { "type": "string", "minLength": 1, "maxLength": 500, "description": "Observação interna: nunca vai ao LEDI, à linha do tempo nem ao cidadão." }
+      },
+      "allOf": [
+        { "not": { "required": ["household_id", "household_client_uuid"] } },
+        { "not": { "required": ["patient_id", "patient_client_uuid"] } }
+      ]
+    },
+    "visit_reason": {
+      "enum": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38],
+      "description": "MotivoVisita (domains-v1.json, home_visit.motivo_visita). Não existe o 26."
+    },
+    "visit_measurements": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Só as medidas aferidas (§3). Casas decimais e as proibições (desfecho 2 e 3, não residencial) são do api.",
+      "properties": {
+        "weight_kg": { "type": "number", "minimum": 0.5, "maximum": 500 },
+        "height_cm": { "type": "number", "minimum": 20, "maximum": 250 },
+        "systolic": { "type": "integer", "minimum": 0, "maximum": 999 },
+        "diastolic": { "type": "integer", "minimum": 0, "maximum": 999 },
+        "temperature_c": { "type": "number", "minimum": 20, "maximum": 45 },
+        "glucose_mg_dl": { "type": "integer", "minimum": 0, "maximum": 800 },
+        "glucose_type": { "enum": [0, 1, 2, 3] }
+      },
+      "dependentRequired": {
+        "systolic": ["diastolic"],
+        "diastolic": ["systolic"],
+        "glucose_mg_dl": ["glucose_type"],
+        "glucose_type": ["glucose_mg_dl"]
+      }
+    },
+    "new_patient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["full_name", "birth_date", "sex"],
+      "description": "Registro rápido (§5, 7A): cria o paciente na transação do item. cpf ou no_cpf_reason (regra do api: cpf_or_reason_required).",
+      "properties": {
+        "full_name": { "type": "string", "minLength": 1 },
+        "birth_date": { "$ref": "#/$defs/date" },
+        "sex": { "enum": ["male", "female"] },
+        "mother_name": { "type": "string", "minLength": 1 },
+        "cpf": { "type": "string", "pattern": "^[0-9]{11}$" },
+        "no_cpf_reason": { "$ref": "#/$defs/no_cpf_reason" },
+        "cns": { "type": "string", "pattern": "^[0-9]{15}$" }
+      }
+    },
+    "registration_new_patient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["full_name", "birth_date", "sex"],
+      "description": "new_patient do cadastro individual do 24a (§5), que aceita também social_name.",
+      "properties": {
+        "full_name": { "type": "string", "minLength": 1 },
+        "social_name": { "type": "string", "minLength": 1 },
+        "birth_date": { "$ref": "#/$defs/date" },
+        "sex": { "enum": ["male", "female"] },
+        "mother_name": { "type": "string", "minLength": 1 },
+        "cpf": { "type": "string", "pattern": "^[0-9]{11}$" },
+        "no_cpf_reason": { "$ref": "#/$defs/no_cpf_reason" },
+        "cns": { "type": "string", "pattern": "^[0-9]{15}$" }
+      }
+    },
+    "home_visit_withdrawal_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason"],
+      "description": "Retirada (§2): visit_client_uuid (visita enviada pelo app) ou visit_id, um dos dois (regra do api). Só com a folha aberta.",
+      "properties": {
+        "visit_client_uuid": { "$ref": "#/$defs/uuid" },
+        "visit_id": { "$ref": "#/$defs/uuid" },
+        "reason": { "type": "string", "minLength": 10, "maxLength": 500 }
+      }
+    },
+    "collective_activity_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Corpo do POST /collective_activities (§7): a atividade inteira, sem rascunho. Lista ausente = vazia; tamanhos máximos oficiais (Q36). altered_count não vem: o api deriva dos participantes com altered_evaluation (Q38). Local plano (Q15): place_health_unit_id (unidade ativa com CNES) ou place_text, exatamente um; INEP nunca (sem PSE). O tema 18 não existe aqui. duplicates_reviewed só dentro de cada participante (Q15).",
+      "required": ["team_id", "held_on", "shift", "activity_type", "participants_count"],
+      "oneOf": [{ "required": ["place_health_unit_id"] }, { "required": ["place_text"] }],
+      "properties": {
+        "team_id": { "$ref": "#/$defs/uuid" },
+        "held_on": { "$ref": "#/$defs/date" },
+        "shift": { "enum": [1, 2, 3] },
+        "activity_type": { "enum": [1, 2, 3, 4, 5, 6, 7] },
+        "place_health_unit_id": { "$ref": "#/$defs/uuid" },
+        "place_text": { "type": "string", "minLength": 1, "maxLength": 250 },
+        "participants_count": { "type": "integer", "minimum": 1, "maximum": 999 },
+        "meeting_topics": { "type": "array", "uniqueItems": true, "maxItems": 7, "items": { "enum": [1, 2, 3, 4, 5, 6, 7, 8] } },
+        "target_audience": { "type": "array", "uniqueItems": true, "maxItems": 17, "items": { "enum": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20] } },
+        "health_topics": { "type": "array", "uniqueItems": true, "maxItems": 16, "items": { "enum": [1, 4, 5, 6, 7, 8, 10, 13, 14, 15, 16, 17, 19, 21, 29, 31, 32] } },
+        "health_practices": { "type": "array", "uniqueItems": true, "maxItems": 14, "items": { "enum": [2, 3, 9, 11, 12, 20, 22, 23, 24, 25, 26, 27, 28, 30, 33, 34] } },
+        "procedure_code": { "enum": ["0101050178", "0101050160", "0102020078", "0102010510", "0311020046", "0311020038", "0311020020", "0102020027", "0101010133", "0101010214", "0101010303", "0101010141", "0101010168", "0101010257", "0101010176", "0101010290", "0101010249", "0101010192", "0101010206", "0101010109", "0101010281", "0101010222", "0101010273", "0101010125", "0101010150", "0101010184", "0101010230", "0101010265", "0101010010", "0101010028", "0102010056", "0102010501", "0101020015", "0101020023", "0101020031", "0101020040", "0101020112", "0101040032", "0101020082", "0101050151", "0101050054", "0101040040", "0101010036", "0301080275", "0101050011", "0301080283", "0101010095", "0101050062", "0101050119", "0101050100", "0101050127", "0101050135", "0101050070", "0101050089", "0804020051", "0101050020", "0307010074", "0101050046"], "description": "Um dos 58 códigos SIGTAP de outro_procedimento_coletivo (domains-v1.json; Q37). Obrigatório com a prática 30 e proibido sem ela (regra do api)." },
+        "professionals": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["professional_id"],
+            "properties": { "professional_id": { "$ref": "#/$defs/uuid" } }
+          }
+        },
+        "participants": { "type": "array", "maxItems": 999, "items": { "$ref": "#/$defs/participant" } }
+      }
+    },
+    "participant": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "patient_id, patient_client_uuid ou new_patient, um só (regra do api). duplicates_reviewed acompanha o new_patient (Q15).",
+      "properties": {
+        "patient_id": { "$ref": "#/$defs/uuid" },
+        "patient_client_uuid": { "$ref": "#/$defs/uuid" },
+        "new_patient": { "$ref": "#/$defs/new_patient" },
+        "duplicates_reviewed": { "type": "boolean" },
+        "altered_evaluation": { "type": "boolean" },
+        "measurements": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "weight_kg": { "type": "number", "minimum": 0.5, "maximum": 500 },
+            "height_cm": { "type": "number", "minimum": 20, "maximum": 250 }
+          }
+        },
+        "smoking": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "quit": { "type": "boolean" },
+            "dropped_out": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "patient_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["new_patient"],
+      "properties": {
+        "new_patient": { "$ref": "#/$defs/new_patient" },
+        "duplicates_reviewed": { "type": "boolean" }
+      }
+    },
+    "household_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Corpo do POST/PATCH /territory/households do 24a (§4, L6, L7); na atualização, household_id e version (a esperada; vencida → stale_version). Família tem rota própria e não entra no v1 (K-4). living_conditions: seção do dicionário do 24a (§15), conferida pelo api.",
+      "required": ["micro_area_id", "property_type"],
+      "properties": {
+        "household_id": { "$ref": "#/$defs/uuid" },
+        "version": { "type": "integer", "minimum": 1 },
+        "micro_area_id": { "$ref": "#/$defs/uuid" },
+        "address": { "$ref": "#/$defs/address" },
+        "property_type": { "$ref": "#/$defs/property_type" },
+        "living_conditions": { "type": "object" },
+        "contact_phone": { "type": ["string", "null"] },
+        "refused": { "type": "boolean" },
+        "status": { "enum": ["active", "inactive"] }
+      },
+      "dependentRequired": { "household_id": ["version"], "version": ["household_id"] }
+    },
+    "individual_registration_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Corpo do POST/PATCH /territory/registrations do 24a (§5, L4, L7); na atualização, registration_id e version. identification, sociodemographic, health_conditions e street_situation: seções do dicionário do 24a (§15), conferidas pelo api.",
+      "properties": {
+        "registration_id": { "$ref": "#/$defs/uuid" },
+        "version": { "type": "integer", "minimum": 1 },
+        "patient_id": { "$ref": "#/$defs/uuid" },
+        "citizen_id": { "$ref": "#/$defs/uuid" },
+        "new_patient": { "$ref": "#/$defs/registration_new_patient" },
+        "duplicates_reviewed": { "type": "boolean" },
+        "patient_client_uuid": { "$ref": "#/$defs/uuid", "description": "Cita um item patient aceito antes, no mesmo lote ou em outro (Q27, §9.3). No máximo um entre patient_id e patient_client_uuid." },
+        "household_id": { "$ref": "#/$defs/uuid" },
+        "household_client_uuid": { "$ref": "#/$defs/uuid", "description": "Cita um item household aceito antes, no mesmo lote ou em outro (Q27, §9.3). No máximo um entre household_id e household_client_uuid." },
+        "family_id": { "$ref": "#/$defs/uuid" },
+        "is_responsible": { "type": "boolean" },
+        "team_id": { "$ref": "#/$defs/uuid" },
+        "identification": { "type": "object" },
+        "patient_demographics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "race_color": { "type": ["string", "null"] },
+            "ethnicity": { "type": ["string", "null"] }
+          }
+        },
+        "sociodemographic": { "type": "object" },
+        "health_conditions": { "type": "object" },
+        "street_situation": { "type": ["object", "null"] },
+        "refused": { "type": "boolean" }
+      },
+      "dependentRequired": { "registration_id": ["version"], "version": ["registration_id"] },
+      "allOf": [
+        { "not": { "required": ["household_id", "household_client_uuid"] } },
+        { "not": { "required": ["patient_id", "patient_client_uuid"] } }
+      ]
+    }
+  }
+}

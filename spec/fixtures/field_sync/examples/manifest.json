@@ -1,0 +1,344 @@
+{
+  "suites": [
+    {
+      "schema": "session-response-v1.json",
+      "cases": [
+        {
+          "file": "session-acs.json",
+          "expect": "valid"
+        },
+        {
+          "file": "session-assigned-agent.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-session-contract-v2.json",
+          "expect": "/contract const"
+        },
+        {
+          "file": "invalid-session-scope-team.json",
+          "expect": "/teams/0/micro_areas/0/scope enum"
+        },
+        {
+          "file": "invalid-session-token-key.json",
+          "expect": "/token schema"
+        }
+      ]
+    },
+    {
+      "schema": "upload-request-v1.json",
+      "cases": [
+        {
+          "file": "upload-home-visit-resident.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-home-visit-non-residential.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-home-visit-withdrawal.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-collective-activity.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-collective-activity-other-procedure.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-patient.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-household-update.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-individual-registration.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-mixed-batch.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-home-visit-new-household.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-registration-same-batch.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-upload-empty.json",
+          "expect": "/items minItems"
+        },
+        {
+          "file": "invalid-upload-51-items.json",
+          "expect": "/items maxItems"
+        },
+        {
+          "file": "invalid-upload-unknown-type.json",
+          "expect": "/items/0/type enum"
+        },
+        {
+          "file": "invalid-upload-client-uuid-uppercase.json",
+          "expect": "/items/0/client_uuid pattern"
+        },
+        {
+          "file": "invalid-home-visit-shift-in-body.json",
+          "expect": "/items/0/body/shift schema"
+        },
+        {
+          "file": "invalid-home-visit-occurred-at-without-offset.json",
+          "expect": "/items/0/body/occurred_at pattern"
+        },
+        {
+          "file": "invalid-home-visit-outcome-4.json",
+          "expect": "/items/0/body/outcome enum"
+        },
+        {
+          "file": "invalid-home-visit-reason-26.json",
+          "expect": "/items/0/body/reasons/0 enum"
+        },
+        {
+          "file": "invalid-home-visit-systolic-alone.json",
+          "expect": "/items/0/body/measurements/systolic dependentRequired"
+        },
+        {
+          "file": "invalid-home-visit-note-too-long.json",
+          "expect": "/items/0/body/note maxLength"
+        },
+        {
+          "file": "invalid-home-visit-latitude.json",
+          "expect": "/items/0/body/latitude schema"
+        },
+        {
+          "file": "invalid-home-visit-client-uuid-in-body.json",
+          "expect": "/items/0/body/client_uuid schema"
+        },
+        {
+          "file": "invalid-home-visit-two-households.json",
+          "expect": "/items/2/body not"
+        },
+        {
+          "file": "invalid-registration-two-patients.json",
+          "expect": "/items/2/body not"
+        },
+        {
+          "file": "invalid-withdrawal-reason-short.json",
+          "expect": "/items/0/body/reason minLength"
+        },
+        {
+          "file": "invalid-home-visit-37-reasons.json",
+          "expect": "/items/0/body/reasons maxItems"
+        },
+        {
+          "file": "invalid-collective-activity-altered-count-in-body.json",
+          "expect": "/items/0/body/altered_count schema"
+        },
+        {
+          "file": "invalid-collective-activity-8-meeting-topics.json",
+          "expect": "/items/0/body/meeting_topics maxItems"
+        },
+        {
+          "file": "invalid-collective-activity-19-target-audience.json",
+          "expect": "/items/0/body/target_audience maxItems"
+        },
+        {
+          "file": "invalid-collective-activity-17-health-topics.json",
+          "expect": "/items/0/body/health_topics maxItems"
+        },
+        {
+          "file": "invalid-collective-activity-16-health-practices.json",
+          "expect": "/items/0/body/health_practices maxItems"
+        },
+        {
+          "file": "invalid-collective-activity-procedure-not-sigtap-list.json",
+          "expect": "/items/0/body/procedure_code enum"
+        },
+        {
+          "file": "invalid-collective-activity-pse-topic-18.json",
+          "expect": "/items/0/body/health_topics/0 enum"
+        },
+        {
+          "file": "invalid-collective-activity-two-places.json",
+          "expect": "/items/0/body oneOf"
+        },
+        {
+          "file": "invalid-collective-activity-inep.json",
+          "expect": "/items/0/body/inep schema"
+        },
+        {
+          "file": "invalid-patient-cpf-masked.json",
+          "expect": "/items/0/body/new_patient/cpf pattern"
+        },
+        {
+          "file": "invalid-household-version-without-id.json",
+          "expect": "/items/0/body/version dependentRequired"
+        },
+        {
+          "file": "invalid-household-property-type-integer.json",
+          "expect": "/items/0/body/property_type enum"
+        }
+      ]
+    },
+    {
+      "schema": "upload-response-v1.json",
+      "cases": [
+        {
+          "file": "upload-response-accepted.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-duplicate.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-rejected.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-duplicate-suspected.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-duplicate-participant.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-invalid-patient.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-withdrawal-rejected.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-invalid-request.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-stale-household.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-stale-registration.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-response-rejected-without-client-uuid.json",
+          "expect": "/results/1 required"
+        },
+        {
+          "file": "invalid-response-accepted-without-id.json",
+          "expect": "/results/0 required"
+        },
+        {
+          "file": "invalid-response-status-queued.json",
+          "expect": "/results/0/status enum"
+        },
+        {
+          "file": "invalid-response-candidate-with-cpf.json",
+          "expect": "/results/0/candidates/0/cpf schema"
+        },
+        {
+          "file": "invalid-response-stale-without-current.json",
+          "expect": "/results/0 required"
+        },
+        {
+          "file": "invalid-response-rejected-with-id.json",
+          "expect": "/results/0/id schema"
+        },
+        {
+          "file": "invalid-response-candidates-without-duplicate-suspected.json",
+          "expect": "/results/0/error const"
+        },
+        {
+          "file": "invalid-response-duplicate-participant-without-confirmable.json",
+          "expect": "/results/0 required"
+        },
+        {
+          "file": "invalid-response-confirmable-on-other-error.json",
+          "expect": "/results/0/confirmable schema"
+        },
+        {
+          "file": "invalid-response-stale-household-with-cpf.json",
+          "expect": "/results/0/current/families/0/responsible/cpf schema"
+        }
+      ]
+    },
+    {
+      "schema": "changes-response-v1.json",
+      "cases": [
+        {
+          "file": "changes-first-page.json",
+          "expect": "valid"
+        },
+        {
+          "file": "changes-last-page.json",
+          "expect": "valid"
+        },
+        {
+          "file": "changes-last-page-age-null.json",
+          "expect": "valid"
+        },
+        {
+          "file": "changes-last-page-care-line-never-done.json",
+          "expect": "valid"
+        },
+        {
+          "file": "changes-removals.json",
+          "expect": "valid"
+        },
+        {
+          "file": "changes-reset.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-changes-who-null-on-last-page.json",
+          "expect": "/who_to_visit object"
+        },
+        {
+          "file": "invalid-changes-who-on-middle-page.json",
+          "expect": "/who_to_visit null"
+        },
+        {
+          "file": "invalid-changes-removal-reason-death.json",
+          "expect": "/removals/0/reason enum"
+        },
+        {
+          "file": "invalid-changes-household-without-version.json",
+          "expect": "/items/1 required"
+        },
+        {
+          "file": "invalid-changes-micro-area-with-version.json",
+          "expect": "/items/0/version schema"
+        },
+        {
+          "file": "invalid-changes-registration-with-cpf.json",
+          "expect": "/items/2/body/patient/cpf schema"
+        },
+        {
+          "file": "invalid-changes-care-line-reason-with-cid.json",
+          "expect": "/who_to_visit/micro_areas/0/people/0/reasons/0/cid10 schema"
+        },
+        {
+          "file": "invalid-changes-care-line-due-soon-null-due-on.json",
+          "expect": "/who_to_visit/micro_areas/0/people/0/reasons/0/due_on string"
+        },
+        {
+          "file": "invalid-changes-registration-due-null-due-on.json",
+          "expect": "/who_to_visit/micro_areas/0/people/1/reasons/0/due_on string"
+        },
+        {
+          "file": "invalid-changes-cursor-null.json",
+          "expect": "/next_cursor string"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee07-0000-4000-8000-000000000007",
+      "type": "individual_registration",
+      "body": {
+        "patient_id": "1f2a3b4c-5d6e-4f7a-9b8c-9d0e1f2a3b4c",
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "family_id": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",
+        "is_responsible": false,
+        "identification": {},
+        "patient_demographics": {
+          "race_color": "01",
+          "ethnicity": null
+        },
+        "sociodemographic": {},
+        "health_conditions": {},
+        "refused": false
+      }
+    }
+  ]
+}

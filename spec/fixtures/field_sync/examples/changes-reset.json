@@ -1,0 +1,28 @@
+{
+  "reset": true,
+  "items": [
+    {
+      "type": "micro_area",
+      "id": "7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+      "body": {
+        "id": "7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+        "team": {
+          "id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+          "ine": "0001234567",
+          "name": "ESF Vila Nova"
+        },
+        "code": "07",
+        "name": "Jardim Esperança",
+        "acs": {
+          "professional_id": "4c5d6e7f-8a9b-4c0d-8e1f-2a3b4c5d6e7f",
+          "name": "Rosângela Alves"
+        },
+        "active": true
+      }
+    }
+  ],
+  "removals": [],
+  "who_to_visit": null,
+  "next_cursor": "eyJ2IjoxLCJzaW5jZSI6IjIwMjYtMTEtMTJUMTI6MDA6MDBaIn0",
+  "has_more": true
+}

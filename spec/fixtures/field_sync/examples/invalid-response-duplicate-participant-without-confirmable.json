@@ -1,0 +1,19 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee11-0000-4000-8000-000000000011",
+      "status": "rejected",
+      "type": "collective_activity",
+      "error": "duplicate_participant",
+      "path": "participants[1]"
+    },
+    {
+      "client_uuid": "c0ffee12-0000-4000-8000-000000000012",
+      "status": "rejected",
+      "type": "collective_activity",
+      "error": "duplicate_participant",
+      "path": "participants[2]",
+      "confirmable": false
+    }
+  ]
+}

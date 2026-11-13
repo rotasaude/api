@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee06-0000-4000-8000-000000000006",
+      "status": "stale_version",
+      "type": "household",
+      "id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+      "current_version": 4
+    }
+  ]
+}

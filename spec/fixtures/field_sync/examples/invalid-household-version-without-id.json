@@ -1,0 +1,27 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee06-0000-4000-8000-000000000006",
+      "type": "household",
+      "body": {
+        "version": 3,
+        "micro_area_id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+        "property_type": "1",
+        "refused": false,
+        "contact_phone": "41999990000",
+        "address": {
+          "zip": "80010000",
+          "street_type": "RUA",
+          "street": "das Flores",
+          "number": "120",
+          "no_number": false,
+          "complement": null,
+          "neighborhood_id": null,
+          "district": "Centro",
+          "reference": "Perto da praça"
+        },
+        "living_conditions": {}
+      }
+    }
+  ]
+}

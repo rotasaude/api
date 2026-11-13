@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee05-0000-4000-8000-000000000005",
+      "type": "patient",
+      "body": {
+        "new_patient": {
+          "full_name": "Benedita Aparecida Rocha",
+          "birth_date": "1948-05-02",
+          "sex": "female",
+          "mother_name": "Maria José Rocha",
+          "no_cpf_reason": "2",
+          "cns": "702000000000001"
+        },
+        "duplicates_reviewed": false
+      }
+    }
+  ]
+}

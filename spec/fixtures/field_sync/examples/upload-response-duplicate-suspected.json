@@ -1,0 +1,28 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee10-0000-4000-8000-000000000010",
+      "status": "rejected",
+      "type": "patient",
+      "error": "duplicate_suspected",
+      "candidates": [
+        {
+          "patient_id": "1f2a3b4c-5d6e-4f7a-9b8c-9d0e1f2a3b4c",
+          "display_name": "Benedita Rocha",
+          "birth_date": "1948-05-02",
+          "sex": "female",
+          "has_cpf": false,
+          "has_cns": true
+        },
+        {
+          "patient_id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+          "display_name": "Benedita A. Rocha",
+          "birth_date": "1948-05-02",
+          "sex": null,
+          "has_cpf": true,
+          "has_cns": false
+        }
+      ]
+    }
+  ]
+}

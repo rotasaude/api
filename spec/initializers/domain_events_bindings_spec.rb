@@ -711,6 +711,16 @@ RSpec.describe "home visit bindings (ADR 0052)" do
     expect(DomainEvents.registry["home_visit.recorded"]).to be_empty
   end
 
+  # Task 19: o cadastro (FieldDevices::Register: field_device_id, user_id) e a
+  # revogação do aparelho de campo (FieldDevices::Revoke: field_device_id,
+  # user_id, reason) — nunca o token, o digest nem o nome do aparelho.
+  it "declares field_device.registered and field_device.revoked with no consumer" do
+    names = %w[field_device.registered field_device.revoked]
+    expect(HomeVisits::Catalog::DOMAIN_EVENTS).to include(*names)
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |name| DomainEvents.registry[name] }).to be_empty
+  end
+
   # Task 13: a gravação da atividade coletiva (CollectiveActivities::Record) e
   # o "registrada por engano" (CollectiveActivities::MarkMistaken) —
   # collective_activity_id e user_id, nunca tema, público, prática, motivo ou

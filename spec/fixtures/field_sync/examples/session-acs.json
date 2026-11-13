@@ -1,0 +1,35 @@
+{
+  "contract": "field-sync-v1",
+  "server_time": "2026-11-12T12:00:00Z",
+  "user": {
+    "id": "3b4c5d6e-7f8a-4b9c-9d0e-1f2a3b4c5d6e",
+    "name": "Rosângela Alves"
+  },
+  "professional": {
+    "id": "4c5d6e7f-8a9b-4c0d-8e1f-2a3b4c5d6e7f",
+    "cbo": "515105",
+    "has_cns": true
+  },
+  "teams": [
+    {
+      "id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+      "ine": "0001234567",
+      "name": "ESF Vila Nova",
+      "micro_areas": [
+        {
+          "id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+          "code": "03",
+          "name": "Vila Nova — rua das Flores",
+          "scope": "responsible"
+        }
+      ],
+      "out_of_area_allowed": true
+    }
+  ],
+  "features": {
+    "home_visits": true,
+    "collective_activities": true,
+    "territory_registry": true
+  },
+  "min_date": "2026-10-01"
+}

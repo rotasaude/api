@@ -513,6 +513,13 @@ Rails.application.config.to_prepare do
   # (HomeVisits::Record) — home_visit_id, home_visit_day_id e user_id, nunca
   # motivo, medida, observação ou pessoa; sem consumidor.
   DomainEvents.bind "home_visit.recorded", to: []
+  # Módulo 24b (ADR 0052; contrato §1, §9.1, §9.2): o cadastro do aparelho de
+  # campo (FieldDevices::Register) — field_device_id e user_id — e a revogação
+  # (FieldDevices::Revoke: o dono, o municipal_admin ou a borda do app quando o
+  # vínculo acabou) — field_device_id, user_id e reason (código). Nunca o
+  # token, o digest nem o nome do aparelho. Sem consumidor.
+  DomainEvents.bind "field_device.registered", to: []
+  DomainEvents.bind "field_device.revoked", to: []
   # Módulo 24b (ADR 0052; contrato §1, §2, §4; Task 13): a gravação da
   # atividade coletiva (CollectiveActivities::Record) e o "registrada por
   # engano" (CollectiveActivities::MarkMistaken) — collective_activity_id e

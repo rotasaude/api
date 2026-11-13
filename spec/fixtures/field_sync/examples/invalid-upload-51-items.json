@@ -1,0 +1,412 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee02-0000-4000-8000-000000000002",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee03-0000-4000-8000-000000000003",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee04-0000-4000-8000-000000000004",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee05-0000-4000-8000-000000000005",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee06-0000-4000-8000-000000000006",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee07-0000-4000-8000-000000000007",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee08-0000-4000-8000-000000000008",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee09-0000-4000-8000-000000000009",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee10-0000-4000-8000-000000000010",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee11-0000-4000-8000-000000000011",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee12-0000-4000-8000-000000000012",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee13-0000-4000-8000-000000000013",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee14-0000-4000-8000-000000000014",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee15-0000-4000-8000-000000000015",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee16-0000-4000-8000-000000000016",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee17-0000-4000-8000-000000000017",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee18-0000-4000-8000-000000000018",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee19-0000-4000-8000-000000000019",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee20-0000-4000-8000-000000000020",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee21-0000-4000-8000-000000000021",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee22-0000-4000-8000-000000000022",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee23-0000-4000-8000-000000000023",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee24-0000-4000-8000-000000000024",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee25-0000-4000-8000-000000000025",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee26-0000-4000-8000-000000000026",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee27-0000-4000-8000-000000000027",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee28-0000-4000-8000-000000000028",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee29-0000-4000-8000-000000000029",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee30-0000-4000-8000-000000000030",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee31-0000-4000-8000-000000000031",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee32-0000-4000-8000-000000000032",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee33-0000-4000-8000-000000000033",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee34-0000-4000-8000-000000000034",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee35-0000-4000-8000-000000000035",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee36-0000-4000-8000-000000000036",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee37-0000-4000-8000-000000000037",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee38-0000-4000-8000-000000000038",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee39-0000-4000-8000-000000000039",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee40-0000-4000-8000-000000000040",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee41-0000-4000-8000-000000000041",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee42-0000-4000-8000-000000000042",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee43-0000-4000-8000-000000000043",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee44-0000-4000-8000-000000000044",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee45-0000-4000-8000-000000000045",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee46-0000-4000-8000-000000000046",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee47-0000-4000-8000-000000000047",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee48-0000-4000-8000-000000000048",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee49-0000-4000-8000-000000000049",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee50-0000-4000-8000-000000000050",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    },
+    {
+      "client_uuid": "c0ffee51-0000-4000-8000-000000000051",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "Visita registrada no domicílio errado."
+      }
+    }
+  ]
+}

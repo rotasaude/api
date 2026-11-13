@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rota-saude/schemas/field-sync/changes-response-v1.json",
+  "title": "rotasaude.field_sync.changes_response.v1",
+  "description": "GET /field/v1/changes (contrato do 24b §9.3): uma página do download incremental do escopo do aparelho, em ordem (updated_at, id). reset: true = o escopo mudou desde o cursor; o app apaga o que baixou (nunca o que falta enviar) e aplica as páginas. who_to_visit vem só na última página (has_more: false), sempre completo; nas outras, null. next_cursor é opaco e sempre vem: o app o guarda para a próxima sincronização (K-10).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reset", "items", "removals", "who_to_visit", "next_cursor", "has_more"],
+  "properties": {
+    "reset": { "type": "boolean" },
+    "items": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/change_item" } },
+    "removals": { "type": "array", "items": { "$ref": "#/$defs/removal" } },
+    "who_to_visit": { "type": ["object", "null"] },
+    "next_cursor": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[A-Za-z0-9_-]+$", "description": "base64url sem padding; nenhum dado pessoal." },
+    "has_more": { "type": "boolean" }
+  },
+  "allOf": [
+    { "if": { "required": ["has_more"], "properties": { "has_more": { "const": true } } },
+      "then": { "properties": { "who_to_visit": { "type": "null" } } },
+      "else": { "properties": { "who_to_visit": { "$ref": "#/$defs/who_to_visit" } } } }
+  ],
+  "$defs": {
+        "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "uuid_or_null": { "type": ["string", "null"], "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "datetime": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$", "description": "ISO 8601 com segundos e fuso explícito (Z ou ±hh:mm); nunca hora local sem fuso." },
+    "datetime_or_null": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$" },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "date_or_null": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "micro_area_code": { "type": "string", "pattern": "^[0-9]{2}$" },
+    "micro_area_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "code"],
+      "properties": { "id": { "$ref": "#/$defs/uuid" }, "code": { "$ref": "#/$defs/micro_area_code" } }
+    },
+    "team_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ine", "name"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "ine": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "registered_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": { "name": { "type": ["string", "null"] } }
+    },
+    "property_type": { "enum": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "99"], "description": "TerritoryRegistry::Catalog::PROPERTY_TYPES (texto, como no 24a). Não residencial: 2, 3, 4, 5, 6, 12, 13." },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Chaves de TerritoryRegistry::Address::KEYS (24a L6). Objeto vazio no domicílio recusado sem endereço. Tamanhos são do api (invalid_household com path).",
+      "properties": {
+        "zip": { "type": ["string", "null"], "pattern": "^[0-9]{8}$" },
+        "street_type": { "type": ["string", "null"] },
+        "street": { "type": ["string", "null"] },
+        "number": { "type": ["string", "null"] },
+        "no_number": { "type": ["boolean", "null"] },
+        "complement": { "type": ["string", "null"] },
+        "neighborhood_id": { "$ref": "#/$defs/uuid_or_null" },
+        "district": { "type": ["string", "null"] },
+        "reference": { "type": ["string", "null"] }
+      }
+    },
+    "household": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "<household> do 24a (§2; L6, L7, L30; TerritoryRegistry::Json.household com full: true): com families e living_conditions. Responsável da família só com patient_id e display_name, nunca CPF.",
+      "required": ["id", "micro_area", "address", "property_type", "contact_phone", "refused", "status", "version", "registered_at", "registered_by", "families", "living_conditions"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "micro_area": { "$ref": "#/$defs/micro_area_ref" },
+        "address": { "$ref": "#/$defs/address" },
+        "property_type": { "$ref": "#/$defs/property_type" },
+        "contact_phone": { "type": ["string", "null"] },
+        "refused": { "type": "boolean" },
+        "status": { "enum": ["active", "inactive"] },
+        "version": { "type": "integer", "minimum": 1 },
+        "registered_at": { "$ref": "#/$defs/datetime" },
+        "registered_by": { "$ref": "#/$defs/registered_by" },
+        "families": { "type": "array", "items": { "$ref": "#/$defs/family" } },
+        "living_conditions": { "type": "object", "description": "Seção do dicionário do 24a (§15): chaves e domínios do api, não deste esquema (K-2)." }
+      }
+    },
+    "family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "responsible", "income_band", "members_count", "living_since", "moved_out", "responsible_exited"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "responsible": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["patient_id", "display_name"],
+          "properties": {
+            "patient_id": { "$ref": "#/$defs/uuid" },
+            "display_name": { "type": "string", "minLength": 1 }
+          }
+        },
+        "income_band": { "type": ["string", "null"] },
+        "members_count": { "type": "integer", "minimum": 0 },
+        "living_since": { "type": ["string", "null"] },
+        "moved_out": { "type": "boolean" },
+        "responsible_exited": { "type": "boolean" }
+      }
+    },
+    "registration": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "<registration> do 24a (§2; L4, L7, L9, L21, L24; TerritoryRegistry::Json.registration). CPF nunca: só has_cpf; CNS só mascarado.",
+      "required": ["id", "patient", "patient_demographics", "household_id", "family_id", "is_responsible", "team", "micro_area", "identification", "sociodemographic", "health_conditions", "street_situation", "refused", "exit", "status", "version", "registered_at", "registered_by", "identity_changed_at", "identity_review_pending"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "patient": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "display_name", "full_name", "mother_name", "birth_date", "sex", "has_cpf", "no_cpf_reason", "cns_masked", "identity_locked"],
+          "properties": {
+            "id": { "$ref": "#/$defs/uuid" },
+            "display_name": { "type": "string", "minLength": 1 },
+            "full_name": { "type": "string", "minLength": 1 },
+            "mother_name": { "type": ["string", "null"] },
+            "birth_date": { "$ref": "#/$defs/date_or_null" },
+            "sex": { "enum": ["male", "female", null] },
+            "has_cpf": { "type": "boolean" },
+            "no_cpf_reason": { "enum": ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", null] },
+            "cns_masked": { "type": ["string", "null"] },
+            "identity_locked": { "type": "boolean" }
+          }
+        },
+        "patient_demographics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["race_color", "ethnicity"],
+          "properties": {
+            "race_color": { "type": ["string", "null"] },
+            "ethnicity": { "type": ["string", "null"] }
+          }
+        },
+        "household_id": { "$ref": "#/$defs/uuid_or_null" },
+        "family_id": { "$ref": "#/$defs/uuid_or_null" },
+        "is_responsible": { "type": "boolean" },
+        "team": { "$ref": "#/$defs/team_ref" },
+        "micro_area": { "anyOf": [{ "$ref": "#/$defs/micro_area_ref" }, { "type": "null" }] },
+        "identification": { "type": "object" },
+        "sociodemographic": { "type": "object" },
+        "health_conditions": { "type": "object" },
+        "street_situation": { "type": ["object", "null"] },
+        "refused": { "type": "boolean" },
+        "exit": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["reason", "on", "death_on", "death_certificate"],
+          "properties": {
+            "reason": { "enum": ["moved", "death"] },
+            "on": { "$ref": "#/$defs/date" },
+            "death_on": { "$ref": "#/$defs/date_or_null" },
+            "death_certificate": { "type": ["string", "null"] }
+          }
+        },
+        "status": { "enum": ["valid", "due_soon", "expired", "missing", "missing_identifier", "refused", "exited"] },
+        "version": { "type": "integer", "minimum": 1 },
+        "registered_at": { "$ref": "#/$defs/datetime" },
+        "registered_by": { "$ref": "#/$defs/registered_by" },
+        "identity_changed_at": { "$ref": "#/$defs/datetime_or_null" },
+        "identity_review_pending": { "type": "boolean" }
+      }
+    },
+    "micro_area": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "<micro_area> do 24a (§2; TerritoryRegistry::Json.micro_area).",
+      "required": ["id", "team", "code", "name", "acs", "active"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "team": { "$ref": "#/$defs/team_ref" },
+        "code": { "$ref": "#/$defs/micro_area_code" },
+        "name": { "type": "string", "minLength": 1 },
+        "acs": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["professional_id", "name"],
+          "properties": {
+            "professional_id": { "$ref": "#/$defs/uuid" },
+            "name": { "type": ["string", "null"] }
+          }
+        },
+        "active": { "type": "boolean" }
+      }
+    },
+    "change_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "body"],
+      "properties": {
+        "type": { "enum": ["micro_area", "household", "registration"] },
+        "id": { "$ref": "#/$defs/uuid" },
+        "version": { "type": "integer", "minimum": 1 },
+        "body": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "required": ["type"], "properties": { "type": { "const": "micro_area" } } },
+          "then": { "properties": { "version": false, "body": { "$ref": "#/$defs/micro_area" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "household" } } },
+          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/household" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "registration" } } },
+          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/registration" } } } }
+      ]
+    },
+    "removal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "reason"],
+      "description": "No 24b só moved tem produtor (field_sync_tombstones). erased e out_of_scope ficam no enum mas são reservados no v1 (Q9): o api não os emite ainda, e o app já os trata (apaga o item).",
+      "properties": {
+        "type": { "enum": ["household", "registration"] },
+        "id": { "$ref": "#/$defs/uuid" },
+        "reason": { "enum": ["moved", "erased", "out_of_scope"] }
+      }
+    },
+    "who_to_visit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generated_at", "micro_areas"],
+      "properties": {
+        "generated_at": { "$ref": "#/$defs/datetime" },
+        "micro_areas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["micro_area_id", "people"],
+            "properties": {
+              "micro_area_id": { "$ref": "#/$defs/uuid" },
+              "people": { "type": "array", "items": { "$ref": "#/$defs/who_item" } }
+            }
+          }
+        }
+      }
+    },
+    "who_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Item de 'quem visitar' (§8). Nunca CID, problema ou condição.",
+      "required": ["patient_id", "display_name", "age", "household", "family_id", "micro_area", "last_visit_on", "reasons"],
+      "properties": {
+        "patient_id": { "$ref": "#/$defs/uuid" },
+        "display_name": { "type": "string", "minLength": 1 },
+        "age": { "type": ["integer", "null"], "minimum": 0, "description": "Nulo quando o paciente não tem nascimento (Q33); o app mostra o item sem idade." },
+        "household": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["id", "address_short"],
+          "properties": {
+            "id": { "$ref": "#/$defs/uuid" },
+            "address_short": { "type": "string", "minLength": 1 }
+          }
+        },
+        "family_id": { "$ref": "#/$defs/uuid_or_null" },
+        "micro_area": { "$ref": "#/$defs/micro_area_ref" },
+        "last_visit_on": { "$ref": "#/$defs/date_or_null" },
+        "reasons": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/who_reason" } }
+      }
+    },
+    "who_reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": { "enum": ["care_line", "registration_due", "never_visited"] },
+        "care_line": { "type": "string", "minLength": 1, "description": "Nome da linha de cuidado." },
+        "practice": { "type": "string", "minLength": 1, "description": "Rótulo da boa prática." },
+        "status": { "type": "string" },
+        "due_on": { "anyOf": [{ "$ref": "#/$defs/date" }, { "type": "null" }], "description": "Nulo só em care_line overdue de prática nunca feita (Q60); o app mostra 'nunca feita'." }
+      },
+      "allOf": [
+        { "if": { "required": ["code"], "properties": { "code": { "const": "care_line" } } },
+          "then": { "required": ["care_line", "practice", "status", "due_on"], "properties": { "status": { "enum": ["overdue", "due_soon"] } } } },
+        { "if": { "required": ["code"], "properties": { "code": { "const": "care_line" } } },
+          "then": { "if": { "required": ["status"], "properties": { "status": { "const": "overdue" } } }, "else": { "properties": { "due_on": { "$ref": "#/$defs/date" } } } } },
+        { "if": { "required": ["code"], "properties": { "code": { "const": "registration_due" } } },
+          "then": { "required": ["status", "due_on"], "properties": { "status": { "enum": ["due_soon", "expired"] }, "due_on": { "$ref": "#/$defs/date" }, "care_line": false, "practice": false } } },
+        { "if": { "required": ["code"], "properties": { "code": { "const": "never_visited" } } },
+          "then": { "properties": { "care_line": false, "practice": false, "status": false, "due_on": false } } }
+      ]
+    }
+  }
+}

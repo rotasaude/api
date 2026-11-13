@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee03-0000-4000-8000-000000000003",
+      "type": "home_visit_withdrawal",
+      "body": {
+        "visit_client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+        "reason": "errado"
+      }
+    }
+  ]
+}

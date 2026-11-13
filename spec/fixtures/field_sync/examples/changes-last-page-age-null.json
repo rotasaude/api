@@ -1,0 +1,66 @@
+{
+  "reset": false,
+  "items": [],
+  "removals": [],
+  "who_to_visit": {
+    "generated_at": "2026-11-12T12:00:00Z",
+    "micro_areas": [
+      {
+        "micro_area_id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+        "people": [
+          {
+            "patient_id": "0e1f2a3b-4c5d-4e6f-8a7b-8c9d0e1f2a3b",
+            "display_name": "Joana Conceição",
+            "age": 65,
+            "household": {
+              "id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+              "address_short": "Rua das Flores, 120"
+            },
+            "family_id": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",
+            "micro_area": {
+              "id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+              "code": "03"
+            },
+            "last_visit_on": "2026-08-20",
+            "reasons": [
+              {
+                "code": "care_line",
+                "care_line": "Pessoa com hipertensão",
+                "practice": "2 visitas do ACS nos últimos 12 meses",
+                "status": "overdue",
+                "due_on": "2026-11-01"
+              }
+            ]
+          },
+          {
+            "patient_id": "1f2a3b4c-5d6e-4f7a-9b8c-9d0e1f2a3b4c",
+            "display_name": "Benedita Rocha",
+            "age": null,
+            "household": {
+              "id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+              "address_short": "Rua das Flores, 120"
+            },
+            "family_id": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",
+            "micro_area": {
+              "id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+              "code": "03"
+            },
+            "last_visit_on": null,
+            "reasons": [
+              {
+                "code": "registration_due",
+                "status": "due_soon",
+                "due_on": "2026-12-20"
+              },
+              {
+                "code": "never_visited"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "next_cursor": "eyJ2IjoxLCJzaW5jZSI6IjIwMjYtMTEtMTJUMTI6MDA6MDBaIn0",
+  "has_more": false
+}

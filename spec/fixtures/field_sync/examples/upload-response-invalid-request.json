@@ -1,0 +1,22 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "invalid_request",
+      "path": "reasons[0]"
+    },
+    {
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "invalid_request",
+      "path": "client_uuid"
+    },
+    {
+      "status": "rejected",
+      "error": "invalid_request",
+      "path": "type"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "contract": "field-sync-v1",
+  "server_time": "2026-11-12T12:00:00Z",
+  "user": {
+    "id": "3b4c5d6e-7f8a-4b9c-9d0e-1f2a3b4c5d6e",
+    "name": "Carlos Menezes"
+  },
+  "professional": {
+    "id": "5d6e7f8a-9b0c-4d1e-9f2a-3b4c5d6e7f8a",
+    "cbo": "515140",
+    "has_cns": false
+  },
+  "teams": [
+    {
+      "id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+      "ine": "0001234567",
+      "name": "ESF Vila Nova",
+      "micro_areas": [
+        {
+          "id": "7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+          "code": "07",
+          "name": "Jardim Esperança",
+          "scope": "assigned"
+        }
+      ],
+      "out_of_area_allowed": false
+    }
+  ],
+  "features": {
+    "home_visits": true,
+    "collective_activities": false,
+    "territory_registry": true
+  },
+  "min_date": "2026-10-01"
+}

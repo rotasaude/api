@@ -1,0 +1,437 @@
+{
+  "schema": "rotasaude.field_sync.domains.v1",
+  "description": "Domínios e regras cruzadas da visita (contrato do 24b §3 e §10) e da atividade coletiva (§4 e §11), em dado, para o app de campo montar os formulários sem copiar regra à mão. Códigos LEDI inteiros (IDL 8.7.0); os do 24a em texto. Rótulos e ordem do dicionário oficial (Q39). Quem decide é o api: isto é o espelho. proof registra o commit do api com a prova técnica e o acréscimo do contrato (§10–§11) contra os quais os domínios foram conferidos.",
+  "proof": { "api_commit": "fcf23c87", "date": "2026-11-12", "contract": "docs 714578a §10–§11" },
+  "home_visit": {
+    "turno": [{ "code": 1, "label": "Manhã" }, { "code": 2, "label": "Tarde" }, { "code": 3, "label": "Noite" }],
+    "desfecho": [
+      { "code": 1, "label": "Visita realizada" },
+      { "code": 2, "label": "Visita recusada" },
+      { "code": 3, "label": "Ausente" }
+    ],
+    "motivo_visita": [
+      {
+        "group": "TIPO_VISITA",
+        "label": "Tipo de visita",
+        "items": [{ "code": 1, "label": "Cadastramento / Atualização" }, { "code": 29, "label": "Visita periódica" }]
+      },
+      {
+        "group": "BUSCA_ATIVA",
+        "label": "Busca ativa",
+        "items": [
+          { "code": 2, "label": "Consulta" },
+          { "code": 3, "label": "Exame" },
+          { "code": 4, "label": "Vacina" },
+          { "code": 30, "label": "Condicionalidades do bolsa família" }
+        ]
+      },
+      {
+        "group": "ACOMPANHAMENTO",
+        "label": "Acompanhamento",
+        "items": [
+          { "code": 5, "label": "Gestante" },
+          { "code": 6, "label": "Puérpera" },
+          { "code": 7, "label": "Recém-nascido" },
+          { "code": 8, "label": "Criança" },
+          { "code": 9, "label": "Pessoa com desnutrição" },
+          { "code": 10, "label": "Pessoa em reabilitação ou com deficiência" },
+          { "code": 11, "label": "Pessoa com hipertensão" },
+          { "code": 12, "label": "Pessoa com diabetes" },
+          { "code": 13, "label": "Pessoa com asma" },
+          { "code": 14, "label": "Pessoa com DPOC / enfisema" },
+          { "code": 15, "label": "Pessoa com câncer" },
+          { "code": 16, "label": "Pessoa com outras doenças crônicas" },
+          { "code": 17, "label": "Pessoa com hanseníase" },
+          { "code": 18, "label": "Pessoa com tuberculose" },
+          { "code": 32, "label": "Sintomáticos respiratórios" },
+          { "code": 33, "label": "Tabagista" },
+          { "code": 19, "label": "Domiciliados / Acamados" },
+          { "code": 20, "label": "Condições de vulnerabilidade social" },
+          { "code": 21, "label": "Condicionalidades do bolsa família" },
+          { "code": 22, "label": "Saúde mental" },
+          { "code": 23, "label": "Usuário de álcool" },
+          { "code": 24, "label": "Usuário de outras drogas" },
+          { "code": 38, "label": "Pessoa idosa" }
+        ]
+      },
+      {
+        "group": "CONTROLE_AMBIENTAL_E_VETORIAL",
+        "label": "Controle ambiental e vetorial",
+        "items": [
+          { "code": 34, "label": "Ação educativa" },
+          { "code": 35, "label": "Imóvel com foco" },
+          { "code": 36, "label": "Ação mecânica" },
+          { "code": 37, "label": "Tratamento focal" }
+        ]
+      },
+      {
+        "group": "OUTROS",
+        "label": "Outros",
+        "items": [
+          { "code": 25, "label": "Egresso de internação" },
+          { "code": 27, "label": "Convite para atividades coletivas / campanha de saúde" },
+          { "code": 31, "label": "Orientação / Prevenção" },
+          { "code": 28, "label": "Outros" }
+        ]
+      }
+    ],
+    "tipo_de_imovel": [
+      { "code": "1", "label": "Domicílio" },
+      { "code": "2", "label": "Comércio" },
+      { "code": "3", "label": "Terreno baldio" },
+      {
+        "code": "4",
+        "label": "Ponto Estratégico (cemitério, borracharia, ferro-velho, depósito de sucata ou materiais de construção, garagem de ônibus ou veículo de grande porte, casa de farinha)"
+      },
+      { "code": "5", "label": "Escola" },
+      { "code": "6", "label": "Creche" },
+      { "code": "7", "label": "Abrigo" },
+      { "code": "8", "label": "Instituição de longa permanência para idosos" },
+      { "code": "9", "label": "Unidade prisional" },
+      { "code": "10", "label": "Unidade de medida sócio educativa" },
+      { "code": "11", "label": "Delegacia" },
+      { "code": "12", "label": "Estabelecimento religioso" },
+      { "code": "13", "label": "CASAI" },
+      { "code": "99", "label": "Outros" }
+    ],
+    "tipo_glicemia": [
+      { "code": 0, "label": "Jejum" },
+      { "code": 1, "label": "Pós-prandial" },
+      { "code": 2, "label": "Pré-prandial" },
+      { "code": 3, "label": "Não especificado" }
+    ],
+    "rules": {
+      "shift_from_local_time": [{ "shift": 1, "before": "12:00" }, { "shift": 2, "before": "18:00" }, { "shift": 3, "before": "24:00" }],
+      "registrar_cbos": ["515105", "515310", "515140", "515130", "515125", "322255", "515120"],
+      "out_of_area_cbos": ["515105"],
+      "non_residential_property_types": ["2", "3", "4", "5", "6", "12", "13"],
+      "non_residential_without_person": true,
+      "non_residential_reasons": [1, 34, 35, 36, 37, 27, 31, 28],
+      "outcomes_without_reasons_and_measurements": [2, 3],
+      "male_forbidden_reasons": [5, 6],
+      "without_person_allowed_reasons": [1, 27, 28],
+      "without_person_forbidden_measurements": ["weight_kg", "height_cm"],
+      "responsible_document_reasons": [29, 34, 35, 36, 37],
+      "responsible_document_resident_becomes_family_responsible": true,
+      "responsible_document_without_active_family_without_person": true,
+      "unidentified_patient": { "no_cpf_reason": "unidentified", "error": "patient_unidentified" },
+      "reasons_max": 36,
+      "measurements": {
+        "weight_kg": { "min": 0.5, "max": 500, "decimals": 3, "ledi": "pesoAcompanhamentoNutricional" },
+        "height_cm": { "min": 20, "max": 250, "decimals": 1, "ledi": "alturaAcompanhamentoNutricional" },
+        "systolic": { "min": 0, "max": 999, "decimals": 0, "requires": "diastolic", "ledi": "pressaoSistolica" },
+        "diastolic": { "min": 0, "max": 999, "decimals": 0, "requires": "systolic", "ledi": "pressaoDiastolica" },
+        "temperature_c": { "min": 20, "max": 45, "decimals": 1, "ledi": "temperatura" },
+        "glucose_mg_dl": { "min": 0, "max": 800, "decimals": 0, "requires": "glucose_type", "ledi": "glicemia" },
+        "glucose_type": { "requires": "glucose_mg_dl", "ledi": "tipoGlicemia" }
+      },
+      "client_references": "household_client_uuid e patient_client_uuid citam um item aceito antes, no mesmo lote ou em outro; no máximo um entre o id e o client_uuid correspondente (Q27)",
+      "note_max_length": 500,
+      "withdrawal_reason_length": { "min": 10, "max": 500 },
+      "visits_per_sheet": 99
+    }
+  },
+  "collective_activity": {
+    "tipo_atividade_coletiva": [
+      { "code": 1, "label": "Reunião de equipe" },
+      { "code": 2, "label": "Reunião com outras equipes de saúde" },
+      { "code": 3, "label": "Reunião intersetorial / Conselho local de saúde / Controle social" },
+      { "code": 4, "label": "Educação em saúde" },
+      { "code": 5, "label": "Atendimento em grupo" },
+      { "code": 6, "label": "Avaliação / Procedimento coletivo" },
+      { "code": 7, "label": "Mobilização social" }
+    ],
+    "temas_para_reuniao": [
+      { "code": 1, "label": "Questões administrativas / funcionamento" },
+      { "code": 2, "label": "Processo de trabalho" },
+      { "code": 3, "label": "Diagnóstico / Monitoramento do território" },
+      { "code": 4, "label": "Planejamento / Monitoramento das ações da equipe" },
+      { "code": 5, "label": "Discussão de caso ou projeto terapêutico singular" },
+      { "code": 6, "label": "Educação permanente" },
+      { "code": 7, "label": "Outros" },
+      { "code": 8, "label": "Vigilância em saúde" }
+    ],
+    "temas_para_saude": [
+      { "code": 29, "label": "Ações de combate ao Aedes aegypti" },
+      { "code": 19, "label": "Agravos e Doenças Negligenciadas" },
+      { "code": 1, "label": "Alimentação saudável" },
+      { "code": 4, "label": "Autocuidado de pessoas com doenças crônicas" },
+      { "code": 5, "label": "Cidadania e direitos humanos" },
+      { "code": 7, "label": "Prevenção ao uso de álcool, tabaco e outras drogas" },
+      { "code": 8, "label": "Envelhecimento / Climatério / Andropausa / Etc" },
+      { "code": 10, "label": "Plantas medicinais / Fitoterapia" },
+      { "code": 13, "label": "Prevenção da violência e promoção da cultura da paz" },
+      { "code": 14, "label": "Saúde ambiental" },
+      { "code": 15, "label": "Saúde bucal" },
+      { "code": 6, "label": "Saúde do trabalhador" },
+      { "code": 16, "label": "Saúde mental" },
+      { "code": 17, "label": "Saúde sexual e reprodutiva" },
+      { "code": 31, "label": "Amamentação" },
+      { "code": 32, "label": "Alimentação complementar saudável" },
+      { "code": 21, "label": "Outros" }
+    ],
+    "praticas_em_saude": [
+      { "code": 20, "label": "Antropometria" },
+      { "code": 2, "label": "Aplicação tópica de flúor" },
+      { "code": 23, "label": "Desenvolvimento da linguagem" },
+      { "code": 9, "label": "Escovação dental supervisionada" },
+      { "code": 11, "label": "Práticas corporais e Atividade física" },
+      { "code": 25, "label": "Programa Nacional de Controle do Tabagismo 1" },
+      { "code": 26, "label": "Programa Nacional de Controle do Tabagismo 2" },
+      { "code": 27, "label": "Programa Nacional de Controle do Tabagismo 3" },
+      { "code": 28, "label": "Programa Nacional de Controle do Tabagismo 4" },
+      { "code": 22, "label": "Saúde auditiva" },
+      { "code": 3, "label": "Saúde ocular" },
+      { "code": 24, "label": "Verificação da situação vacinal" },
+      { "code": 12, "label": "Outras" },
+      { "code": 30, "label": "Outro procedimento coletivo" },
+      { "code": 33, "label": "Fornecimento de kit bucal" },
+      { "code": 34, "label": "Programa Nacional de Controle do Tabagismo Manutenção" }
+    ],
+    "publico_alvo": [
+      { "code": 1, "label": "Comunidade em geral" },
+      { "code": 2, "label": "Criança de 0 a 3 anos" },
+      { "code": 3, "label": "Criança de 4 a 5 anos" },
+      { "code": 4, "label": "Criança de 6 a 11 anos" },
+      { "code": 5, "label": "Adolescente" },
+      { "code": 6, "label": "Mulher" },
+      { "code": 7, "label": "Gestante" },
+      { "code": 8, "label": "Homem" },
+      { "code": 9, "label": "Familiares" },
+      { "code": 10, "label": "Pessoa idosa" },
+      { "code": 12, "label": "Pessoas com doenças crônicas" },
+      { "code": 13, "label": "Usuário de tabaco" },
+      { "code": 14, "label": "Usuário de álcool" },
+      { "code": 15, "label": "Usuário de outras drogas" },
+      { "code": 16, "label": "Pessoas com sofrimento ou transtorno mental" },
+      { "code": 17, "label": "Profissional da educação" },
+      { "code": 18, "label": "Outros" },
+      { "code": 19, "label": "Adolescente em atendimento socioeducativo em meio aberto" },
+      { "code": 20, "label": "Adolescente em atendimento socioeducativo em meio fechado" }
+    ],
+    "outro_procedimento_coletivo": [
+      { "code": "0101050178", "label": "ATIVIDADE COLETIVA DE ANTROPOSOFIA APLICADA À SAÚDE" },
+      { "code": "0101050160", "label": "ATIVIDADE COLETIVA DE AYURVEDA" },
+      { "code": "0102020078", "label": "ATIVIDADES COM GRUPOS NA TEMÁTICA DE SAÚDE DO TRABALHADOR" },
+      {
+        "code": "0102010510",
+        "label": "ATIVIDADES EDUCATIVAS COM RELAÇÃO AO CONSUMO DE SÓDIO, AÇÚCAR E GORDURAS, REALIZADAS PARA O SETOR REGULADO E A POPULAÇÃO"
+      },
+      { "code": "0311020046", "label": "ATIVIDADE EDUCATIVA EM CUIDADOS PALIATIVOS COM A COMUNIDADE" },
+      {
+        "code": "0311020038",
+        "label": "ATIVIDADE EDUCATIVA EM CUIDADOS PALIATIVOS COM GRUPO DE FAMILIARES DE PACIENTES"
+      },
+      { "code": "0311020020", "label": "ATIVIDADE EDUCATIVA EM CUIDADOS PALIATIVOS COM PROFISSIONAIS DA RAS" },
+      { "code": "0102020027", "label": "ATIVIDADE EDUCATIVA EM SAÚDE DO TRABALHADOR" },
+      { "code": "0101010133", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA CÓLERA" },
+      { "code": "0101010214", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA DOENÇA DA RAIVA" },
+      { "code": "0101010303", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA DOENÇA DE CHAGAS" },
+      { "code": "0101010141", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA DOENÇA DE HAFF" },
+      { "code": "0101010168", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA ESPOROTRICOSE" },
+      { "code": "0101010257", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA ESQUISTOSSOMOSE" },
+      {
+        "code": "0101010176",
+        "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA FEBRE MACULOSA BRASILEIRA"
+      },
+      { "code": "0101010290", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA FILARIOSE LINFÁTICO" },
+      { "code": "0101010249", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA HANSENÍASE" },
+      {
+        "code": "0101010192",
+        "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA LEISHMANIOSE VISCERAL"
+      },
+      { "code": "0101010206", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA LEPTOSPIROSE" },
+      { "code": "0101010109", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA MALÁRIA" },
+      { "code": "0101010281", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA ONCOCERCOSE" },
+      { "code": "0101010222", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA TOXOPLASMOSE" },
+      { "code": "0101010273", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DAS GEO-HELMINTÍASES" },
+      {
+        "code": "0101010125",
+        "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DE ACIDENTE POR ANIMAIS PEÇONHENTOS"
+      },
+      {
+        "code": "0101010150",
+        "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DE DOENÇAS DIARREICAS AGUDAS"
+      },
+      {
+        "code": "0101010184",
+        "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DE LEISHMANIOSE TEGUMENTAR"
+      },
+      { "code": "0101010230", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DE UMA SÓ SAÚDE" },
+      { "code": "0101010265", "label": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DO TRACOMA" },
+      { "code": "0101010010", "label": "ATIVIDADE EDUCATIVA / ORIENTAÇÃO EM GRUPO NA ATENÇÃO PRIMÁRIA" },
+      { "code": "0101010028", "label": "ATIVIDADE EDUCATIVA / ORIENTAÇÃO EM GRUPO NA ATENÇÃO ESPECIALIZADA" },
+      { "code": "0102010056", "label": "ATIVIDADES EDUCATIVAS PARA O SETOR REGULADO" },
+      {
+        "code": "0102010501",
+        "label": "ATIVIDADES EDUCATIVAS SOBRE A TEMÁTICA DA DENGUE,REALIZADAS PARA A POPULAÇÃO"
+      },
+      { "code": "0101020015", "label": "AÇÃO COLETIVA DE APLICAÇÃO TÓPICA DE FLÚOR GEL" },
+      { "code": "0101020023", "label": "AÇÃO COLETIVA DE BOCHECHO FLUORADO" },
+      { "code": "0101020031", "label": "AÇÃO COLETIVA DE ESCOVAÇÃO DENTAL SUPERVISIONADA" },
+      { "code": "0101020040", "label": "AÇÃO COLETIVA DE EXAME BUCAL COM FINALIDADE EPIDEMIOLÓGICA" },
+      { "code": "0101020112", "label": "AÇÃO COLETIVA DE PREVENÇÃO DE CÂNCER BUCAL" },
+      { "code": "0101040032", "label": "COLETA EXTERNA DE LEITE MATERNO (POR DOADORA)" },
+      { "code": "0101020082", "label": "EVIDENCIAÇÃO DE PLACA BACTERIANA" },
+      { "code": "0101050151", "label": "OFICINA COLETIVA DE SHANTALA" },
+      { "code": "0101050054", "label": "OFICINA DE MASSAGEM/ AUTO-MASSAGEM" },
+      { "code": "0101040040", "label": "PASTEURIZAÇÃO DO LEITE HUMANO (CADA 5 LITROS)" },
+      { "code": "0101010036", "label": "PRÁTICA CORPORAL / ATIVIDADE FÍSICA EM GRUPO" },
+      { "code": "0301080275", "label": "PRÁTICAS CORPORAIS EM CENTRO DE ATENÇÃO PSICOSSOCIAL" },
+      { "code": "0101050011", "label": "PRÁTICAS CORPORAIS EM MEDICINA TRADICIONAL CHINESA" },
+      { "code": "0301080283", "label": "PRÁTICAS EXPRESSIVAS E COMUNICATIVAS EM CENTRO DE ATENÇÃO PSICOSSOCIAL" },
+      { "code": "0101010095", "label": "PREVENÇÃO AO COVID-19 NAS ESCOLAS" },
+      { "code": "0101050062", "label": "SESSÃO DE ARTETERAPIA" },
+      { "code": "0101050119", "label": "SESSÃO DE BIOENERGÉTICA" },
+      { "code": "0101050100", "label": "SESSÃO DE BIODANÇA" },
+      { "code": "0101050127", "label": "SESSÃO DE CONSTELAÇÃO FAMILIAR" },
+      { "code": "0101050135", "label": "SESSÃO DE DANÇA CIRCULAR" },
+      { "code": "0101050070", "label": "SESSÃO DE MEDITAÇÃO" },
+      { "code": "0101050089", "label": "SESSÃO DE MUSICOTERAPIA" },
+      { "code": "0804020051", "label": "TELEATENDIMENTO EM GRUPO" },
+      { "code": "0101050020", "label": "TERAPIA COMUNITÁRIA" },
+      { "code": "0307010074", "label": "TRATAMENTO RESTAURADOR ATRAUMÁTICO (TRA/ART)" },
+      { "code": "0101050046", "label": "YOGA" }
+    ],
+    "rules": {
+      "by_activity_type": {
+        "1": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "with_meeting_topic_6",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "2": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "with_meeting_topic_6",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "3": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "with_meeting_topic_6",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "4": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "5": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "optional",
+          "participants": "required"
+        },
+        "6": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "optional",
+          "health_practices": "required",
+          "participants": "required"
+        },
+        "7": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        }
+      },
+      "values": {
+        "required": "obrigatório",
+        "forbidden": "proibido",
+        "optional": "opcional",
+        "with_meeting_topic_6": "proibido, salvo com o tema de reunião 6 (Educação permanente)"
+      },
+      "practices_only_in_activity_type": { "6": [2, 9, 33] },
+      "procedure_code_with_practice": 30,
+      "procedure_code_domain": "outro_procedimento_coletivo",
+      "smoking_with_practices": [25, 26, 27, 28],
+      "pse_only_health_topics": [18],
+      "list_max": { "meeting_topics": 7, "target_audience": 17, "health_topics": 16, "health_practices": 14 },
+      "participants_count": { "min": 1, "max": 999 },
+      "altered_count": "derived: participantes com altered_evaluation = true; nunca vem no corpo (Q38)",
+      "participants_required_identifier_types": [5, 6],
+      "participant_without_identifier_in_other_types": "listed_without_identification",
+      "participant_measurements": {
+        "weight_kg": { "min": 0.5, "max": 500, "decimals": 3, "ledi": "peso" },
+        "height_cm": { "min": 20, "max": 250, "decimals": 1, "ledi": "altura" }
+      },
+      "unidentified_patient": { "no_cpf_reason": "unidentified", "error": "patient_unidentified" },
+      "place_text_max_length": 250,
+      "place_inep_allowed": false,
+      "mistaken_reason_length": { "min": 10, "max": 500 },
+      "registrar_cbos_table": "Tabela 5 do LEDI (config/ledi/registration_cbos.yml do api, chave collective_activity)"
+    }
+  },
+  "patient": {
+    "sexo": [{ "code": "female", "label": "Feminino" }, { "code": "male", "label": "Masculino" }],
+    "justificativa_nao_possui_cpf": {
+      "codes": ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"],
+      "labels": "contrato do 24a §15 (config/ledi/registration_dictionaries.yml do api)"
+    }
+  },
+  "errors": {
+    "http": [
+      "invalid_token",
+      "device_revoked",
+      "feature_disabled",
+      "invalid_request",
+      "invalid_cursor",
+      "invalid_limit",
+      "too_many_requests",
+      "payload_too_large",
+      "json_required"
+    ],
+    "item": [
+      "invalid_request",
+      "feature_disabled",
+      "client_uuid_conflict",
+      "not_found",
+      "cbo_not_allowed",
+      "out_of_scope",
+      "invalid_home_visit",
+      "visit_date_out_of_range",
+      "non_residential_with_person",
+      "reasons_forbidden",
+      "reason_not_allowed",
+      "measurements_forbidden",
+      "patient_in_other_household",
+      "family_without_responsible",
+      "day_closed",
+      "visit_changed",
+      "invalid_collective_activity",
+      "activity_date_out_of_range",
+      "duplicate_participant",
+      "professional_without_cns",
+      "patient_unidentified",
+      "duplicate_suspected",
+      "cpf_taken",
+      "cns_taken",
+      "invalid_household",
+      "invalid_family",
+      "invalid_registration",
+      "cpf_or_reason_required",
+      "already_registered",
+      "identity_locked",
+      "address_from_household",
+      "invalid_ethnicity",
+      "citizen_not_verified",
+      "invalid_transition",
+      "household_inactive",
+      "family_moved_out",
+      "micro_area_inactive",
+      "invalid_cpf",
+      "invalid_cns",
+      "invalid_patient"
+    ]
+  }
+}

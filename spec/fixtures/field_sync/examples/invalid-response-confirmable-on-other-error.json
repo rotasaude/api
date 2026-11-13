@@ -1,0 +1,31 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "visit_date_out_of_range",
+      "path": "occurred_at",
+      "confirmable": true
+    },
+    {
+      "client_uuid": "c0ffee04-0000-4000-8000-000000000004",
+      "status": "rejected",
+      "type": "collective_activity",
+      "error": "feature_disabled"
+    },
+    {
+      "client_uuid": "c0ffee05-0000-4000-8000-000000000005",
+      "status": "rejected",
+      "type": "patient",
+      "error": "client_uuid_conflict"
+    },
+    {
+      "client_uuid": "c0ffee09-0000-4000-8000-000000000009",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "patient_unidentified",
+      "path": "patient_id"
+    }
+  ]
+}

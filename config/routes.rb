@@ -1029,6 +1029,23 @@ Rails.application.routes.draw do
     post ":id/mark_mistaken",       to: "activities#mark_mistaken", constraints: member_id
   end
 
+  # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard
+  # (sessão; cadastro com step-up). `admin` antes de qualquer `:id`; ids só UUID.
+  scope "/field_devices", as: :field_devices do
+    member_id = { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
+    get  "admin",            to: "field_devices/admin#index"
+    post "admin/:id/revoke", to: "field_devices/admin#revoke", constraints: member_id
+    get  "",                 to: "field_devices#index"
+    post "",                 to: "field_devices#create"
+    post ":id/revoke",       to: "field_devices#revoke", constraints: member_id
+  end
+
+  # Módulo 24b (ADR 0052; contrato §9.2, §9.3): app de campo. Host da cidade,
+  # sem cookie, Authorization: Bearer rsf_… (FieldAuthentication).
+  scope "/field/v1", module: "field_sync/v1", as: :field_sync_v1 do
+    get "session", to: "sessions#show"
+  end
+
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo
   # único: uma entrada só no proxy de dev do dashboard.
   scope "/territory" do

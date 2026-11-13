@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rota-saude/schemas/field-sync/upload-response-v1.json",
+  "title": "rotasaude.field_sync.upload_response.v1",
+  "description": "Resposta 200 do POST /field/v1/uploads (contrato do 24b §9.3): um resultado por item, na ordem do pedido. accepted e duplicate trazem o id gravado; rejected traz o código (e path, e candidates só em duplicate_suspected); stale_version traz a versão atual do domicílio ou do cadastro para o app resolver o conflito (24c). Envelope inválido (Q31) é 422 { error: invalid_request, path } para o lote inteiro, fora deste esquema; item fora do esquema do pedido volta aqui como rejected com error invalid_request e o path (client_uuid e type só quando válidos; sem eles o result os omite ou traz null), na ordem dos itens.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["results"],
+  "properties": {
+    "results": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/result" } }
+  },
+  "$defs": {
+        "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "uuid_or_null": { "type": ["string", "null"], "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "datetime": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$", "description": "ISO 8601 com segundos e fuso explícito (Z ou ±hh:mm); nunca hora local sem fuso." },
+    "datetime_or_null": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})$" },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "date_or_null": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "micro_area_code": { "type": "string", "pattern": "^[0-9]{2}$" },
+    "micro_area_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "code"],
+      "properties": { "id": { "$ref": "#/$defs/uuid" }, "code": { "$ref": "#/$defs/micro_area_code" } }
+    },
+    "team_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ine", "name"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "ine": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "registered_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": { "name": { "type": ["string", "null"] } }
+    },
+    "property_type": { "enum": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "99"], "description": "TerritoryRegistry::Catalog::PROPERTY_TYPES (texto, como no 24a). Não residencial: 2, 3, 4, 5, 6, 12, 13." },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Chaves de TerritoryRegistry::Address::KEYS (24a L6). Objeto vazio no domicílio recusado sem endereço. Tamanhos são do api (invalid_household com path).",
+      "properties": {
+        "zip": { "type": ["string", "null"], "pattern": "^[0-9]{8}$" },
+        "street_type": { "type": ["string", "null"] },
+        "street": { "type": ["string", "null"] },
+        "number": { "type": ["string", "null"] },
+        "no_number": { "type": ["boolean", "null"] },
+        "complement": { "type": ["string", "null"] },
+        "neighborhood_id": { "$ref": "#/$defs/uuid_or_null" },
+        "district": { "type": ["string", "null"] },
+        "reference": { "type": ["string", "null"] }
+      }
+    },
+    "household": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "<household> do 24a (§2; L6, L7, L30; TerritoryRegistry::Json.household com full: true): com families e living_conditions. Responsável da família só com patient_id e display_name, nunca CPF.",
+      "required": ["id", "micro_area", "address", "property_type", "contact_phone", "refused", "status", "version", "registered_at", "registered_by", "families", "living_conditions"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "micro_area": { "$ref": "#/$defs/micro_area_ref" },
+        "address": { "$ref": "#/$defs/address" },
+        "property_type": { "$ref": "#/$defs/property_type" },
+        "contact_phone": { "type": ["string", "null"] },
+        "refused": { "type": "boolean" },
+        "status": { "enum": ["active", "inactive"] },
+        "version": { "type": "integer", "minimum": 1 },
+        "registered_at": { "$ref": "#/$defs/datetime" },
+        "registered_by": { "$ref": "#/$defs/registered_by" },
+        "families": { "type": "array", "items": { "$ref": "#/$defs/family" } },
+        "living_conditions": { "type": "object", "description": "Seção do dicionário do 24a (§15): chaves e domínios do api, não deste esquema (K-2)." }
+      }
+    },
+    "family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "responsible", "income_band", "members_count", "living_since", "moved_out", "responsible_exited"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "responsible": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["patient_id", "display_name"],
+          "properties": {
+            "patient_id": { "$ref": "#/$defs/uuid" },
+            "display_name": { "type": "string", "minLength": 1 }
+          }
+        },
+        "income_band": { "type": ["string", "null"] },
+        "members_count": { "type": "integer", "minimum": 0 },
+        "living_since": { "type": ["string", "null"] },
+        "moved_out": { "type": "boolean" },
+        "responsible_exited": { "type": "boolean" }
+      }
+    },
+    "registration": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "<registration> do 24a (§2; L4, L7, L9, L21, L24; TerritoryRegistry::Json.registration). CPF nunca: só has_cpf; CNS só mascarado.",
+      "required": ["id", "patient", "patient_demographics", "household_id", "family_id", "is_responsible", "team", "micro_area", "identification", "sociodemographic", "health_conditions", "street_situation", "refused", "exit", "status", "version", "registered_at", "registered_by", "identity_changed_at", "identity_review_pending"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "patient": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "display_name", "full_name", "mother_name", "birth_date", "sex", "has_cpf", "no_cpf_reason", "cns_masked", "identity_locked"],
+          "properties": {
+            "id": { "$ref": "#/$defs/uuid" },
+            "display_name": { "type": "string", "minLength": 1 },
+            "full_name": { "type": "string", "minLength": 1 },
+            "mother_name": { "type": ["string", "null"] },
+            "birth_date": { "$ref": "#/$defs/date_or_null" },
+            "sex": { "enum": ["male", "female", null] },
+            "has_cpf": { "type": "boolean" },
+            "no_cpf_reason": { "enum": ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", null] },
+            "cns_masked": { "type": ["string", "null"] },
+            "identity_locked": { "type": "boolean" }
+          }
+        },
+        "patient_demographics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["race_color", "ethnicity"],
+          "properties": {
+            "race_color": { "type": ["string", "null"] },
+            "ethnicity": { "type": ["string", "null"] }
+          }
+        },
+        "household_id": { "$ref": "#/$defs/uuid_or_null" },
+        "family_id": { "$ref": "#/$defs/uuid_or_null" },
+        "is_responsible": { "type": "boolean" },
+        "team": { "$ref": "#/$defs/team_ref" },
+        "micro_area": { "anyOf": [{ "$ref": "#/$defs/micro_area_ref" }, { "type": "null" }] },
+        "identification": { "type": "object" },
+        "sociodemographic": { "type": "object" },
+        "health_conditions": { "type": "object" },
+        "street_situation": { "type": ["object", "null"] },
+        "refused": { "type": "boolean" },
+        "exit": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["reason", "on", "death_on", "death_certificate"],
+          "properties": {
+            "reason": { "enum": ["moved", "death"] },
+            "on": { "$ref": "#/$defs/date" },
+            "death_on": { "$ref": "#/$defs/date_or_null" },
+            "death_certificate": { "type": ["string", "null"] }
+          }
+        },
+        "status": { "enum": ["valid", "due_soon", "expired", "missing", "missing_identifier", "refused", "exited"] },
+        "version": { "type": "integer", "minimum": 1 },
+        "registered_at": { "$ref": "#/$defs/datetime" },
+        "registered_by": { "$ref": "#/$defs/registered_by" },
+        "identity_changed_at": { "$ref": "#/$defs/datetime_or_null" },
+        "identity_review_pending": { "type": "boolean" }
+      }
+    },
+    "error_code": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 64, "description": "Código do contrato do 24b §13, dos herdados e do 24a. Os conhecidos estão em domains-v1.json (errors.item); código novo do api é MINOR e o app mostra uma frase genérica (K-8)." },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["patient_id", "display_name", "birth_date", "has_cpf"],
+      "description": "Candidato a duplicado (§5, Q8): sem CPF, CNS nem mãe; sex e has_cns acompanham o candidato do registro rápido. registration_id só vem do cadastro individual do 24a (L31), K-9, Q26.",
+      "properties": {
+        "patient_id": { "$ref": "#/$defs/uuid" },
+        "display_name": { "type": "string", "minLength": 1 },
+        "birth_date": { "$ref": "#/$defs/date_or_null" },
+        "sex": { "enum": ["male", "female", null] },
+        "has_cpf": { "type": "boolean" },
+        "has_cns": { "type": "boolean" },
+        "registration_id": { "$ref": "#/$defs/uuid_or_null" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "client_uuid": { "$ref": "#/$defs/uuid_or_null" },
+        "status": { "enum": ["accepted", "duplicate", "rejected", "stale_version"] },
+        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "individual_registration", null] },
+        "id": { "$ref": "#/$defs/uuid" },
+        "error": { "$ref": "#/$defs/error_code" },
+        "path": { "type": "string", "minLength": 1, "description": "Notação pontilhada/colchetes do contrato, relativa ao body do item para campos do body (occurred_at, reasons[0], participants[1].new_patient); chave nua para as chaves do próprio item fora do body (client_uuid, type); body quando o body não é objeto. Campo obrigatório ausente: o caminho do campo que falta (occurred_at, participants[1].patient_id). Falha do próprio objeto (pares um-ou-outro do Q27, local da atividade, par de medida): o caminho do objeto (body para o corpo, measurements, participants[i]). Nunca vazio. Nenhum *_body declara type, client_uuid ou body, para o path não ser ambíguo." },
+        "candidates": { "type": "array", "maxItems": 10, "items": { "$ref": "#/$defs/candidate" } },
+        "confirmable": { "type": "boolean", "description": "Só em duplicate_participant (Q54; a mesma pessoa duas vezes na atividade coletiva; path participants[i], a segunda ocorrência; sem candidates). true = é só semelhança (dois new_patient com o mesmo nome e a mesma data de nascimento, sem documento igual): o app ou o painel pode reenviar com duplicates_reviewed: true naquele participante, para dizer que é outra pessoa. false = não há como liberar (mesmo patient_id, ou CPF ou CNS iguais). Obrigatório com duplicate_participant e proibido em qualquer outro erro." },
+        "current_version": { "type": "integer", "minimum": 1 },
+        "current": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "required": ["error"], "properties": { "error": { "const": "invalid_request" } } },
+          "else": { "required": ["client_uuid", "type"], "properties": { "client_uuid": { "$ref": "#/$defs/uuid" }, "type": { "type": "string" } } } },
+        { "if": { "required": ["status"], "properties": { "status": { "enum": ["accepted", "duplicate"] } } },
+          "then": { "required": ["id"], "properties": { "error": false, "path": false, "candidates": false, "current_version": false, "current": false } } },
+        { "if": { "required": ["status"], "properties": { "status": { "const": "rejected" } } },
+          "then": { "required": ["error"], "properties": { "id": false, "current_version": false, "current": false } } },
+        { "if": { "required": ["status"], "properties": { "status": { "const": "stale_version" } } },
+          "then": { "required": ["id", "current_version", "current"], "properties": { "type": { "enum": ["household", "individual_registration"] }, "error": false, "path": false, "candidates": false } } },
+        { "if": { "required": ["status", "type"], "properties": { "status": { "const": "stale_version" }, "type": { "const": "household" } } },
+          "then": { "properties": { "current": { "$ref": "#/$defs/household" } } } },
+        { "if": { "required": ["status", "type"], "properties": { "status": { "const": "stale_version" }, "type": { "const": "individual_registration" } } },
+          "then": { "properties": { "current": { "$ref": "#/$defs/registration" } } } },
+        { "if": { "required": ["candidates"] },
+          "then": { "properties": { "error": { "const": "duplicate_suspected" } } } },
+        { "if": { "required": ["error"], "properties": { "error": { "const": "duplicate_participant" } } },
+          "then": { "required": ["confirmable"] },
+          "else": { "properties": { "confirmable": false } } }
+      ]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+      "type": "home_visit",
+      "body": {
+        "team_id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+        "occurred_at": "2026-11-12T09:40:00-03:00",
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "subject": "resident",
+        "patient_id": "0e1f2a3b-4c5d-4e6f-8a7b-8c9d0e1f2a3b",
+        "outcome": 1,
+        "reasons": [
+          26
+        ],
+        "shared": false,
+        "measurements": {
+          "systolic": 138,
+          "diastolic": 88,
+          "weight_kg": 81.5,
+          "height_cm": 162.0,
+          "glucose_mg_dl": 142,
+          "glucose_type": 2
+        },
+        "note": "Pediu para a equipe voltar à tarde."
+      }
+    }
+  ]
+}

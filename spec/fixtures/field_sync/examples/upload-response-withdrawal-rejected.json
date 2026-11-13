@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee03-0000-4000-8000-000000000003",
+      "status": "rejected",
+      "type": "home_visit_withdrawal",
+      "error": "day_closed"
+    },
+    {
+      "client_uuid": "c0ffee13-0000-4000-8000-000000000013",
+      "status": "rejected",
+      "type": "home_visit_withdrawal",
+      "error": "visit_changed"
+    }
+  ]
+}

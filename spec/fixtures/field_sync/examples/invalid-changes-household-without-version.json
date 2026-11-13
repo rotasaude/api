@@ -1,0 +1,124 @@
+{
+  "reset": false,
+  "items": [
+    {
+      "type": "micro_area",
+      "id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+      "body": {
+        "id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+        "team": {
+          "id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+          "ine": "0001234567",
+          "name": "ESF Vila Nova"
+        },
+        "code": "03",
+        "name": "Vila Nova — rua das Flores",
+        "acs": {
+          "professional_id": "4c5d6e7f-8a9b-4c0d-8e1f-2a3b4c5d6e7f",
+          "name": "Rosângela Alves"
+        },
+        "active": true
+      }
+    },
+    {
+      "type": "household",
+      "id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+      "body": {
+        "id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "micro_area": {
+          "id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+          "code": "03"
+        },
+        "address": {
+          "zip": "80010000",
+          "street_type": "RUA",
+          "street": "das Flores",
+          "number": "120",
+          "no_number": false,
+          "complement": null,
+          "neighborhood_id": null,
+          "district": "Centro",
+          "reference": "Perto da praça"
+        },
+        "property_type": "1",
+        "contact_phone": "41999990000",
+        "refused": false,
+        "status": "active",
+        "version": 3,
+        "registered_at": "2026-10-28T10:15:00-03:00",
+        "registered_by": {
+          "name": "Rosângela Alves"
+        },
+        "families": [
+          {
+            "id": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",
+            "responsible": {
+              "patient_id": "0e1f2a3b-4c5d-4e6f-8a7b-8c9d0e1f2a3b",
+              "display_name": "Joana Conceição"
+            },
+            "income_band": "3",
+            "members_count": 3,
+            "living_since": "2019-03-01",
+            "moved_out": false,
+            "responsible_exited": false
+          }
+        ],
+        "living_conditions": {}
+      }
+    },
+    {
+      "type": "registration",
+      "id": "2a3b4c5d-6e7f-4a8b-8c9d-0e1f2a3b4c5d",
+      "version": 2,
+      "body": {
+        "id": "2a3b4c5d-6e7f-4a8b-8c9d-0e1f2a3b4c5d",
+        "patient": {
+          "id": "0e1f2a3b-4c5d-4e6f-8a7b-8c9d0e1f2a3b",
+          "display_name": "Joana Conceição",
+          "full_name": "Joana D'Arc Conceição",
+          "mother_name": "Maria Conceição",
+          "birth_date": "1961-03-14",
+          "sex": "female",
+          "has_cpf": true,
+          "no_cpf_reason": null,
+          "cns_masked": null,
+          "identity_locked": false
+        },
+        "patient_demographics": {
+          "race_color": "03",
+          "ethnicity": null
+        },
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "family_id": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",
+        "is_responsible": true,
+        "team": {
+          "id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+          "ine": "0001234567",
+          "name": "ESF Vila Nova"
+        },
+        "micro_area": {
+          "id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+          "code": "03"
+        },
+        "identification": {},
+        "sociodemographic": {},
+        "health_conditions": {},
+        "street_situation": null,
+        "refused": false,
+        "exit": null,
+        "status": "valid",
+        "version": 2,
+        "registered_at": "2026-10-28T10:20:00-03:00",
+        "registered_by": {
+          "name": "Rosângela Alves"
+        },
+        "identity_changed_at": null,
+        "identity_review_pending": false
+      }
+    }
+  ],
+  "removals": [],
+  "who_to_visit": null,
+  "next_cursor": "eyJ2IjoxLCJzaW5jZSI6IjIwMjYtMTEtMTJUMTI6MDA6MDBaIn0",
+  "has_more": true
+}

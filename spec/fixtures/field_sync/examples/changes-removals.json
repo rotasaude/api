@@ -1,0 +1,32 @@
+{
+  "reset": false,
+  "items": [],
+  "removals": [
+    {
+      "type": "household",
+      "id": "9e0f1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b",
+      "reason": "moved"
+    },
+    {
+      "type": "registration",
+      "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+      "reason": "erased"
+    },
+    {
+      "type": "registration",
+      "id": "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a",
+      "reason": "out_of_scope"
+    }
+  ],
+  "who_to_visit": {
+    "generated_at": "2026-11-12T12:00:00Z",
+    "micro_areas": [
+      {
+        "micro_area_id": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+        "people": []
+      }
+    ]
+  },
+  "next_cursor": "eyJ2IjoxLCJzaW5jZSI6IjIwMjYtMTEtMTJUMTI6MDA6MDBaIn0",
+  "has_more": false
+}
