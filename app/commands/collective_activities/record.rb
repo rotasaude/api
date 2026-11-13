@@ -174,36 +174,69 @@ module CollectiveActivities
 
     # `created`: os pacientes novos desta escrita. O Patients::Duplicates de
     # um participante vê, dentro da transação, o paciente que outro acabou de
-    # criar: candidato que some no rollback. Então é a mesma pessoa duas vezes
-    # (duplicate_participant, Ruling T13-DUP), e nenhum id criado aqui vai a
-    # `candidates` nem à trilha. `confirmable` pela regra do Rules (Q53, Q54):
-    # CPF ou CNS igual ao de um criado aqui → false (o cpf_taken/cns_taken
-    # contra ele também); só semelhança → true (duplicates_reviewed libera:
-    # o CreateReviewed nem confere o duplicado).
+    # criar: candidato que some no rollback. Nenhum id criado aqui vai a
+    # `candidates` nem à trilha (Ruling T13-DUP). Cada candidato criado aqui
+    # é classificado pela regra do Rules (Q53, Q54, Q56):
+    #  - CPF ou CNS igual ao digitado → duplicate_participant, confirmable
+    #    false (o cpf_taken/cns_taken contra ele também);
+    #  - os dois com documento e nenhum igual → outra pessoa: sai dos
+    #    candidatos. O Patients::Duplicates do 24a não olha o CNS (e com CPF
+    #    digitado só vê candidatos sem CPF), então não muda aqui: sem
+    #    candidato real restante, o paciente é criado como revisado (a
+    #    suspeita era só contra outra pessoa desta escrita); com candidato
+    #    real, duplicate_suspected só com os reais;
+    #  - senão (um dos dois sem documento) → duplicate_participant,
+    #    confirmable true (duplicates_reviewed libera: o CreateReviewed nem
+    #    confere o duplicado).
     def new_patient!(item, index, by, shown, created)
-      resolved = HomeVisits::People.resolve(by: by, new_patient: item["new_patient"], reviewed: item["duplicates_reviewed"],
-                                            path_prefix: "participants[#{index}]")
+      typed = item["new_patient"]
+      resolved = resolve_new(typed, item["duplicates_reviewed"], index, by)
+      if resolved.failure? && %i[cpf_taken cns_taken].include?(resolved.reason) && same_document?(typed, created)
+        refuse!(duplicate(index, confirmable: false))
+      end
+      if resolved.failure? && resolved.reason == :duplicate_suspected
+        resolved = without_created_candidates(resolved, typed, index, by, created)
+      end
       if resolved.ok?
         created << resolved.payload[:patient].id
         return resolved.payload[:patient]
       end
 
-      document = same_document?(item["new_patient"], created)
-      refuse!(duplicate(index, confirmable: false)) if %i[cpf_taken cns_taken].include?(resolved.reason) && document
-      candidate_ids = Array(resolved.details[:candidate_ids])
-      refuse!(duplicate(index, confirmable: !document)) if candidate_ids.intersect?(created)
-
-      shown.concat(candidate_ids)
+      shown.concat(Array(resolved.details[:candidate_ids]))
       refuse!(Result.fail(resolved.reason, details: resolved.details.except(:candidate_ids)))
     end
 
-    # Algum paciente criado nesta escrita tem o CPF ou o CNS digitado?
+    def resolve_new(typed, reviewed, index, by)
+      HomeVisits::People.resolve(by: by, new_patient: typed, reviewed: reviewed, path_prefix: "participants[#{index}]")
+    end
+
+    # O duplicate_suspected sem os candidatos criados nesta escrita (ver
+    # new_patient!). -> Result (ok do paciente revisado ou a recusa filtrada).
+    def without_created_candidates(resolved, typed, index, by, created)
+      ghosts = Array(resolved.details[:candidate_ids]) & created
+      return resolved if ghosts.empty?
+
+      refuse!(duplicate(index, confirmable: false)) if same_document?(typed, ghosts)
+      refuse!(duplicate(index, confirmable: true)) unless documented?(typed) &&
+                                                          Patient.where(id: ghosts).all? { |ghost| ghost.cpf.present? || ghost.cns.present? }
+
+      real = Array(resolved.details[:candidates]).reject { |candidate| ghosts.include?(candidate[:patient_id]) }
+      return resolve_new(typed, true, index, by) if real.empty?
+
+      Result.fail(:duplicate_suspected, details: resolved.details.merge(candidates: real,
+                                                                        candidate_ids: real.map { _1[:patient_id] }))
+    end
+
+    def documented?(typed) = %w[cpf cns].any? { |key| digits(typed, key) }
+    def digits(typed, key) = typed.is_a?(Hash) && typed[key].is_a?(String) ? typed[key].gsub(/\D/, "").presence : nil
+
+    # Algum destes pacientes (criados nesta escrita) tem o CPF ou o CNS digitado?
     def same_document?(typed, created)
       return false if created.empty? || !typed.is_a?(Hash)
 
       %w[cpf cns].any? do |key|
-        digits = typed[key].is_a?(String) ? typed[key].gsub(/\D/, "").presence : nil
-        digits && Patient.where(id: created, key => digits).exists?
+        value = digits(typed, key)
+        value && Patient.where(id: created, key => value).exists?
       end
     end
 
@@ -226,6 +259,7 @@ module CollectiveActivities
     def refuse(reason, path) = Result.fail(reason, details: { path: path })
     def refuse!(result) = raise(Refused, result)
     private_class_method :write, :replayed, :lock_patients!, :place_unit!, :professionals!, :existing_patients!, :new_patient!,
-                         :same_document?, :duplicate, :insert!, :refuse, :refuse!
+                         :resolve_new, :without_created_candidates, :documented?, :digits, :same_document?, :duplicate,
+                         :insert!, :refuse, :refuse!
   end
 end

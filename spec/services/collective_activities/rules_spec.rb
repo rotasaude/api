@@ -222,19 +222,25 @@ RSpec.describe CollectiveActivities::Rules, type: :model do
       expect(first(twice(reviewed(plain), same))).to eq(soft) # a marca é do participante recusado
     end
 
-    it "a regra do Patients::Duplicates: mãe ausente num dos dois é parecido; CNS diferentes não separam; CPF só de um também não" do
+    it "semelhança só com um dos dois sem documento (Q56): mãe ausente num dos dois; CPF ou CNS só de um" do
       plain = { "new_patient" => typed }
       expect(first(twice(plain, { "new_patient" => typed(mother_name: "Rita Rocha") }))).to eq(soft)
-      expect(first(twice({ "new_patient" => typed(cns: "700000000000001") }, { "new_patient" => typed(cns: "700000000000002") })))
-        .to eq(soft)
       expect(first(twice({ "new_patient" => with_cpf("12345678909") }, plain))).to eq(soft)
+      expect(first(twice(plain, { "new_patient" => typed(cns: "700000000000001") }))).to eq(soft)
+      expect(check(twice(plain, reviewed({ "new_patient" => typed(cns: "700000000000001") })))).to eq([])
     end
 
-    it "pessoas diferentes passam: mãe diferente, outro nascimento, dois CPFs diferentes" do
+    it "pessoas diferentes passam: mãe diferente, outro nascimento; CPF diferente ou CNS diferente (Q56)" do
       plain = { "new_patient" => typed(mother_name: "Rita Rocha") }
       expect(check(twice(plain, { "new_patient" => typed(mother_name: "Ana Rocha") }))).to eq([])
       expect(check(twice(plain, { "new_patient" => typed(birth_date: "1951-03-09", mother_name: "Rita Rocha") }))).to eq([])
       expect(check(twice({ "new_patient" => with_cpf("12345678909") }, { "new_patient" => with_cpf("98765432100") }))).to eq([])
+      # Só CNS, diferentes.
+      expect(check(twice({ "new_patient" => typed(cns: "700000000000001") }, { "new_patient" => typed(cns: "700000000000002") })))
+        .to eq([])
+      # Documentos mistos: um só com CPF, o outro só com CNS.
+      expect(check(twice({ "new_patient" => with_cpf("12345678909") }, { "new_patient" => typed(cns: "700000000000002") })))
+        .to eq([])
     end
   end
 

@@ -199,6 +199,47 @@ RSpec.describe CollectiveActivities::Record, type: :model do
       expect(record(params).details).to eq(path: "participants[1]", confirmable: false)
     end
 
+    describe "documento diferente é outra pessoa (Q56)" do
+      def cns_only(n) = typed.merge("cns" => valid_cns(n))
+      def cpf_only(n) = typed.except("no_cpf_reason").merge("cpf" => valid_cpf(n))
+
+      it "só CNS, diferentes, mesmo nome e nascimento: os dois gravados, sem recusa nem trilha" do
+        params = body(participants: [ { "new_patient" => cns_only(registry_seq!) }, { "new_patient" => cns_only(registry_seq!) } ])
+        result = nil
+        expect { result = record(params) }.to change(Patient, :count).by(2)
+        expect(result).to be_ok
+        expect(viewed_ids).to be_empty
+      end
+
+      it "documentos mistos (um só CPF, o outro só CNS): os dois gravados" do
+        params = body(participants: [ { "new_patient" => cpf_only(registry_seq!) }, { "new_patient" => cns_only(registry_seq!) } ])
+        result = nil
+        expect { result = record(params) }.to change(Patient, :count).by(2)
+        expect(result).to be_ok
+      end
+
+      it "um dos dois sem documento segue confirmable true" do
+        params = body(participants: [ { "new_patient" => cns_only(registry_seq!) }, { "new_patient" => typed } ])
+        expect(record(params).details).to eq(path: "participants[1]", confirmable: true)
+      end
+
+      it "candidato real fica; o criado nesta escrita com outro documento sai dos candidatos e da trilha" do
+        real = Patients::CreateTyped.call(attrs: cns_only(registry_seq!), by: acs).payload[:patient]
+        created = []
+        allow(Patients::CreateTyped).to receive(:call).and_wrap_original do |original, **args|
+          original.call(**args).tap { |result| created << result.payload[:patient].id if result.ok? }
+        end
+        params = body(participants: [ { "new_patient" => cns_only(registry_seq!), "duplicates_reviewed" => true },
+                                      { "new_patient" => cns_only(registry_seq!) } ])
+        result = nil
+        expect { result = record(params) }.not_to change { counts }
+        expect(failure(result)).to eq([ :duplicate_suspected, "participants[1].new_patient" ])
+        expect(result.details[:candidates].map { _1[:patient_id] }).to eq([ real.id ])
+        expect(created.size).to eq(1)
+        expect(viewed_ids).to eq([ real.id ])
+      end
+    end
+
     # Defesa do Record, abaixo do Rules (o envio do app cita pessoas que o
     # Rules não vê, Task 20): o Patients::Duplicates de um participante vê o
     # paciente que outro acabou de criar dentro da transação.
@@ -221,6 +262,19 @@ RSpec.describe CollectiveActivities::Record, type: :model do
 
         released = body(participants: [ { "new_patient" => typed }, { "new_patient" => typed, "duplicates_reviewed" => true } ])
         expect(record(released)).to be_ok
+      end
+
+      it "candidato criado nesta escrita com outro CNS ou documento misto: não é duplicate_participant (Q56)" do
+        first_cns = typed.merge("cns" => valid_cns(registry_seq!))
+        other_cns = typed.merge("cns" => valid_cns(registry_seq!))
+        expect(record(body(participants: [ { "new_patient" => first_cns }, { "new_patient" => other_cns } ]))).to be_ok
+        # Outro nome a cada caso: os gravados acima já são candidatos reais.
+        cpf = typed("Joana Prado Lima").except("no_cpf_reason").merge("cpf" => valid_cpf(registry_seq!))
+        cns = typed("Joana Prado Lima").merge("cns" => valid_cns(registry_seq!))
+        expect(record(body(participants: [ { "new_patient" => cpf }, { "new_patient" => cns } ]))).to be_ok
+        lonely = record(body(participants: [ { "new_patient" => typed("Rosa Dias").merge("cns" => valid_cns(registry_seq!)) },
+                                             { "new_patient" => typed("Rosa Dias") } ]))
+        expect(lonely.details).to eq(path: "participants[1]", confirmable: true)
       end
 
       it "candidato criado nesta escrita com o mesmo CNS → confirmable false; CPF igual (cpf_taken) idem" do

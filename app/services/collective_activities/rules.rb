@@ -199,8 +199,8 @@ module CollectiveActivities
     # T13-DUP, Q53, Q54), com `confirmable`:
     #  - false, nunca liberado: o mesmo patient_id, ou o mesmo CPF ou CNS
     #    entre dois new_patient;
-    #  - true: só a semelhança de um new_patient com outro (`similar?`, a regra
-    #    do Patients::Duplicates), sem documento igual. `duplicates_reviewed:
+    #  - true: só a semelhança de um new_patient com outro (`similar?`), com
+    #    pelo menos um dos dois sem documento (Q56). `duplicates_reviewed:
     #    true` NESTE participante ("é outra pessoa") libera.
     def participants(input)
       items = input["participants"]
@@ -238,16 +238,16 @@ module CollectiveActivities
       hard = [ ([ :cpf, digits["cpf"] ] if digits["cpf"]), ([ :cns, digits["cns"] ] if digits["cns"]) ].compact
       name, birth, mother = typed.values_at("full_name", "birth_date", "mother_name")
       key = Patients::MatchKey.for(name, birth) if name.is_a?(String) && birth.is_a?(String)
-      { hard: hard, match_key: key, mother: (Patients::MatchKey.normalize(mother) if mother.is_a?(String)),
-        cpf: !digits["cpf"].nil? }
+      { hard: hard, match_key: key, mother: (Patients::MatchKey.normalize(mother) if mother.is_a?(String)) }
     end
 
-    # A regra do Patients::Duplicates entre dois new_patient: a mesma chave do
-    # 24a; mãe igual ou ausente num dos dois; e não os dois com CPF (CPFs
-    # diferentes são pessoas diferentes; o igual já caiu em `hard`).
+    # Semelhança entre dois new_patient: a mesma chave do 24a; mãe igual ou
+    # ausente num dos dois; e pelo menos um dos dois sem documento (Q56: CPF
+    # diferente ou CNS diferente é outra pessoa, inclusive misto — um só CPF,
+    # o outro só CNS; o documento igual já caiu em `hard`).
     def similar?(one, other)
       return false if one[:match_key].nil? || one[:match_key] != other[:match_key]
-      return false if one[:cpf] && other[:cpf]
+      return false if one[:hard].any? && other[:hard].any?
 
       one[:mother].nil? || other[:mother].nil? || one[:mother] == other[:mother]
     end
