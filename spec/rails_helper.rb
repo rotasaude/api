@@ -68,6 +68,7 @@ require_relative "support/urgency_observation_helpers"
 require_relative "support/ombudsman_helpers"
 require_relative "support/home_visit_helpers"
 require_relative "support/source_scan"
+require_relative "support/seed_once"
 # Add additional requires below this line. Rails is not loaded until this point!
 
 # Requires supporting ruby files with custom matchers and macros, etc, in
