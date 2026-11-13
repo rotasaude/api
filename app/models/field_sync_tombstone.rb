@@ -3,8 +3,8 @@
 class FieldSyncTombstone < ApplicationRecord
   belongs_to :micro_area
 
-  validates :entity_type, inclusion: { in: %w[household registration] }
-  validates :reason, inclusion: { in: FieldSync::Catalog::REMOVAL_REASONS }
+  validates :entity_type, inclusion: { in: FieldSync::Catalog::TOMBSTONE_ENTITY_TYPES }
+  validates :reason, inclusion: { in: FieldSync::Catalog::TOMBSTONE_REASONS }
 
   def inspect = "#<FieldSyncTombstone id=#{id} entity_type=#{entity_type} reason=#{reason}>"
   alias_method :to_s, :inspect

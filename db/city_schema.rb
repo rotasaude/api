@@ -1587,7 +1587,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900003) do
     t.string "reason", null: false
     t.index ["micro_area_id", "created_at"], name: "idx_field_sync_tombstones_micro_area"
     t.check_constraint "(entity_type)::text = ANY (ARRAY['household'::character varying::text, 'registration'::character varying::text])", name: "ck_field_sync_tombstones_entity_type"
-    t.check_constraint "(reason)::text = ANY (ARRAY['moved'::character varying::text, 'erased'::character varying::text, 'out_of_scope'::character varying::text])", name: "ck_field_sync_tombstones_reason"
+    t.check_constraint "(reason)::text = ANY (ARRAY['moved'::character varying::text, 'erased'::character varying::text])", name: "ck_field_sync_tombstones_reason"
   end
 
   create_table "health_team_members", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

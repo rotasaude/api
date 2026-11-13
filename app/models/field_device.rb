@@ -6,7 +6,8 @@ class FieldDevice < ApplicationRecord
   belongs_to :professional
   belongs_to :revoked_by_user, class_name: "User", optional: true
 
-  validates :name, presence: true, length: { maximum: FieldSync::Catalog::DEVICE_NAME.last }
+  validates :name, presence: true
+  validate { errors.add(:name, :invalid) unless name.blank? || FieldSync::Catalog::DEVICE_NAME.cover?(name.strip.length) }
   validates :revoked_reason, inclusion: { in: FieldSync::Catalog::REVOKED_REASONS }, allow_nil: true
 
   scope :active, -> { where(revoked_at: nil) }

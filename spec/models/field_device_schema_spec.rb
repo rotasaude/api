@@ -50,6 +50,12 @@ RSpec.describe "Esquema do aparelho de campo e da sincronização (ADR 0052)", t
     accepted { device!(name: "a" * 60) }
   end
 
+  it "a validação do nome aplara como o CHECK" do
+    expect(FieldDevice.new(name: "  " + "a" * 60 + "  ")).to be_valid.or(satisfy { |d| d.errors[:name].empty? })
+    expect(FieldDevice.new(name: " " * 5).tap(&:valid?).errors[:name]).not_to be_empty
+    expect(FieldDevice.new(name: "a" * 61).tap(&:valid?).errors[:name]).not_to be_empty
+  end
+
   it "revogar é final" do
     device = device!
     refused(/field_devices/) { device.update_columns(revoked_at: Time.current) }
@@ -121,7 +127,7 @@ RSpec.describe "Esquema do aparelho de campo e da sincronização (ADR 0052)", t
 
     area = registry_micro_area!(team: team, code: "01")
     stone = FieldSyncTombstone.create!(entity_type: "household", entity_id: SecureRandom.uuid, micro_area: area, reason: "moved")
-    FieldSync::Catalog::REMOVAL_REASONS.each do |reason|
+    FieldSync::Catalog::TOMBSTONE_REASONS.each do |reason|
       accepted { FieldSyncTombstone.create!(entity_type: "registration", entity_id: SecureRandom.uuid, micro_area: area, reason: reason) }
     end
     refused(/ck_field_sync_tombstones_entity_type/) do
@@ -129,6 +135,9 @@ RSpec.describe "Esquema do aparelho de campo e da sincronização (ADR 0052)", t
     end
     refused(/ck_field_sync_tombstones_reason/) do
       FieldSyncTombstone.new(entity_type: "household", entity_id: SecureRandom.uuid, micro_area: area, reason: "gone").save!(validate: false)
+    end
+    refused(/ck_field_sync_tombstones_reason/) do
+      FieldSyncTombstone.new(entity_type: "household", entity_id: SecureRandom.uuid, micro_area: area, reason: "out_of_scope").save!(validate: false)
     end
     refused(/field_sync_tombstones/) { stone.update_columns(reason: "erased") }
     refused(/field_sync_tombstones/) { stone.delete }

@@ -13,7 +13,7 @@ class AddFieldDevices < ActiveRecord::Migration[8.1]
   ITEM_TYPES = %w[home_visit home_visit_withdrawal collective_activity patient household individual_registration].freeze
   REVOKED_REASONS = %w[user admin membership_ended user_disabled].freeze
   ENTITY_TYPES = %w[household registration].freeze
-  REMOVAL_REASONS = %w[moved erased out_of_scope].freeze
+  TOMBSTONE_REASONS = %w[moved erased].freeze
 
   def up
     create_devices
@@ -79,7 +79,7 @@ class AddFieldDevices < ActiveRecord::Migration[8.1]
     end
     add_index :field_sync_tombstones, %i[micro_area_id created_at], name: "idx_field_sync_tombstones_micro_area"
     add_check_constraint :field_sync_tombstones, varchar_in("entity_type", ENTITY_TYPES), name: "ck_field_sync_tombstones_entity_type"
-    add_check_constraint :field_sync_tombstones, varchar_in("reason", REMOVAL_REASONS), name: "ck_field_sync_tombstones_reason"
+    add_check_constraint :field_sync_tombstones, varchar_in("reason", TOMBSTONE_REASONS), name: "ck_field_sync_tombstones_reason"
   end
 
   # varchar IN (...) como o PG16 o devolve (e como o dump o grava).

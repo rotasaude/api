@@ -17,6 +17,8 @@ module FieldSync
     RATE = 120
     LAST_USED_EVERY = 1.minute
     REMOVAL_REASONS = %w[moved erased out_of_scope].freeze
+    TOMBSTONE_ENTITY_TYPES = %w[household registration].freeze
+    TOMBSTONE_REASONS = %w[moved erased].freeze # gravadas; out_of_scope só existe no download
     REVOKED_REASONS = %w[user admin membership_ended user_disabled].freeze
   end
 end
