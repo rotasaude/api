@@ -67,9 +67,12 @@ module HomeVisits
     end
 
     # -> [] | [{ error:, path: }]
-    def check(input, household:, family:, patient:, today:, micro_area: nil, now: Time.current)
+    # `without_family`: a visita sem pessoa veio de um morador sem família ativa
+    # no domicílio (Q51; HomeVisits::Record) — 29 e 34–37 valem como na Q44,
+    # mesmo com outra família ativa no domicílio.
+    def check(input, household:, family:, patient:, today:, micro_area: nil, now: Time.current, without_family: false)
       error = fields(input) || date(input["occurred_at"], today, now) || place(input, household, micro_area) ||
-              person(input, household, family, patient) || outcome_rules(input, household, patient) ||
+              person(input, household, family, patient) || outcome_rules(input, household, patient, without_family) ||
               measurement_values(input["measurements"]) || note_rule(input["note"])
       error ? [ error ] : []
     end
@@ -154,7 +157,7 @@ module HomeVisits
       end
     end
 
-    def outcome_rules(input, household, patient)
+    def outcome_rules(input, household, patient, without_family)
       reasons = input["reasons"].nil? ? [] : input["reasons"]
       return err(:invalid_home_visit, "reasons") unless reasons.is_a?(Array) && reasons.size <= REASONS_MAX
 
@@ -169,18 +172,19 @@ module HomeVisits
         return err(:reasons_forbidden, "reasons") if reasons.any?
         return err(:measurements_forbidden, "measurements") if values.present?
       end
-      allowed_reasons(input, household, reasons, values, patient)
+      allowed_reasons(input, household, reasons, values, patient, without_family)
     end
 
-    def allowed_reasons(input, household, reasons, values, patient)
+    def allowed_reasons(input, household, reasons, values, patient, without_family)
       if non_residential?(input, household)
         return not_allowed(reasons, Catalog::NON_RESIDENTIAL_REASONS) ||
                (err(:measurements_forbidden, "measurements") if values.present?)
       end
       if input["subject"] == "none"
-        # Q44: sem família ativa no domicílio (ou sem domicílio), 29 e 34–37 vão sem pessoa.
+        # Q44: sem família ativa no domicílio (ou sem domicílio), 29 e 34–37 vão
+        # sem pessoa; Q51: idem para o morador sem família ativa ali.
         allowed = Catalog::WITHOUT_PERSON_ALLOWED_REASONS
-        allowed += Catalog::RESPONSIBLE_DOCUMENT_REASONS unless household&.active_families
+        allowed += Catalog::RESPONSIBLE_DOCUMENT_REASONS if without_family || !household&.active_families
         error = not_allowed(reasons, allowed)
         return error if error
 

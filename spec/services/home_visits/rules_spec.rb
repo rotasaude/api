@@ -126,6 +126,16 @@ RSpec.describe HomeVisits::Rules, type: :model do
     expect(check(input(reasons: [ 29, 35 ]))).to eq([]) # sem domicílio: sem cadastro de família
   end
 
+  it "without_family (Q51): 29/34–37 sem pessoa valem mesmo com outra família ativa; o resto da visita sem pessoa continua" do
+    with_family = household(active_families: true)
+    body = input(household_id: with_family.id, out_of_area: nil, property_type: nil, reasons: [ 34, 29 ])
+    run = ->(over = {}) { described_class.check(body.merge(over), household: with_family, family: nil, patient: nil, today: today, now: now,
+                                                                  micro_area: area, without_family: true) }
+    expect(run.()).to eq([])
+    expect(run.("reasons" => [ 29, 11 ])).to eq(error(:reason_not_allowed, "reasons[1]"))
+    expect(run.("measurements" => { "weight_kg" => 70 })).to eq(error(:measurements_forbidden, "measurements.weight_kg"))
+  end
+
   it "masculino com motivo 5 → reason_not_allowed path reasons[0]; feminino, sem sexo e sem pessoa não (Q35)" do
     resident = input(subject: "resident", patient_id: SecureRandom.uuid, reasons: [ 5, 11 ])
     expect(check(resident, patient: person(sex: "male"))).to eq(error(:reason_not_allowed, "reasons[0]"))

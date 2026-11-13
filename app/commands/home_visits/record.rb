@@ -12,9 +12,10 @@
 #    (pg_advisory_xact_lock por profissional+equipe+dia, depois a folha aberta
 #    FOR UPDATE) → visita. Escopo da microárea (herdada ou escolhida) pelo
 #    Access; registro de outra equipe por id → not_found.
-# 4. Q43: morador com motivo 29/34–37 (responsible_document_reasons) num
-#    domicílio onde o cadastro dele está numa família ativa → a visita é da
-#    família (subject family_responsible, patient_id = o responsável).
+# 4. Q43/Q51: morador com motivo 29/34–37 (responsible_document_reasons) em
+#    imóvel residencial: com o cadastro numa família ativa do domicílio → a
+#    visita é da família (subject family_responsible, patient_id = o
+#    responsável); sem família ativa dele ali → visita sem pessoa (Q44).
 #    family_responsible: o responsável passa pela guarda patient_unidentified
 #    do HomeVisits::People (Q41).
 # 5. TODAS as regras (HomeVisits::Rules, puras) antes de qualquer escrita; o
@@ -92,15 +93,23 @@ module HomeVisits
     def write(input, by, team, member, origin, device, shown)
       locked = lock_patients!(patients_to_lock(input))
       household, area = place!(input, team)
-      access = Access.registers?(by, team, micro_area: area, out_of_area: area.nil?)
-      refuse!(Result.fail(access)) unless access == :ok
+      # Corpo sem lugar coerente (nem microárea nem fora de área, os dois, ou
+      # um deles com domicílio) é malformado: as regras recusam com o path,
+      # antes do escopo (nunca 403 por um campo que faltou).
+      checked = well_placed?(input, household)
+      if checked
+        access = Access.registers?(by, team, micro_area: area, out_of_area: input["out_of_area"] == true)
+        refuse!(Result.fail(access)) unless access == :ok
+      end
 
       family = family!(input, household)
-      input, family, converted = as_family_visit(input, household, family, by)
+      input, family, conversion = family_visit(input, household, family, by)
       patient = existing_patient!(input, family, by, locked)
       facts = facts(input, household, area, family, patient)
-      error = Rules.check(input, **facts, today: Time.zone.today).first
-      refuse!(Result.fail(error[:error], details: { path: converted && error[:path] == "family_id" ? "patient_id" : error[:path] })) if error
+      error = Rules.check(input, **facts, today: Time.zone.today, without_family: conversion == :without_family).first
+      path = conversion == :family && error&.dig(:path) == "family_id" ? "patient_id" : error&.dig(:path)
+      refuse!(Result.fail(error[:error], details: { path: path })) if error
+      raise "lugar malformado passou nas regras" unless checked
 
       patient ||= new_patient!(input, by, shown)
       day = sheet!(by, team, member, input["occurred_at"].in_time_zone.to_date)
@@ -182,23 +191,48 @@ module HomeVisits
       family
     end
 
-    # Q43: o morador com motivo de documento do responsável, cujo cadastro
-    # ativo está numa família ativa deste domicílio residencial, vira a visita
-    # da família. -> [input, family, converted]
-    def as_family_visit(input, household, family, by)
-      return [ input, family, false ] unless input["subject"] == "resident" && input["patient_id"] && household
-      return [ input, family, false ] unless Catalog::RESIDENTIAL.include?(household.latest_version.property_type)
-
+    # Morador com motivo de documento do responsável (29, 34–37) em imóvel
+    # residencial. -> [input, family, nil | :family | :without_family]
+    #  - Q43: o cadastro ativo dele está numa família ativa deste domicílio → a
+    #    visita é da família (family_responsible, patient_id = o responsável);
+    #  - Q51/Q44: sem família ativa dele no domicílio (cadastro sem família,
+    #    família em mudança, sem cadastro ativo, paciente novo, ou sem
+    #    domicílio) → visita sem pessoa (subject none; o paciente novo não é
+    #    criado), com as regras da visita sem pessoa e a exceção da Q44.
+    # Não converte (as regras recusam o corpo original): family_id no corpo,
+    # patient_id e new_patient juntos ou nenhum, cadastro ativo em outro
+    # domicílio (patient_in_other_household). O morador existente passa antes
+    # pela guarda patient_unidentified.
+    def family_visit(input, household, family, by)
       reasons = input["reasons"]
-      return [ input, family, false ] unless reasons.is_a?(Array) && reasons.intersect?(Catalog::RESPONSIBLE_DOCUMENT_REASONS)
+      return [ input, family, nil ] unless input["subject"] == "resident" && reasons.is_a?(Array) &&
+                                           reasons.intersect?(Catalog::RESPONSIBLE_DOCUMENT_REASONS)
+      property = household ? household.latest_version.property_type : input["property_type"]
+      return [ input, family, nil ] unless Catalog::RESIDENTIAL.include?(property)
+      return [ input, family, nil ] unless input["family_id"].nil? && input["patient_id"].nil? != input["new_patient"].nil?
 
-      registration = IndividualRegistration.active_registrations.find_by(patient_id: input["patient_id"], household_id: household.id)
-      own = registration&.family_id && Family.find_by(id: registration.family_id)
-      return [ input, family, false ] unless own && !own.moved_out && own.household_id == household.id
+      if input["patient_id"]
+        resident = People.resolve(by: by, patient_id: input["patient_id"])
+        refuse!(resident) if resident.failure?
 
-      resident = People.resolve(by: by, patient_id: input["patient_id"])
-      refuse!(resident) if resident.failure?
-      [ input.merge("subject" => "family_responsible", "family_id" => own.id, "patient_id" => nil), own, true ]
+        registration = IndividualRegistration.active_registrations.find_by(patient_id: input["patient_id"])
+        return [ input, family, nil ] if household && registration&.household_id && registration.household_id != household.id
+
+        own = household && registration&.family_id && Family.find_by(id: registration.family_id)
+        if own && !own.moved_out && own.household_id == household.id
+          return [ input.merge("subject" => "family_responsible", "family_id" => own.id, "patient_id" => nil), own, :family ]
+        end
+      end
+      [ input.merge("subject" => "none", "patient_id" => nil, "new_patient" => nil, "duplicates_reviewed" => nil), family,
+        :without_family ]
+    end
+
+    # Domicílio: sem microárea e sem fora de área no corpo. Sem domicílio:
+    # exatamente um dos dois.
+    def well_placed?(input, household)
+      return input["micro_area_id"].nil? && input["out_of_area"] != true if household
+
+      input["micro_area_id"].nil? == (input["out_of_area"] == true)
     end
 
     # O paciente existente da visita, já travado: o morador ou o responsável
@@ -211,7 +245,10 @@ module HomeVisits
            end
       return nil if id.nil?
 
-      Patient.lock.find_by(id: id) unless locked.include?(id) # cadastro mudou entre a leitura e a trava
+      # O cadastro mudou entre a leitura sem trava e a trava: este paciente é
+      # travado fora da ordem (depois do domicílio). Raro; no pior caso
+      # ActiveRecord::Deadlocked, nunca dado errado.
+      Patient.lock.find_by(id: id) unless locked.include?(id)
       resolved = People.resolve(by: by, patient_id: id)
       refuse!(resolved) if resolved.failure?
       resolved.payload[:patient]
@@ -288,7 +325,7 @@ module HomeVisits
     def refuse(reason, path) = Result.fail(reason, details: { path: path })
     def refuse!(result) = raise(Refused, result)
     private_class_method :write, :shape_error, :replayed, :instant, :patients_to_lock, :lock_patients!, :place!, :family!,
-                         :as_family_visit, :existing_patient!, :facts, :person_facts, :new_patient!, :sheet!, :insert!,
+                         :family_visit, :well_placed?, :existing_patient!, :facts, :person_facts, :new_patient!, :sheet!, :insert!,
                          :uuid?, :refuse, :refuse!
   end
 end

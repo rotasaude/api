@@ -243,6 +243,83 @@ RSpec.describe HomeVisits::Record, type: :model do
     expect(failure(record(household_body(household, reasons: [ 34 ])))).to eq([ :reason_not_allowed, "reasons[0]" ])
   end
 
+  describe "morador sem família ativa no domicílio, com 29/34–37 → visita sem pessoa (Q51, Q44)" do
+    let(:household) { registry_household!(micro_area: area) }
+
+    def without_person!(result)
+      expect(result).to be_ok
+      expect(result.payload[:visit].reload).to have_attributes(subject: "none", patient_id: nil, family_id: nil,
+                                                               household_id: household.id)
+    end
+
+    it "cadastro sem família" do
+      resident = registry_registration!(household: household)
+      without_person!(record(household_body(household, subject: "resident", patient_id: resident.patient_id, reasons: [ 29 ])))
+    end
+
+    it "família em mudança" do
+      family = registry_family!(household)
+      resident = registry_registration!(household: household)
+      resident.update_columns(family_id: family.id)
+      family.update!(moved_out: true)
+      without_person!(record(household_body(household, subject: "resident", patient_id: resident.patient_id, reasons: [ 34 ])))
+    end
+
+    it "sem cadastro ativo, mesmo com outra família ativa no domicílio" do
+      registry_family!(household)
+      without_person!(record(household_body(household, subject: "resident", patient_id: registry_patient!.id, reasons: [ 35, 1 ])))
+    end
+
+    it "paciente novo: não é criado" do
+      typed = { "full_name" => "Lucas Prado Neves", "birth_date" => "1990-02-03", "sex" => "male", "cpf" => valid_cpf(registry_seq!) }
+      result = nil
+      expect { result = record(household_body(household, subject: "resident", new_patient: typed, reasons: [ 37 ])) }
+        .not_to change(Patient, :count)
+      without_person!(result)
+    end
+
+    it "sem domicílio (imóvel residencial na microárea)" do
+      result = record(body(subject: "resident", patient_id: registry_patient!.id, reasons: [ 36 ]))
+      expect(result.payload[:visit]).to have_attributes(subject: "none", patient_id: nil, household_id: nil)
+    end
+
+    it "valem as regras da visita sem pessoa; cadastro em outro domicílio continua recusado; provisório também" do
+      plain = registry_patient!
+      expect(failure(record(household_body(household, subject: "resident", patient_id: plain.id, reasons: [ 29, 11 ]))))
+        .to eq([ :reason_not_allowed, "reasons[1]" ])
+      expect(failure(record(household_body(household, subject: "resident", patient_id: plain.id, reasons: [ 29 ],
+                                                      measurements: { "weight_kg" => 70 }))))
+        .to eq([ :measurements_forbidden, "measurements.weight_kg" ])
+      elsewhere = registry_registration!(household: registry_household!(micro_area: area)).patient
+      expect(failure(record(household_body(household, subject: "resident", patient_id: elsewhere.id, reasons: [ 29 ]))))
+        .to eq([ :patient_in_other_household, "patient_id" ])
+      provisional = Patient.create!(no_cpf_reason: "unidentified", unidentified: true, unidentified_description: "idoso")
+      expect(failure(record(household_body(household, subject: "resident", patient_id: provisional.id, reasons: [ 29 ]))))
+        .to eq([ :patient_unidentified, "patient_id" ])
+      expect(HomeVisit.count).to eq(0)
+    end
+  end
+
+  it "a conversão da Q43 não aceita family_id no corpo: as regras recusam o corpo original" do
+    household = registry_household!(micro_area: area)
+    family = registry_family!(household)
+    resident = registry_registration!(household: household)
+    resident.update_columns(family_id: family.id)
+    expect(failure(record(household_body(household, subject: "resident", patient_id: resident.patient_id, family_id: family.id,
+                                                    reasons: [ 29 ]))))
+      .to eq([ :invalid_home_visit, "family_id" ])
+  end
+
+  it "corpo sem lugar coerente → invalid_home_visit com path, antes do escopo (inclusive para o TACS)" do
+    tacs = field_agent!(cbo: "322255", team: team)
+    assignment!(area, tacs.professional)
+    expect(failure(record(body(micro_area_id: nil), by: tacs))).to eq([ :invalid_home_visit, "micro_area_id" ])
+    expect(failure(record(body(out_of_area: true), by: tacs))).to eq([ :invalid_home_visit, "out_of_area" ])
+    household = registry_household!(micro_area: area)
+    expect(failure(record(household_body(household, out_of_area: true), by: tacs))).to eq([ :invalid_home_visit, "out_of_area" ])
+    expect(record(body, by: tacs)).to be_ok
+  end
+
   it "medidas arredondadas pelas casas do YAML antes de gravar; app de campo grava o aparelho" do
     patient = registry_patient!
     result = record(body(subject: "resident", patient_id: patient.id, reasons: [ 11 ],
