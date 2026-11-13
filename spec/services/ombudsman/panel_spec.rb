@@ -348,6 +348,9 @@ RSpec.describe Ombudsman::Panel do
 
     json = panel.to_json
     expect(json).not_to include(OmbudsmanHelpers::BODY)
-    expect(json).not_to match(/\d{4}-\d{6}/)
+    OmbudsmanManifestation.pluck(:protocol).each { |protocol| expect(json).not_to include(protocol) }
+    # AAAA-NNNNNN isolado: dentro de um UUID do JSON ("…-8776-665914…") o
+    # mesmo desenho aparece entre hífen e hex, e o teste falhava ao acaso.
+    expect(json).not_to match(/(?<![\h-])\d{4}-\d{6}(?!\h)/)
   end
 end
