@@ -30,6 +30,9 @@
 # "não gerada" participant_without_identifier; nos outros vai sem identificação
 # (§11, Q42; Task 14). A trilha dos candidatos do duplicado suspeito é gravada
 # DEPOIS da transação, com qualquer desfecho (People.candidates_viewed!).
+# Q68: antes da transação, as N unidades dos participantes novos no
+# ParticipantBudget (equipe) ou 1 do SearchBudget (envio do app, Q67); sem
+# saldo → too_many_requests, nada gravado e sem trilha (`budget!`).
 # Tema, público, prática, procedimento, avaliação, medida, local, nome e
 # documento nunca em Result.details, log ou evento.
 module CollectiveActivities
@@ -71,9 +74,12 @@ module CollectiveActivities
       return Result.fail(:out_of_scope) unless member
       return Result.fail(:cbo_not_allowed) unless Access.registers?(by, team)
 
+      budget = budget!(params, by, origin)
+      return Result.fail(:too_many_requests) unless budget
+
       shown = []
       result = begin
-        ApplicationRecord.transaction(requires_new: true) { write(params, by, team, member, origin, device, shown) }
+        ApplicationRecord.transaction(requires_new: true) { write(params, by, team, member, origin, device, shown, budget) }
       rescue Refused => e
         e.result
       rescue ActiveRecord::RecordNotUnique => e
@@ -85,7 +91,22 @@ module CollectiveActivities
       result
     end
 
-    def write(input, by, team, member, origin, device, shown)
+    # O orçamento da busca de pessoa desta escrita, depois das regras e do
+    # acesso (o corpo recusado antes não consome) e antes de qualquer trava,
+    # escrita ou trilha. -> o budget do People | nil (estourou)
+    #  - equipe (dashboard; Q68): as N unidades de uma vez no
+    #    ParticipantBudget (200/min, N = participantes new_patient); o People
+    #    não cobra de novo (SearchBudget::PAID);
+    #  - envio do app (field_app; Q67): o SearchBudget de 30/min, uma vez por
+    #    item, no primeiro participante novo.
+    def budget!(input, by, origin)
+      return HomeVisits::SearchBudget.new(by) if origin == "field_app"
+
+      units = Rules.list(input["participants"]).count { |item| item.is_a?(Hash) && !item["new_patient"].nil? }
+      HomeVisits::SearchBudget::PAID if ParticipantBudget.new(by).reserve!(units)
+    end
+
+    def write(input, by, team, member, origin, device, shown, budget)
       participants = Rules.list(input["participants"])
       lock_patients!(participants)
       place_unit!(input["place_health_unit_id"])
@@ -93,9 +114,6 @@ module CollectiveActivities
       existing = existing_patients!(participants, by)
 
       created = []
-      # Q67: uma cobrança do orçamento da busca de pessoa por gravação, no
-      # primeiro participante novo (antes de qualquer escrita).
-      budget = HomeVisits::SearchBudget.new(by)
       patients = participants.each_with_index.map do |item, index|
         existing[index] || new_patient!(item, index, by, shown, created, budget)
       end
@@ -261,7 +279,7 @@ module CollectiveActivities
 
     def refuse(reason, path) = Result.fail(reason, details: { path: path })
     def refuse!(result) = raise(Refused, result)
-    private_class_method :write, :replayed, :lock_patients!, :place_unit!, :professionals!, :existing_patients!, :new_patient!,
+    private_class_method :budget!, :write, :replayed, :lock_patients!, :place_unit!, :professionals!, :existing_patients!, :new_patient!,
                          :resolve_new, :without_created_candidates, :documented?, :digits, :same_document?, :duplicate,
                          :insert!, :refuse, :refuse!
   end

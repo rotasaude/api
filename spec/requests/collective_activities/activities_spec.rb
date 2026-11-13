@@ -241,30 +241,71 @@ RSpec.describe "Atividade coletiva — rotas da equipe", type: :request do
     end
   end
 
-  # Q67 (B-I1): o participante novo consome o orçamento da busca de pessoa,
-  # uma vez por gravação.
-  describe "orçamento da busca de pessoa (Q67)" do
-    it "31ª sondagem (30 buscas + atividade com participante novo) → 429 antes de gravar; só patient_id não consome; volta depois da janela" do
-      allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+  # Q68 (Q67, B-I1): na atividade da equipe, cada participante new_patient
+  # consome 1 unidade de um orçamento SEPARADO de 200/min por usuário, todas de
+  # uma vez, antes de qualquer escrita, trava ou trilha; não consome o de 30/min
+  # da busca de pessoa. O contador é posto direto no cache (sem laço de 200).
+  describe "orçamento dos participantes novos (Q68)" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let(:participant_key) { CollectiveActivities::ParticipantBudget.cache_key(acs.id) }
+    let(:search_key) { HomeVisits::SearchBudget.cache_key(acs.id) }
+
+    before { allow(Rails).to receive(:cache).and_return(cache) }
+
+    def three_new(patient, prefix)
+      group_body(patient, participants: [ { "patient_id" => patient.id } ] +
+                                        %w[Alves Prado Moura].map { |name| { "new_patient" => typed("#{prefix} #{name} Rocha") } })
+    end
+
+    it "3 participantes novos consomem 3 unidades do de 200 e nenhuma do de 30; só patient_id não consome" do
       patient = registry_patient!
-      with_new = ->(name) { group_body(patient, participants: [ { "patient_id" => patient.id }, { "new_patient" => typed(name) } ]) }
       sign_in_as(acs)
-      30.times { json_post "/collective_activities/people/duplicates", { full_name: "Ninguém Aqui", birth_date: "1970-01-02" } }
-      expect(response).to have_http_status(:ok)
-      patients = Patient.count
-
-      json_post "/collective_activities", with_new.call("Benedita Alves Rocha")
-      expect([ response.status, json_body ]).to eq([ 429, { "error" => "too_many_requests" } ])
-      expect([ CollectiveActivity.count, CollectiveActivityParticipant.count, Patient.count ]).to eq([ 0, 0, patients ])
-      expect(trail).to be_empty
-
       json_post "/collective_activities", group_body(patient)
       expect(response).to have_http_status(:created)
+      expect(cache.read(participant_key, raw: true)).to be_nil
+
+      json_post "/collective_activities", three_new(patient, "Benedita")
+      expect(response).to have_http_status(:created)
+      expect([ cache.read(participant_key, raw: true).to_i, cache.read(search_key, raw: true).to_i ]).to eq([ 3, 0 ])
+      expect(CollectiveActivityParticipant.count).to eq(5)
+    end
+
+    it "198 já usadas: atividade com 3 novos → 429, sem atividade, paciente nem trilha; depois da janela, aceita" do
+      patient = registry_patient!
+      cache.increment(participant_key, 198, expires_in: CollectiveActivities::ParticipantBudget::WINDOW)
+      sign_in_as(acs)
+      patients = Patient.count
+
+      json_post "/collective_activities", three_new(patient, "Benedita")
+      expect([ response.status, json_body ]).to eq([ 429, { "error" => "too_many_requests" } ])
+      expect([ CollectiveActivity.count, CollectiveActivityParticipant.count, Patient.count ]).to eq([ 0, 0, patients ])
+      expect(DomainEvent.where(name: "clinical_record.viewed")).to be_empty
+
       travel(61.seconds) do
-        json_post "/collective_activities", with_new.call("Rosalina Prado Lopes")
+        json_post "/collective_activities", three_new(patient, "Benedita")
         expect(response).to have_http_status(:created)
       end
-      expect(Patient.count).to eq(patients + 1)
+      expect(Patient.count).to eq(patients + 3)
+    end
+
+    it "mais de 200 novos numa escrita só nunca cabe: 429, nada gravado (a forma passa nas regras)" do
+      patient = registry_patient!
+      over = CollectiveActivities::ParticipantBudget::RATE + 1
+      sign_in_as(acs)
+      allow(HomeVisits::People).to receive(:resolve).and_call_original
+      participants = Array.new(over) { |index| { "new_patient" => typed("Benedita Alves Rocha").merge("birth_date" => (Date.new(1940, 1, 1) + index).iso8601) } }
+      json_post "/collective_activities", group_body(patient, participants_count: over, participants: participants)
+      expect([ response.status, json_body ]).to eq([ 429, { "error" => "too_many_requests" } ])
+      expect(HomeVisits::People).not_to have_received(:resolve)
+      expect(CollectiveActivity.count).to eq(0)
+    end
+
+    it "a busca de pessoa esgotada (30/min) não barra a atividade" do
+      patient = registry_patient!
+      cache.increment(search_key, HomeVisits::SearchBudget::RATE, expires_in: HomeVisits::SearchBudget::WINDOW)
+      sign_in_as(acs)
+      json_post "/collective_activities", three_new(patient, "Rosalina")
+      expect(response).to have_http_status(:created)
     end
   end
 
