@@ -47,36 +47,50 @@ module Ledi
       end
 
       # [{ code:, visit_id: }] — os motivos do build, sem gravar; visit_id nulo
-      # nos da folha (unidade, profissional, CBO, perfil, prazo).
-      def blockers(day) = check(day).last
+      # nos da folha (unidade, profissional, CBO, perfil, prazo). Para a lista
+      # de folhas (HomeVisits::Json.days, sem consulta por folha): `visits` = as
+      # visitas válidas já carregadas (com :patient e :micro_area), na ordem
+      # (occurred_at, id); `profile_incomplete` lido uma vez. Sem a originadora
+      # do domicílio (só o build precisa dela).
+      def blockers(day, visits: nil, profile_incomplete: nil)
+        check(day, visits: visits, profile_incomplete: profile_incomplete, origin: false).last
+      end
+
+      # A exportação está ligada para a folha: a mesma guarda do generate (a
+      # utilizável, ou a que aceita com o perfil incompleto, que vira "não
+      # gerada" city_profile_incomplete). false → o fechamento sai not_exported
+      # (Desvio 3, Q5); a folha mostra ledi_export_enabled (Q50).
+      def export_enabled?(city) = exportable?(city) || (Ledi::Enqueue.accepting?(city) && profile_incomplete?)
 
       private
 
-      def check(day)
+      def check(day, visits: nil, profile_incomplete: nil, origin: true)
         blockers = []
         add = ->(code, visit = nil) { blockers << { code: code, visit_id: visit&.id } }
         add.("unit_without_cnes") if day.team.health_unit.cnes.blank?
         add.("professional_without_cns") unless Professionals::Cns.valid?(day.professional.cns)
         # Defesa: o HomeVisits::Access já recusa quem não é da Tabela 7.
         add.("cbo_not_in_ledi_table") unless TerritoryRegistry::Access.registrar_cbo?(day.cbo, ficha: LEDI_TABLE)
-        add.("city_profile_incomplete") if profile_incomplete?
+        add.("city_profile_incomplete") if profile_incomplete.nil? ? profile_incomplete? : profile_incomplete
         add.("siaps_deadline_passed") if Ledi::Deadline.on(day.competence) < Time.zone.today
-        visits = day.home_visits.valid.includes(:patient, :micro_area, :household).order(:occurred_at, :id).map do |visit|
-          row, codes = visit_values(visit)
+        visits ||= day.home_visits.valid.includes(:patient, :micro_area, :household).order(:occurred_at, :id)
+        rows = visits.map do |visit|
+          row, codes = visit_values(visit, origin: origin)
           codes.each { |code| add.(code, visit) }
           row
         end
-        [ visits, blockers ]
+        [ rows, blockers ]
       end
 
       # [valores da visita, motivos]. patient_id é sempre a pessoa da ficha: o
       # morador, ou o responsável em family_responsible (contrato §1, C5, Q40).
-      def visit_values(visit)
+      # origin: false (só os motivos) não busca a originadora do domicílio.
+      def visit_values(visit, origin: true)
         row = {
           "shift" => visit.shift, "outcome" => visit.outcome, "reasons" => Array(visit.reasons).map(&:to_i),
           "shared" => visit.shared, "property_type" => visit.property_type, "out_of_area" => visit.out_of_area,
           "micro_area_code" => (visit.micro_area&.code unless visit.out_of_area), "measurements" => visit.measurements.to_h,
-          "household_origin_uuid" => household_origin_uuid(visit.household)
+          "household_origin_uuid" => (household_origin_uuid(visit.household) if origin)
         }
         patient = visit.patient or return [ row, [] ]
 

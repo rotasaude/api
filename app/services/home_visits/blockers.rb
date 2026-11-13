@@ -8,7 +8,8 @@ module HomeVisits
   module Blockers
     module_function
 
-    # -> [{ code:, visit_id: }]
-    def for(day) = day.open? ? Ledi::HomeVisitDayFicha.blockers(day) : []
+    # -> [{ code:, visit_id: }]. `preloaded` (visits:, profile_incomplete:) é
+    # o da lista de folhas (Ledi::HomeVisitDayFicha.blockers).
+    def for(day, **preloaded) = day.open? ? Ledi::HomeVisitDayFicha.blockers(day, **preloaded) : []
   end
 end

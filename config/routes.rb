@@ -994,12 +994,22 @@ Rails.application.routes.draw do
   # gate `home_visits`. Rotas de membro só com id UUID (ruling A9); dado de
   # pessoa e texto só no corpo.
   scope "/home_visits", module: :home_visits, as: :home_visits do
+    member_id = { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
     get  "context",                 to: "context#show"
     get  "assignments",             to: "assignments#index"
     post "assignments",             to: "assignments#create"
-    post "assignments/:id/end",     to: "assignments#end_assignment", constraints: { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
+    post "assignments/:id/end",     to: "assignments#end_assignment", constraints: member_id
     post "people/lookup",           to: "people#lookup"
     post "people/duplicates",       to: "people#duplicates"
+    get  "days/today",              to: "days#today"
+    get  "days",                    to: "days#index"
+    get  "days/:id",                to: "days#show", constraints: member_id
+    post "days/:id/close",          to: "days#close", constraints: member_id
+    get  "count",                   to: "visits#count"
+    get  "",                        to: "visits#index"
+    post "",                        to: "visits#create"
+    get  ":id",                     to: "visits#show", constraints: member_id
+    post ":id/withdraw",            to: "visits#withdraw", constraints: member_id
   end
 
   # Módulo 24b (ADR 0052; contrato §7): atividade coletiva, sessão do

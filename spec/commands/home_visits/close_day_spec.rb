@@ -119,6 +119,7 @@ RSpec.describe HomeVisits::CloseDay, type: :model do
     expect(entries_of(day)).to be_empty
     expect(failure_of(day)).to be_nil
     expect(HomeVisits::Json.day(day)[:ficha]).to eq(status: "not_exported", reasons: [])
+    expect(HomeVisits::Json.day(day)[:ledi_export_enabled]).to be(false) # Q50
   end
 
   it "folha só com retiradas → fecha sem ficha nem falha: empty" do
@@ -162,7 +163,8 @@ RSpec.describe HomeVisits::CloseDay, type: :model do
         id: day.id, professional: { id: agent.professional.id, name: agent.professional.professional_name },
         team: { id: team.id, ine: team.ine, name: team.name }, day: today.iso8601, sequence: 1, state: "open",
         closed_at: nil, closed_by: nil, visits_count: 2, withdrawn_count: 1, own: true,
-        ficha: { status: "open", reasons: [] }, blockers: [ { code: "patient_without_identifier", visit_id: visit.id } ]
+        ficha: { status: "open", reasons: [] }, blockers: [ { code: "patient_without_identifier", visit_id: visit.id } ],
+        ledi_export_enabled: true
       )
       expect(HomeVisits::Blockers.for(day)).to eq(json[:blockers])
       expect(HomeVisits::Json.day(day, viewer: registry_nurse!(team.health_unit, team: team))[:own]).to be(false)
