@@ -60,7 +60,9 @@ module SeedOnce
         pools = SeedOnce.pin!(SeedOnce.writing_pools)
         @__seed_once_pools = pools
         begin
-          Current.city = TEST_CITY_A
+          # A linha da cidade de teste, se um preparo anterior (o do grupo de
+          # fora) já a criou: é ela que carrega modo e interruptores.
+          Current.city = City.find_by(slug: TEST_CITY_A.slug) || TEST_CITY_A
           instance_exec(&block)
           SeedOnce.refuse_new_pools!(pools)
           remove_instance_variable(:@integration_session) if instance_variable_defined?(:@integration_session)
