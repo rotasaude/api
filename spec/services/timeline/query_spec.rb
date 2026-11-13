@@ -69,10 +69,33 @@ RSpec.describe Timeline::Query do
     expect(described_class.citizen_kinds(verified: false, documents: true)).to eq(%w[triage appointment])
     expect(described_class.citizen_kinds(verified: true, documents: false)).not_to include("clinical_document", "controlled_notification")
     # 27a: dispensação só para o profissional (nunca na visão do cidadão).
-    expect(described_class.citizen_kinds(verified: true, documents: true)).to eq(Timeline::KINDS - %w[dispensation])
+    # 24b: a atividade coletiva também é só do profissional.
+    expect(described_class.citizen_kinds(verified: true, documents: true)).to eq(Timeline::KINDS - %w[dispensation collective_activity])
     expect(described_class.citizen_kinds(verified: true, documents: false)).not_to include("dispensation")
-    expect(described_class::PROFESSIONAL_ONLY_KINDS).to eq(%w[dispensation])
-    expect(Timeline::KINDS.last(4)).to eq(%w[dispensation vaccination transport urgency])
+    expect(described_class::PROFESSIONAL_ONLY_KINDS).to eq(%w[dispensation collective_activity])
+    expect(Timeline::KINDS.last(6)).to eq(%w[dispensation vaccination transport urgency home_visit collective_activity])
+  end
+
+  # Módulo 24b (contrato §12, Q1/W-1, Q22, Q23): as listas novas moram em
+  # Timeline::Query. A visita entra para o cidadão validado, com recorte
+  # próprio (citizen_view), e fica fora do par declarado; a atividade coletiva
+  # é só do profissional.
+  it "24b: home_visit e collective_activity nas listas da Query (W-1)" do
+    expect(Timeline::KINDS).to include("home_visit", "collective_activity")
+    expect(described_class::SOURCES).to include("home_visit" => Timeline::Sources::HomeVisitSource,
+                                                "collective_activity" => Timeline::Sources::CollectiveActivitySource)
+    expect(described_class::PROFESSIONAL_ONLY_KINDS).to include("collective_activity")
+    expect(described_class::PROFESSIONAL_ONLY_KINDS).not_to include("home_visit")
+    expect(described_class::CITIZEN_FILTERED_KINDS).to eq(%w[urgency procedure home_visit])
+    expect(described_class::DECLARED_KINDS).to eq(%w[triage appointment])
+    expect(described_class::PEC_FILTERED_KINDS).to eq(%w[urgency])
+    expect(described_class::PROFESSIONAL_KINDS).to include("home_visit", "collective_activity")
+    expect(described_class.citizen_kinds(verified: true, documents: false)).to include("home_visit")
+    expect(described_class.citizen_kinds(verified: false, documents: true)).not_to include("home_visit")
+    expect(Timeline::Cursor.decode(Timeline::Cursor.encode(Timeline::Entry.new(kind: "home_visit", source_id: SecureRandom.uuid,
+                                                                               occurred_at: Time.current, unit: nil, professional: nil,
+                                                                               title: "x", summary: nil, status: nil, detail_ref: nil,
+                                                                               citizen: nil, document: nil))).kind).to eq("home_visit")
   end
 
   # Módulo 31 (contrato §10, P18): os kinds do CAPS ficam FORA de Timeline::KINDS

@@ -142,4 +142,99 @@ RSpec.describe "Histórico do cidadão", type: :request do
     expect(body["entries"].map { |e| e["kind"] }).not_to include("dispensation")
     expect(response.body).not_to include("dispensation", dispensation.id, losartana.label)
   end
+
+  # Módulo 24b (contrato §12, Q22, Q23): a visita domiciliar chega ao wpda sem
+  # kinds[] (Timeline::KINDS), só a realizada e não retirada, na forma fixa e
+  # com occurred_at ao meio-dia local do dia da folha. Par só declarado não vê;
+  # com home_visits desligado, a realizada continua (registro retido).
+  describe "visita domiciliar (24b)" do
+    let!(:visit_city) { home_visit_city! }
+    let(:team) { registry_team! }
+    let(:agent) { field_agent!(team: team) }
+    let(:patient) { registry_patient! }
+    let(:phone) { "+5541988824017" }
+    let!(:pair) { Citizen.create!(cpf: patient.cpf, phone: phone, verification_level: "verified", patient_id: patient.id) }
+    let(:note) { "MARCADOR-OBS-24B" }
+
+    def sheet!(on) = home_visit_day!(agent: agent, team: team, day: on)
+
+    def visit!(sheet, hour:, outcome: 1, **over)
+      reason = outcome == 1 ? { has_reason: true, reasons: [ 29, 5 ] } : {}
+      home_visit!(day: sheet, occurred_at: sheet.day.in_time_zone.change(hour: hour), subject: "resident", patient: patient,
+                  outcome: outcome, note: note, **reason, **over)
+    end
+
+    def visits_in_history
+      get "/citizen/history", params: { citizen_id: pair.id }
+      expect(response).to have_http_status(:ok)
+      body["entries"].select { |entry| entry["kind"] == "home_visit" }
+    end
+
+    it "sem kinds[] traz só a realizada, igual à forma do contrato chave por chave, ao meio-dia local (Q22)" do
+      on = Date.current - 2
+      sheet = sheet!(on)
+      done = visit!(sheet, hour: 16, measurements: { "weight_kg" => 70.5 })
+      visit!(sheet, hour: 10, outcome: 2)
+      visit!(sheet, hour: 11, outcome: 3)
+      visit!(sheet, hour: 9).update!(withdrawn_at: Time.current, withdrawn_by_user: agent, withdrawal_reason: "Registrei no morador errado")
+      sign_in_citizen(phone)
+
+      entries = visits_in_history
+
+      expect(entries).to eq([ { "id" => "home_visit:#{done.id}", "kind" => "home_visit", "occurred_at" => "#{on.iso8601}T12:00:00-03:00",
+                                "unit" => nil, "professional_name" => nil, "title" => "Visita do agente de saúde", "summary" => nil,
+                                "status" => nil, "document" => nil } ])
+      expect(entries.sole.keys).to eq(%w[id kind occurred_at unit professional_name title summary status document])
+      expect(response.body).not_to include(note, "Gestante", "Visita periódica", "Registrei no morador errado", "T16:00", "T19:00",
+                                           agent.professional.professional_name)
+    end
+
+    it "paginação do cidadão com visitas em dias vizinhos: nenhuma pulada nem repetida" do
+      d1 = Date.current - 1
+      d2 = Date.current - 2
+      d3 = Date.current - 3
+      newest = visit!(sheet!(d1), hour: 7)
+      middle = sheet!(d2)
+      pair_of_day = [ visit!(middle, hour: 8), visit!(middle, hour: 19) ].sort_by(&:id)
+      oldest = visit!(sheet!(d3), hour: 23)
+      sign_in_citizen(phone)
+
+      seen = []
+      before = nil
+      loop do
+        get "/citizen/history", params: { citizen_id: pair.id, kinds: %w[home_visit], limit: 1, before: before }.compact
+        expect(response).to have_http_status(:ok)
+        seen.concat(body["entries"].map { |entry| [ entry["id"], entry["occurred_at"] ] })
+        before = body["next_before"]
+        break unless before
+      end
+
+      expect(seen).to eq([ [ "home_visit:#{newest.id}", "#{d1.iso8601}T12:00:00-03:00" ],
+                           *pair_of_day.map { |visit| [ "home_visit:#{visit.id}", "#{d2.iso8601}T12:00:00-03:00" ] },
+                           [ "home_visit:#{oldest.id}", "#{d3.iso8601}T12:00:00-03:00" ] ])
+    end
+
+    it "par só declarado não vê a visita (Q23)" do
+      visit!(sheet!(Date.current - 1), hour: 9)
+      declared_phone = "+5541988824018"
+      declared = Citizen.create!(cpf: patient.cpf, phone: declared_phone, verification_level: "declared")
+      sign_in_citizen(declared_phone)
+
+      get "/citizen/history", params: { citizen_id: declared.id }
+      expect(response).to have_http_status(:ok)
+      expect(body["verified"]).to be(false)
+      expect(body["entries"].map { |entry| entry["kind"] }).not_to include("home_visit")
+      get "/citizen/history", params: { citizen_id: declared.id, kinds: %w[home_visit] }
+      expect([ response.status, body["entries"] ]).to eq([ 200, [] ])
+    end
+
+    it "com home_visits desligado a visita realizada continua no histórico (Q23)" do
+      done = visit!(sheet!(Date.current - 1), hour: 9)
+      Platform::Features.set!(city: visit_city, key: HomeVisits::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+      CityCatalog.reset_cache!
+      sign_in_citizen(phone)
+
+      expect(visits_in_history.map { |entry| entry["id"] }).to eq([ "home_visit:#{done.id}" ])
+    end
+  end
 end

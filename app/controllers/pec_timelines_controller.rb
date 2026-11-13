@@ -9,9 +9,11 @@
 # A urgência da UPA (módulo 32a; contrato §14 Q27) entra na forma do
 # profissional (cor, CID e desfecho), sem o registro por engano nem o
 # provisório (`pec_view`); segue fora do LEDI.
+# A visita domiciliar e a atividade coletiva (módulo 24b; contrato §12) ficam
+# fora: o PEC já recebe as fichas 8 e 6 pelo LEDI.
 class PecTimelinesController < ApplicationController
   PAGE_LIMIT = 50
-  KINDS = (Timeline::KINDS - %w[transport]).freeze
+  KINDS = (Timeline::KINDS - %w[transport home_visit collective_activity]).freeze
   # Defesa em profundidade: só uma origem simples entra na CSP.
   ORIGIN_FORMAT = %r{\Ahttps?://[a-z0-9.-]+(:\d+)?\z}
 

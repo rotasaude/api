@@ -111,10 +111,29 @@ RSpec.describe "Página do PEC", type: :request do
     get "/pec/timeline/more", params: { before: response.body[/data-before="([^"]+)"/, 1] }, headers: headers
     expect(response).to have_http_status(:ok)
     expect(kinds.size).to eq(2)
-    expect(kinds).to all(eq(Timeline::KINDS - %w[transport]))
+    expect(kinds).to all(eq(Timeline::KINDS - %w[transport home_visit collective_activity]))
     expect(Timeline::KINDS).to include("transport") # o dashboard e o wpda continuam com ela
     # Contrato §14 Q27: a urgência (32a) entra no PEC (fora do LEDI); ver pec_timeline_urgency_spec.
     expect(kinds.first).to include("urgency")
+  end
+
+  # Módulo 24b (contrato §12): o PEC já recebe as fichas 8 e 6 pelo LEDI; a
+  # página do PEC externo não pede a visita nem a atividade coletiva.
+  it "o PEC externo não recebe home_visit nem collective_activity" do
+    kinds = []
+    allow(Timeline::Query).to receive(:call).and_wrap_original do |original, **args|
+      kinds << args[:kinds]
+      original.call(**args)
+    end
+    stub_const("PecTimelinesController::PAGE_LIMIT", 1)
+    open_page
+    headers = { "X-Pec-View-Session" => CGI.unescapeHTML(response.body[/data-session="([^"]+)"/, 1]) }
+    get "/pec/timeline/more", params: { before: response.body[/data-before="([^"]+)"/, 1] }, headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(kinds.size).to eq(2)
+    expect(kinds.flatten).not_to include("home_visit", "collective_activity")
+    expect(PecTimelinesController::KINDS).not_to include("home_visit", "collective_activity")
+    expect(Timeline::KINDS).to include("home_visit", "collective_activity") # o dashboard (e o wpda, a visita) continuam com elas
   end
 
   it "carregar mais: cursor inválido 422; última página com X-Next-Before vazio; fragmento com no-store e frame-ancestors" do

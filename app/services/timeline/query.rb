@@ -8,8 +8,9 @@ module Timeline
     MAX_LIMIT = 100
     DOCUMENT_KINDS = %w[clinical_document controlled_notification].freeze
     DECLARED_KINDS = %w[triage appointment].freeze
-    # 27a (H7): só o profissional vê; nunca entra na visão do cidadão.
-    PROFESSIONAL_ONLY_KINDS = %w[dispensation].freeze
+    # 27a (H7): só o profissional vê; nunca entra na visão do cidadão. 24b
+    # (contrato §12): a atividade coletiva também.
+    PROFESSIONAL_ONLY_KINDS = %w[dispensation collective_activity].freeze
     # Módulo 31 (ADR 0049; contrato §10, P18): os kinds do CAPS ficam FORA de
     # Timeline::KINDS, então o cidadão, o PEC externo e todo filtro que valida
     # contra KINDS nunca os veem. O marcador do vínculo entra só na lista do
@@ -28,13 +29,16 @@ module Timeline
       "exam" => Sources::ExamSource, "procedure" => Sources::ProcedureSource,
       "dispensation" => Sources::DispensationSource, "vaccination" => Sources::VaccinationSource,
       "transport" => Sources::TransportSource, "psychosocial" => Sources::PsychosocialSource,
-      "psychosocial_link" => Sources::PsychosocialLinkSource, "urgency" => Sources::UrgencySource
+      "psychosocial_link" => Sources::PsychosocialLinkSource, "urgency" => Sources::UrgencySource,
+      "home_visit" => Sources::HomeVisitSource, "collective_activity" => Sources::CollectiveActivitySource
     }.freeze
     # Módulo 32a (contrato §14 Q13, Q25): fontes com recorte próprio na visão
     # do cidadão (`citizen_view: true`) — a urgência só fechada, sem óbito nem
     # registro por engano; o procedimento sem as linhas do BPA da urgência
-    # (a entrada da urgência já resume a visita).
-    CITIZEN_FILTERED_KINDS = %w[urgency procedure].freeze
+    # (a entrada da urgência já resume a visita). Módulo 24b (§12, Q22): a
+    # visita domiciliar só realizada e não retirada, na forma fixa, ao
+    # meio-dia local do dia; fora de DECLARED_KINDS (só o par validado; Q23).
+    CITIZEN_FILTERED_KINDS = %w[urgency procedure home_visit].freeze
     # Contrato §14 Q27: a página do PEC externo (`pec_view: true`) recebe a
     # urgência na forma do profissional, sem o registro por engano nem o
     # provisório. As outras fontes não mudam no PEC.
