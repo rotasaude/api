@@ -8,15 +8,18 @@ require Rails.root.join("lib/record_mode_crew")
 # ativa, retrato do CNES fictício coerente com unidades e profissionais da
 # semente, credencial cadsus simulada. Idempotente.
 RSpec.describe RecordModeCrew do
-  before do
-    Current.city = TEST_CITY_A
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
     (CityProfile.current || CityProfile.new).update!(name: "Cidade Teste", uf: "PR", ibge_code: "4106902")
+    admin = staff_with("admin@teste.demo", "municipal_admin")
     SignatureCrew.seed_current_city(slug: "teste", password: "dev-password")
     ProfessionalCrew.seed_current_city(slug: "teste", password: "dev-password", admin: admin)
   end
+
+  before { Current.city = TEST_CITY_A }
   after { Current.reset }
 
-  let(:admin) { staff_with("admin@teste.demo", "municipal_admin") }
+  let(:admin) { User.find_by!(email_address: "admin@teste.demo") }
 
   it "semeia SIGTAP da competência corrente, CPFs, credencial simulada e um retrato que gera propostas" do
     2.times do

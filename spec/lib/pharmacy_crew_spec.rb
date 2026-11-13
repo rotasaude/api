@@ -20,12 +20,15 @@ require Rails.root.join("lib/pharmacy_crew").to_s
 RSpec.describe PharmacyCrew, type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
-  let!(:city) { clinical_city!(record_mode: "off", enabled: false) }
+  # A cidade nasce no seed_once (record_mode off); o ClinicalRecordCrew a põe em
+  # record. Um let! com clinical_city!(record_mode: "off") por exemplo desfaria isso.
+  let(:city) { City.find_by!(slug: TEST_CITY_A.slug) }
   let(:central) { StockLocation.find_by!(kind: "central") }
   let(:pharmacy) { StockLocation.find_by!(kind: "unit") }
   let(:today) { Time.zone.today }
 
   def build_world!(regulation: true)
+    city = clinical_city!(record_mode: "off", enabled: false)
     create_default_protocol!
     admin = staff_with("admin@curitiba.demo", "municipal_admin")
     Maintainer.create!(email_address: "dev@local", password: "s3nha-forte-1", otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
@@ -49,7 +52,13 @@ RSpec.describe PharmacyCrew, type: :request do
     ControlledPrescriptionsCrew.seed_current_city(slug: "curitiba", password: "dev-password", admin: admin)
   end
 
-  before { build_world! }
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once { build_world! }
+
+  before do
+    CityCatalog.reset_cache!
+    Current.city = City.find(city.id)
+  end
 
   after do
     Rails.cache.clear

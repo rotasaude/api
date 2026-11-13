@@ -9,7 +9,8 @@ require Rails.root.join("lib/lab_qc_crew").to_s
 # referência); itens de estoque com lotes, um vencendo e um abaixo do
 # mínimo; lote em uso. Idempotente.
 RSpec.describe LabQcCrew do
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
     lab_city!(fake_middleware: true)
     Lab::Templates::Load.sigtap_codes.each { |c| SigtapProcedure.find_or_create_by!(release: sigtap_release!, code: c) { |p| p.name = "EXAME #{c}" } }
     Maintainer.find_by(email_address: "dev@local") ||
@@ -18,6 +19,12 @@ RSpec.describe LabQcCrew do
     %w[UBS\ Jardim\ das\ Flores UBS\ Vila\ Esperança].each { |name| HealthUnit.find_or_create_by!(name: name) { |u| u.kind = "ubs" } }
     LabCrew.seed_platform!
     LabCrew.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!)
+  end
+
+  # O lab_city! deixava a linha da cidade na Current.city; o before global põe TEST_CITY_A.
+  before do
+    CityCatalog.reset_cache!
+    Current.city = City.find_by!(slug: TEST_CITY_A.slug)
   end
 
   let(:lab) { ExamProvider.find_by!(name: LabCrew::LAB) }

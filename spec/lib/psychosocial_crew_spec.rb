@@ -16,7 +16,9 @@ RSpec.describe PsychosocialCrew do
   let(:caps_ad) { HealthUnit.find_by!(name: "CAPS AD III Centro Vida") }
   let(:ubs) { HealthUnit.find_by!(name: CareLinesCrew::UNIT) }
 
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
+    city = clinical_city!
     cnes_city!
     create_default_protocol!
     staff_with("admin@curitiba.demo", "municipal_admin")
@@ -26,6 +28,11 @@ RSpec.describe PsychosocialCrew do
     HealthTeam.create!(health_unit: unit, kind: "70", name: "ESF JARDIM DAS FLORES", ine: "0000000070")
     ClinicalRecordCrew.seed_platform!
     described_class.seed_platform!
+    CityCatalog.reset_cache!
+    Current.city = City.find(city.id)
+  end
+
+  before do
     CityCatalog.reset_cache!
     Current.city = City.find(city.id)
   end

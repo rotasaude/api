@@ -16,7 +16,20 @@ RSpec.describe "Sigilo do CAPS (F-31.8)", type: :request do
 
   around { |example| travel_to(example.metadata[:now] || Time.zone.local(2026, 11, 18, 15, 0)) { example.run } }
 
-  let!(:scenario) { full_caps_scenario! }
+  # O cenário roda uma vez por arquivo (api#159), às 15h do dia fixo; cada
+  # exemplo parte do estado que ele deixou e abre a sua própria sessão de
+  # requisição (o do `now:` das 23h10 vê o cenário daquela tarde). O
+  # before(type: :request) do harness não roda aqui: o host vem à mão.
+  seed_once do
+    travel_to(Time.zone.local(2026, 11, 18, 15, 0)) do
+      use_test_city_host!
+      @scenario = full_caps_scenario!
+    end
+  end
+  let(:scenario) { @scenario }
+  # O harness repõe Current.city com a cidade de teste crua; a do cenário é a
+  # que tem os interruptores ligados.
+  before { Current.city = City.find(scenario[:city].id) }
   let(:texts) { PsychosocialHelpers::CAPS_SCENARIO_TEXTS.values }
   let(:caps_names) { [ "CAPS AD III Centro Vida", "Centro Vida", "AD III", "caps_ad_iii" ] }
   let(:clinical) { [ "F200", "F20.0", "Esquizofrenia", "Crack", "crack", "ideação", "FLUOXETINA", "fluoxetina" ] }

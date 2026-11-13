@@ -107,7 +107,8 @@ end
 RSpec.describe "Sigilo da visita, da atividade coletiva e do app de campo (24b)", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
-  let(:secrecy) { HomeVisitSecrecy }
+  # Método, e não let: o cenário roda no seed_once (before(:context)).
+  def secrecy = HomeVisitSecrecy
 
   before { allow(Ledi::DeliverJob).to receive(:perform_later) }
   after { travel_back }
@@ -291,7 +292,20 @@ RSpec.describe "Sigilo da visita, da atividade coletiva e do app de campo (24b)"
   end
 
   describe "cenário" do
-    let!(:scenario) { secrecy_scenario! }
+    # O cenário roda uma vez por arquivo (api#159); cada exemplo parte do
+    # estado que ele deixou e abre a sua própria sessão de requisição. O
+    # before(type: :request) do harness não roda aqui: o host vem à mão, e os
+    # dublês vivem num escopo temporário (rspec-mocks fora de exemplo).
+    seed_once do
+      use_test_city_host!
+      RSpec::Mocks.with_temporary_scope do
+        allow(Ledi::DeliverJob).to receive(:perform_later)
+        @scenario = secrecy_scenario!
+      end
+    ensure
+      travel_back
+    end
+    let(:scenario) { @scenario }
     let(:ids) { scenario[:ids] }
     let(:patient) { scenario[:patient] }
     let(:token_forms) do

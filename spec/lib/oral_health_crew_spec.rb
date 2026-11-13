@@ -14,11 +14,15 @@ require Rails.root.join("lib/oral_health_crew").to_s
 # prova no navegador precisa achar sem preparo manual. Idempotente; a saída
 # nunca leva dado de paciente.
 RSpec.describe OralHealthCrew, type: :request do
-  let!(:city) { clinical_city!(record_mode: "off", enabled: false) }
+  # A cidade nasce em off no seed_once; o ClinicalRecordCrew a deixa em record.
+  # Recriá-la por exemplo (let!) a voltaria para off, então aqui só se lê.
+  let(:city) { City.find_by!(slug: TEST_CITY_A.slug) }
   let(:ubs) { HealthUnit.find_by!(name: CareLinesCrew::UNIT) }
   let(:ceo) { HealthUnit.find_by!(name: "CEO Curitiba Centro") }
 
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
+    city = clinical_city!(record_mode: "off", enabled: false)
     create_default_protocol!
     admin = staff_with("admin@curitiba.demo", "municipal_admin")
     Maintainer.create!(email_address: "dev@local", password: "s3nha-forte-1", otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
@@ -37,6 +41,11 @@ RSpec.describe OralHealthCrew, type: :request do
     Current.city = City.find(city.id)
     CareLinesCrew.seed_current_city(slug: "curitiba", ddd: "41", password: "dev-password")
     RegulationCrew.seed_current_city(slug: "curitiba", ddd: "41", password: "dev-password")
+  end
+
+  before do
+    CityCatalog.reset_cache!
+    Current.city = city
   end
 
   after do

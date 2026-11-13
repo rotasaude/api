@@ -37,7 +37,9 @@ RSpec.describe ClinicalRecordCrew do
   describe ".seed_current_city" do
     let!(:city) { clinical_city!(record_mode: "off", enabled: false) }
 
-    before do
+    # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+    seed_once do
+      clinical_city!(record_mode: "off", enabled: false)
       create_default_protocol!
       admin = staff_with("admin@curitiba.demo", "municipal_admin")
       SignatureCrew.seed_current_city(slug: "curitiba", password: "dev-password")

@@ -5,8 +5,10 @@ require Rails.root.join("lib/professional_crew")
 RSpec.describe ProfessionalCrew do
   include ActiveSupport::Testing::TimeHelpers
 
-  before do
-    Current.city = TEST_CITY_A
+  before { Current.city = TEST_CITY_A }
+
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
     (CityProfile.current || CityProfile.new).update!(name: "Cidade Teste", uf: "PR", ibge_code: "4106902")
     SignatureCrew.seed_current_city(slug: "teste", password: "dev-password")
   end

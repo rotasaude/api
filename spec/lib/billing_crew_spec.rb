@@ -9,23 +9,34 @@ require Rails.root.join("lib/billing_crew").to_s
 RSpec.describe BillingCrew do
   include ActiveSupport::Testing::TimeHelpers
 
+  def self.frozen_at = Time.zone.local(Time.zone.today.year, Time.zone.today.month, 15, 12, 0, 0)
+
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159). Nasce no
+  # mesmo instante congelado dos exemplos, como no before antigo.
+  seed_once do
+    travel_to(self.class.frozen_at) do
+      billing_city!(lab: true)
+      Platform::Features.set!(city: Current.city, key: "procedure_billing", enabled: false, maintainer: ledi_maintainer!)
+      Maintainer.find_by(email_address: "dev@local") ||
+        Maintainer.create!(email_address: "dev@local", password: "dev-password-123", otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
+      upa = HealthUnit.create!(name: BillingCrew::UPA, kind: "upa")
+      ubs = HealthUnit.create!(name: BillingCrew::UBS, kind: "ubs")
+      doctor = staff_with("profissional@curitiba.demo", "health_professional")
+      link_professional!(doctor, upa, cbo: "225124")
+      link_professional!(doctor, ubs, cbo: "225125")
+      link_professional!(staff_with("tecnico@curitiba.demo", "health_professional"), upa, cbo: "322205")
+      lab = ExamProvider.create!(name: BillingCrew::LAB, kind: "municipal", uses_municipal_lab: true, cnes: "2385123")
+      bio = lab_releaser!(lab, lead: true).tap { |u| u.update!(email_address: "biomedica@curitiba.demo") }
+      link_professional!(bio, ubs, cbo: "221205")
+      lab_releaser!(lab, council: "CRM", deputy: true).update!(email_address: "patologista@curitiba.demo")
+      3.times { billing_patient!(demographics: false) }
+    end
+  end
+
   before do
-    travel_to(Time.zone.local(Time.zone.today.year, Time.zone.today.month, 15, 12, 0, 0))
-    billing_city!(lab: true)
-    Platform::Features.set!(city: Current.city, key: "procedure_billing", enabled: false, maintainer: ledi_maintainer!)
-    Maintainer.find_by(email_address: "dev@local") ||
-      Maintainer.create!(email_address: "dev@local", password: "dev-password-123", otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
-    upa = HealthUnit.create!(name: BillingCrew::UPA, kind: "upa")
-    ubs = HealthUnit.create!(name: BillingCrew::UBS, kind: "ubs")
-    doctor = staff_with("profissional@curitiba.demo", "health_professional")
-    link_professional!(doctor, upa, cbo: "225124")
-    link_professional!(doctor, ubs, cbo: "225125")
-    link_professional!(staff_with("tecnico@curitiba.demo", "health_professional"), upa, cbo: "322205")
-    lab = ExamProvider.create!(name: BillingCrew::LAB, kind: "municipal", uses_municipal_lab: true, cnes: "2385123")
-    bio = lab_releaser!(lab, lead: true).tap { |u| u.update!(email_address: "biomedica@curitiba.demo") }
-    link_professional!(bio, ubs, cbo: "221205")
-    lab_releaser!(lab, council: "CRM", deputy: true).update!(email_address: "patologista@curitiba.demo")
-    3.times { billing_patient!(demographics: false) }
+    travel_to(self.class.frozen_at)
+    CityCatalog.reset_cache!
+    Current.city = City.find_by!(slug: TEST_CITY_A.slug)
   end
 
   after { travel_back }

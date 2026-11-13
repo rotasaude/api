@@ -15,14 +15,18 @@ require Rails.root.join("lib/home_visit_crew").to_s
 # db:seed e o BillingCrew deixam em dev; a exportação utilizável, para a ficha
 # da folha de ontem nascer no fechamento. Idempotente.
 RSpec.describe HomeVisitCrew, type: :model do
-  let!(:city) { clinical_city!(record_mode: "off", enabled: false) }
+  # A cidade nasce em off no seed_once; o ClinicalRecordCrew e o ledi_ready! a
+  # deixam em record. Recriá-la por exemplo (let!) a voltaria para off.
+  let(:city) { City.find_by!(slug: TEST_CITY_A.slug) }
   let(:today) { Time.zone.today }
   let(:unit) { HealthUnit.find_by!(name: CareLinesCrew::UNIT) }
   let(:team) { HealthTeam.find_by!(health_unit: unit, name: CareLinesCrew::TEAM_NAME) }
   let(:tacs) { User.find_by!(email_address: "tacs@curitiba.demo") }
   let(:area) { MicroArea.find_by!(team: team, code: "02") }
 
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
+    city = clinical_city!(record_mode: "off", enabled: false)
     create_default_protocol!
     admin = staff_with("admin@curitiba.demo", "municipal_admin")
     Maintainer.create!(email_address: "dev@local", password: "s3nha-forte-1", otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
@@ -40,13 +44,20 @@ RSpec.describe HomeVisitCrew, type: :model do
     CareLinesCrew.seed_current_city(slug: "curitiba", ddd: "41", password: "dev-password")
     # Como o db:seed (perfil) e o BillingCrew (CNES da UBS) deixam em dev.
     (CityProfile.current || CityProfile.new).update!(name: "Curitiba", uf: "PR", ibge_code: "4106902")
+    unit = HealthUnit.find_by!(name: CareLinesCrew::UNIT)
     unit.update!(cnes: "2384299") if unit.cnes.blank?
-    # Exportação utilizável (ledi_export ligado, credencial, PEC simulado).
-    stub_pec!
+    # Exportação utilizável (ledi_export ligado, credencial); o PEC simulado é
+    # stub do rspec-mocks e fica por exemplo.
     ledi_ready!(City.find(city.id), pec_url: "https://pec.a.test", record_mode: "record", ibge_code: "4106902")
     CityCatalog.reset_cache!
     Current.city = City.find(city.id)
     TerritoryRegistryCrew.seed_current_city(slug: "curitiba", ddd: "41", password: "dev-password")
+  end
+
+  before do
+    stub_pec!
+    CityCatalog.reset_cache!
+    Current.city = city
   end
 
   after do

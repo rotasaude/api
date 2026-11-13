@@ -15,7 +15,10 @@ require Rails.root.join("lib/surveillance_crew").to_s
 # precisa achar sem preparo manual. As semanas são relativas a hoje (W = a
 # última semana completa; em 27/10/2026, SE 42/2026). Idempotente.
 RSpec.describe SurveillanceCrew, type: :request do
-  let!(:city) { clinical_city!(record_mode: "off", enabled: false) }
+  # A linha da cidade vem do seed_once: refazer o clinical_city! aqui desligaria
+  # o que a cadeia ligou.
+  let(:city) { City.find_by!(slug: TEST_CITY_A.slug) }
+  before { Current.city = city }
   let(:today) { Time.zone.today }
   let(:last_week) { Surveillance::EpiWeek.current(today).pred }
   let(:ubs) { HealthUnit.find_by!(name: "UBS Jardim das Flores") }
@@ -23,7 +26,9 @@ RSpec.describe SurveillanceCrew, type: :request do
   let(:upa) { HealthUnit.find_by!(name: "UPA 24h Centro") }
   let(:officer) { User.find_by!(email_address: "vigilancia@curitiba.demo") }
 
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
+    city = clinical_city!(record_mode: "off", enabled: false)
     create_default_protocol!
     admin = staff_with("admin@curitiba.demo", "municipal_admin")
     Maintainer.create!(email_address: "dev@local", password: "s3nha-forte-1", otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)

@@ -16,7 +16,9 @@
 #
 # Instância de `let` não existe no before(:context): o bloco chama os helpers
 # direto. Variável de instância criada no bloco chega aos exemplos (cópia rasa,
-# a do RSpec).
+# a do RSpec). A sessão de integração de um request spec é a exceção: o objeto
+# seria o mesmo em todo exemplo (cookies de um vazando no outro), então ela sai
+# no fim do bloco e cada exemplo abre a sua, sem host! nem login do preparo.
 module SeedOnce
   class NewPoolOpened < StandardError; end
 
@@ -61,6 +63,7 @@ module SeedOnce
           Current.city = TEST_CITY_A
           instance_exec(&block)
           SeedOnce.refuse_new_pools!(pools)
+          remove_instance_variable(:@integration_session) if instance_variable_defined?(:@integration_session)
         rescue Exception # rubocop:disable Lint/RescueException -- re-raised unchanged
           SeedOnce.unpin!(pools)
           @__seed_once_pools = nil

@@ -16,15 +16,18 @@ RSpec.describe VaccinationCrew do
   let(:room) { VaccineRoom.find_by!(name: described_class::ROOM) }
   let(:central) { StockLocation.find_by!(kind: "cold_chain_central") }
 
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
+    clinical_city!
     cnes_city!
     staff_with("admin@curitiba.demo", "municipal_admin")
     staff_with("almoxarifado@curitiba.demo", "stock_keeper")
     Maintainer.create!(email_address: "dev@local", password: "s3nha-forte-1", otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
     create_unit(CareLinesCrew::UNIT)
     cnes_snapshot!
-    Current.city = City.find(city.id)
   end
+
+  before { Current.city = City.find(city.id) }
 
   after do
     Rails.cache.clear

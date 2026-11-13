@@ -7,7 +7,8 @@ RSpec.describe CampaignCrew do
   let!(:santa) { Neighborhood.create!(name: "Santa Felicidade", source: "seed") }
   let(:window) { { "from" => (Time.zone.today - 60).iso8601, "to" => Time.zone.today.iso8601 } }
 
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
     create_default_protocol!
     CityProfile.create!(name: "Curitiba")
     [ [ "UBS Jardim das Flores", "ubs" ], [ "UBS Vila Esperança", "ubs" ], [ "UPA 24h Centro", "upa" ] ]

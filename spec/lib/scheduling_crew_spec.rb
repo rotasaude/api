@@ -13,7 +13,9 @@ RSpec.describe SchedulingCrew do
 
   let!(:city_record) { register_test_city! }
 
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
+    register_test_city!
     create_default_protocol!
     %w[Centro Batel Portão].each { |name| Neighborhood.create!(name: name, source: "seed") }
     admin = staff_with("admin@curitiba.demo", "municipal_admin")

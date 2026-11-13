@@ -9,11 +9,16 @@ require Rails.root.join("lib/pec_simulator").to_s
 # Semente do módulo 20 no banco de teste (nunca no de dev), com o mesmo elenco
 # da semente do prontuário: cidade, recepção e enfermeira com vínculo e CPF.
 RSpec.describe TimelineCrew do
-  let!(:city) { clinical_city!(record_mode: "off", enabled: false) }
+  # A linha da cidade vem do seed_once: refazer o clinical_city! aqui desligaria
+  # o que a cadeia ligou.
+  let(:city) { City.find_by!(slug: TEST_CITY_A.slug) }
+  before { Current.city = city }
   # As contas da semente nascem como <papel>@<slug>.demo: o slug é o da cidade de teste.
   let(:slug) { city.slug }
 
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
+    slug = clinical_city!(record_mode: "off", enabled: false).slug
     create_default_protocol!
     admin = staff_with("admin@#{slug}.demo", "municipal_admin")
     SignatureCrew.seed_current_city(slug: slug, password: "dev-password")

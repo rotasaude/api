@@ -2,30 +2,30 @@ require "rails_helper"
 require Rails.root.join("lib/territory_crew")
 
 RSpec.describe TerritoryCrew do
-  let(:dir) { Pathname(Dir.mktmpdir) }
-  after { FileUtils.remove_entry(dir) }
-
-  before do
+  # O preparo comum (unidades e bairros), uma vez por arquivo (api#159).
+  seed_once do
     create_default_protocol!
     ConsentTerm.create!(version: "1", body: "Termo de teste", published_at: Time.current)
     [ [ "UBS Jardim das Flores", "ubs" ], [ "UBS Vila Esperança", "ubs" ], [ "UPA 24h Centro", "upa" ] ]
       .each { |name, kind| create_unit(name, kind: kind) }
-    path = dir.join("curitiba.yml")
-    path.write(<<~YAML)
-      neighborhoods:
-        - name: Santa Felicidade
-          key: santa-felicidade
-          units: ["UBS Jardim das Flores"]
-        - name: Boqueirão
-          key: boqueirao
-          units: ["UBS Vila Esperança"]
-        - name: Centro
-          key: centro
-          units: ["UPA 24h Centro"]
-        - name: Batel
-          key: batel
-    YAML
-    Territory::Seed.call(path: path)
+    Dir.mktmpdir do |dir|
+      path = Pathname(dir).join("curitiba.yml")
+      path.write(<<~YAML)
+        neighborhoods:
+          - name: Santa Felicidade
+            key: santa-felicidade
+            units: ["UBS Jardim das Flores"]
+          - name: Boqueirão
+            key: boqueirao
+            units: ["UBS Vila Esperança"]
+          - name: Centro
+            key: centro
+            units: ["UPA 24h Centro"]
+          - name: Batel
+            key: batel
+      YAML
+      Territory::Seed.call(path: path)
+    end
   end
 
   def seed = described_class.seed_current_city(slug: "curitiba", ddd: "41")

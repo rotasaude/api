@@ -16,10 +16,14 @@ require Rails.root.join("lib/regulation_crew").to_s
 RSpec.describe RegulationCrew, type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
-  let!(:city) { clinical_city!(record_mode: "off", enabled: false) }
+  # A linha semeada no seed_once: chamar clinical_city! aqui desligaria de novo
+  # o prontuário que a cadeia ligou.
+  let!(:city) { City.find_by!(slug: TEST_CITY_A.slug) }
   let(:regulator) { User.find_by!(email_address: "regulacao.municipal@curitiba.demo") }
 
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
+    city = clinical_city!(record_mode: "off", enabled: false)
     create_default_protocol!
     admin = staff_with("admin@curitiba.demo", "municipal_admin")
     Maintainer.create!(email_address: "dev@local", password: "s3nha-forte-1", otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
@@ -36,6 +40,11 @@ RSpec.describe RegulationCrew, type: :request do
     CityCatalog.reset_cache!
     Current.city = City.find(city.id)
     CareLinesCrew.seed_current_city(slug: "curitiba", ddd: "41", password: "dev-password")
+  end
+
+  before do
+    CityCatalog.reset_cache!
+    Current.city = City.find(city.id)
   end
 
   after do

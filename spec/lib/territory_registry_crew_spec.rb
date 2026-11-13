@@ -22,12 +22,17 @@ RSpec.describe TerritoryRegistryCrew, type: :request do
       miguel: "missing", maria: "missing", rafael: "missing", juliana: "missing", clinical_record: "missing" }
   end
 
-  let!(:city) { clinical_city!(record_mode: "off", enabled: false) }
+  # A linha da cidade vem do seed_once: refazer o clinical_city! aqui desligaria
+  # o que a cadeia ligou.
+  let(:city) { City.find_by!(slug: TEST_CITY_A.slug) }
+  before { Current.city = city }
   let(:today) { Time.zone.today }
   let(:unit) { HealthUnit.find_by!(name: CareLinesCrew::UNIT) }
   let(:team) { HealthTeam.find_by!(health_unit: unit, name: CareLinesCrew::TEAM_NAME) }
 
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
+    city = clinical_city!(record_mode: "off", enabled: false)
     create_default_protocol!
     admin = staff_with("admin@curitiba.demo", "municipal_admin")
     Maintainer.create!(email_address: "dev@local", password: "s3nha-forte-1", otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
@@ -45,6 +50,7 @@ RSpec.describe TerritoryRegistryCrew, type: :request do
     CareLinesCrew.seed_current_city(slug: "curitiba", ddd: "41", password: "dev-password")
     # Como o db:seed (perfil) e o BillingCrew (CNES da UBS) deixam em dev.
     (CityProfile.current || CityProfile.new).update!(name: "Curitiba", uf: "PR", ibge_code: "4106902")
+    unit = HealthUnit.find_by!(name: CareLinesCrew::UNIT)
     unit.update!(cnes: "2384299") if unit.cnes.blank?
   end
 

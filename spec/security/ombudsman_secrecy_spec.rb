@@ -79,7 +79,8 @@ end
 RSpec.describe "Sigilo da ouvidoria (33)", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
-  let(:secrecy) { OmbudsmanSecrecy }
+  # Método, e não let: o cenário roda no seed_once (before(:context)).
+  def secrecy = OmbudsmanSecrecy
 
   before { SmsGateway::Test.reset! }
   after do
@@ -257,7 +258,23 @@ RSpec.describe "Sigilo da ouvidoria (33)", type: :request do
   end
 
   describe "cenário" do
-    let!(:scenario) { secrecy_scenario! }
+    # O cenário roda uma vez por arquivo (api#159); cada exemplo parte do
+    # estado que ele deixou e abre a sua própria sessão de requisição. O
+    # before(type: :request) do harness não roda aqui: o host vem à mão. O
+    # cenário termina com o relógio parado na hora dele, e cada exemplo volta
+    # para essa hora; os SMS (em memória, zerados a cada exemplo) ficam no
+    # cenário.
+    seed_once do
+      SmsGateway::Test.reset!
+      use_test_city_host!
+      @scenario = secrecy_scenario!.merge(sms: SmsGateway::Test.deliveries.dup)
+      @scenario_now = Time.current
+    ensure
+      travel_back
+      SmsGateway::Test.reset!
+    end
+    let(:scenario) { @scenario }
+    before { travel_to(@scenario_now) }
     let(:ids) { scenario[:ids] }
     let(:cpfs) { scenario[:cpfs] }
     let(:texts) { secrecy::TEXTS.values + [ secrecy::SHORT_BODY, secrecy::OVER_CAP_BODY ] }
@@ -446,7 +463,7 @@ RSpec.describe "Sigilo da ouvidoria (33)", type: :request do
       notices = JSON.generate(ids[:notices])
       texts.each { |secret| expect(notices).not_to include(secret), "aviso contém #{secret.inspect}" }
 
-      deliveries = SmsGateway::Test.deliveries
+      deliveries = scenario[:sms]
       expect(deliveries.size).to eq(3) # os três avisos do cidadão com opt-in
       expect(deliveries.map { |d| d[:body] }.uniq).to eq([ Ombudsman::Catalog::SMS_TEXT ])
       expect(deliveries.map { |d| d[:phone] }.uniq).to eq([ secrecy::PHONES[:preserved] ])

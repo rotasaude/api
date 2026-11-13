@@ -7,13 +7,20 @@ require Rails.root.join("lib/lab_crew").to_s
 # RT biomédica (CRBM), médico substituto (CRM, CPF válido, só ICP); técnica;
 # token do middleware simulado. Idempotente. Nunca imprime o token.
 RSpec.describe LabCrew do
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
     lab_city!(fake_middleware: true)
     Lab::Templates::Load.sigtap_codes.each { |c| SigtapProcedure.find_or_create_by!(release: sigtap_release!, code: c) { |p| p.name = "EXAME #{c}" } }
     Maintainer.find_by(email_address: "dev@local") ||
       Maintainer.create!(email_address: "dev@local", password: "dev-password-123", otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
     ExamProvider.create!(name: LabCrew::LAB, kind: "municipal", cnes: "2385123")
     %w[UBS\ Jardim\ das\ Flores UBS\ Vila\ Esperança].each { |name| HealthUnit.find_or_create_by!(name: name) { |u| u.kind = "ubs" } }
+  end
+
+  # O lab_city! deixava a linha da cidade na Current.city; o before global põe TEST_CITY_A.
+  before do
+    CityCatalog.reset_cache!
+    Current.city = City.find_by!(slug: TEST_CITY_A.slug)
   end
 
   it "monta o laboratório, a equipe e o catálogo; segunda rodada não duplica" do

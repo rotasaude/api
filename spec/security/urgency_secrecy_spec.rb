@@ -175,7 +175,14 @@ RSpec.describe "Sigilo da urgência (32a)", type: :request do
   end
 
   describe "cenário" do
-    let!(:scenario) { secrecy_scenario! }
+    # O cenário roda uma vez por arquivo (api#159); cada exemplo parte do
+    # estado que ele deixou e abre a sua própria sessão de requisição.
+    # O before(type: :request) do harness não roda aqui: o host vem à mão.
+    seed_once do
+      use_test_city_host!
+      @scenario = secrecy_scenario!
+    end
+    let(:scenario) { @scenario }
     let(:ids) { scenario[:ids] }
     let(:patient) { scenario[:patient] }
     let(:identifiers) { [ patient.cpf, patient.cns, UrgencySecrecy::NAME ] }
@@ -431,7 +438,8 @@ module UrgencyObservationSecrecy
 end
 
 RSpec.describe "Sigilo da urgência (32b)", type: :request do
-  let(:secrecy) { UrgencyObservationSecrecy }
+  # Método, e não let: o cenário roda no seed_once (before(:context)).
+  def secrecy = UrgencyObservationSecrecy
 
   # Cenário completo pelas rotas. A busca de medicamento vai num log próprio
   # em nível info (o de produção): o `Medications::Search` compartilhado do 19
@@ -584,7 +592,14 @@ RSpec.describe "Sigilo da urgência (32b)", type: :request do
   def json_body_of(res) = JSON.parse(res.body)
 
   describe "cenário" do
-    let!(:scenario) { observation_scenario! }
+    # O cenário roda uma vez por arquivo (api#159); cada exemplo parte do
+    # estado que ele deixou e abre a sua própria sessão de requisição.
+    # O before(type: :request) do harness não roda aqui: o host vem à mão.
+    seed_once do
+      use_test_city_host!
+      @scenario = observation_scenario!
+    end
+    let(:scenario) { @scenario }
     let(:ids) { scenario[:ids] }
     let(:patient) { scenario[:patient] }
     let(:texts) { UrgencyObservationSecrecy::TEXTS.values }

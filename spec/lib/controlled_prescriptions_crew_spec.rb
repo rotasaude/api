@@ -5,13 +5,19 @@ require Rails.root.join("lib/controlled_prescriptions_crew")
 # Curitiba liga, dentista com CRO e CBO real, contatos plausíveis, um bloco
 # simulado; reexecutar não duplica nada.
 RSpec.describe ControlledPrescriptionsCrew do
-  before do
+  # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
+  seed_once do
     documents_city!
     Maintainer.find_or_create_by!(email_address: "dev@local") do |maintainer|
       maintainer.password = "dev-password"
       maintainer.otp_secret = ROTP::Base32.random
       maintainer.otp_enabled_at = Time.current
     end
+  end
+
+  before do
+    CityCatalog.reset_cache!
+    Current.city = City.find_by!(slug: TEST_CITY_A.slug)
   end
 
   let!(:unit) { HealthUnit.create!(name: described_class::UNIT, kind: "ubs") }
