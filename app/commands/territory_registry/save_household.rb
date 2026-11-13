@@ -147,7 +147,11 @@ module TerritoryRegistry
       previous_area_id = household&.micro_area_id
       household, version = persist!(attrs, household, by, families)
       copy_address!(residents, attrs[:address], version.neighborhood) if attrs[:address].any?
-      move_registrations!(household, attrs, by, version.created_at) if previous_area_id && previous_area_id != attrs[:area].id
+      if previous_area_id && previous_area_id != attrs[:area].id
+        # Lápide do app de campo (§1, Q9): o domicílio sai da microárea de origem.
+        FieldSync::Tombstone.moved!(entity_type: "household", entity_id: household.id, micro_area_id: previous_area_id)
+        move_registrations!(household, attrs, by, version.created_at)
+      end
       Ledi::HouseholdRegistrationFicha.generate(version)
       DomainEvents.publish("household.saved", household_id: household.id, household_version_id: version.id, user_id: by.id)
       Result.ok(household: household, version: version)
@@ -224,6 +228,9 @@ module TerritoryRegistry
 
       moved = { micro_area_id: area.id, team_id: area.team_id }
       registrations.each do |registration|
+        # Lápide do cadastro na microárea de origem (o do domicílio, quando não há outra).
+        FieldSync::Tombstone.moved!(entity_type: "registration", entity_id: registration.id,
+                                    micro_area_id: registration.micro_area_id) if registration.micro_area_id && registration.micro_area_id != area.id
         version = SaveRegistration.append!(registration, origin: "save", saved_by_user_id: by.id, saved_by_professional_id: by.professional.id,
                                                          saved_cbo: attrs[:cbo], changes: moved, at: at,
                                                          header: moved.merge(registered_at: at, registered_by_user_id: by.id))

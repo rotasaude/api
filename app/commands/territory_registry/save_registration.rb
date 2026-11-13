@@ -446,12 +446,17 @@ module TerritoryRegistry
       area = attrs[:area]
       team = attrs[:team]
       registration ||= IndividualRegistration.new(patient: patient, version: 0)
+      left_area_id = registration.micro_area_id
       registration.assign_attributes(
         team: team, micro_area: area, household: household, family: family, is_responsible: attrs[:is_responsible],
         refused: attrs[:refused].to_s, version: registration.version + 1, registered_at: now, registered_by_user: by
       )
       registration.identity_changed_at = now if identity_changed
       ApplicationRecord.transaction(requires_new: true) { registration.save! }
+      # Lápide do app de campo (§1, Q9): saiu da microárea (outra, ou nenhuma).
+      if left_area_id && left_area_id != area&.id
+        FieldSync::Tombstone.moved!(entity_type: "registration", entity_id: registration.id, micro_area_id: left_area_id)
+      end
       sections = attrs[:sections]
       version = IndividualRegistrationVersion.create!(
         registration: registration, version: registration.version, patient: patient, team: team, micro_area: area, household: household,
