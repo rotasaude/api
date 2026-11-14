@@ -971,6 +971,7 @@ Rails.application.routes.draw do
     get   "admin/micro_areas",     to: "micro_areas#index"
     post  "admin/micro_areas",     to: "micro_areas#create"
     patch "admin/micro_areas/:id", to: "micro_areas#update"
+    get   "map",                     to: "maps#show"
     get   "households",              to: "households#index"
     post  "households",              to: "households#create"
     get   "households/:id",          to: "households#show"
@@ -1047,6 +1048,7 @@ Rails.application.routes.draw do
     post "uploads", to: "uploads#create"
     get  "changes", to: "changes#index"
     get  "reference", to: "references#show"
+    get  "map", to: "maps#show"
   end
 
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo

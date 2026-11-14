@@ -39,7 +39,9 @@ module FieldSync
         features: { home_visits: HomeVisits::Gate.usable?(city), collective_activities: CollectiveActivities::Gate.usable?(city),
                     territory_registry: TerritoryRegistry::Gate.usable?(city) },
         min_date: HomeVisits::Rules.min_date(today).iso8601,
-        reference_version: Reference.version(user: user, city: city) }
+        reference_version: Reference.version(user: user, city: city),
+        # O arquivo publicado, mesmo com uma geração nova em curso ou falha (Q30).
+        map: FieldMap.published_for(city.id)&.manifest }
     end
 
     # [[equipe, papel]] com papel :acs ou :field (ordem: nome, INE). Pública: a

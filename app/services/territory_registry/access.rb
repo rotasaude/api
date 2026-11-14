@@ -77,6 +77,18 @@ module TerritoryRegistry
       scope[:kind] == "assigned" ? scope[:micro_area_ids] : []
     end
 
+    # Módulo 24c (Q39): o usuário lê ao menos uma microárea — cadastra nela
+    # (enfermeiro, médico, o ACS responsável) ou é o CBO de campo atribuído a
+    # ela, com home_visits utilizável. É quem vê o mapa da microárea.
+    def reads_households?(user, home_visits:)
+      return false unless user&.professional
+
+      team_ids = HealthTeamMember.active.where(professional: user.professional).pluck(:health_team_id)
+      HealthTeam.where(id: team_ids, active: true).any? do |team|
+        visible_micro_area_ids(user, team).any? || field_reader_micro_area_ids(user, team, home_visits: home_visits).any?
+      end
+    end
+
     # Gestão que lê a contagem da validade sem ser da equipe (L10).
     def manager?(user) = admin?(user) || user.has_role?("analyst")
 
