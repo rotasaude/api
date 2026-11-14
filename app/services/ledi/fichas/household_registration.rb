@@ -52,6 +52,8 @@ module Ledi
           tipoDeImovel: @values.fetch("property_type").to_i, statusTermoRecusa: refused, enderecoLocalPermanencia: address
         }
         attrs.merge!(living(cd), familias: families(cd)) unless refused
+        # Módulo 24c (ADR 0053; Q36): o ponto é do imóvel, e vai também com recusa.
+        attrs.merge!(FieldLocation.ledi(@values["location"]))
         cd::CadastroDomiciliarThrift.new(**attrs)
       end
 

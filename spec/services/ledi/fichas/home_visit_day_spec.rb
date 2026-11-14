@@ -45,6 +45,18 @@ RSpec.describe Ledi::HomeVisitDayFicha, type: :model do
     entry_of(day)
   end
 
+  # Módulo 24c (ADR 0053; Q40): latitude (20) e longitude (21) só na visita do app com GPS.
+  it "duas visitas, uma com GPS e outra sem: só a primeira leva latitude e longitude" do
+    day = home_visit_day!(agent: agent, team: team)
+    point = { "latitude" => -25.42847123, "longitude" => -49.27325411, "accuracy_m" => 8.5, "source" => "gps" }
+    home_visit!(day: day, micro_area: area, occurred_at: at(9), location: point)
+    home_visit!(day: day, micro_area: area, occurred_at: at(10))
+    first, second = inner(generated!(day)).visitasDomiciliares
+    expect([ first.latitude, first.longitude ]).to eq([ -25.42847123, -49.27325411 ])
+    expect([ first.latitude, first.longitude ]).to all(be_a(Float))
+    expect([ second.latitude, second.longitude ]).to eq([ nil, nil ])
+  end
+
   it "folha com três visitas (morador com CPF, família com responsável sem CPF, imóvel comercial) → ficha igual ao exemplo de referência" do
     day = home_visit_day!(agent: agent, team: team)
     resident = registry_patient!

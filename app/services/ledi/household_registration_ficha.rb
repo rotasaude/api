@@ -33,7 +33,8 @@ module Ledi
         values = {
           "property_type" => version.property_type, "refused" => version.refused?, "status" => version.status,
           "micro_area_code" => version.micro_area.code, "uf" => CityProfile.current&.uf, "contact_phone" => version.contact_phone,
-          "address" => address, "living_conditions" => version.living_conditions, "families" => families
+          "address" => address, "living_conditions" => version.living_conditions, "families" => families,
+          "location" => version.location
         }
         [ values, reasons ]
       end

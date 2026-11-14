@@ -90,7 +90,8 @@ module Ledi
           "shift" => visit.shift, "outcome" => visit.outcome, "reasons" => Array(visit.reasons).map(&:to_i),
           "shared" => visit.shared, "property_type" => visit.property_type, "out_of_area" => visit.out_of_area,
           "micro_area_code" => (visit.micro_area&.code unless visit.out_of_area), "measurements" => visit.measurements.to_h,
-          "household_origin_uuid" => (household_origin_uuid(visit.household) if origin)
+          "household_origin_uuid" => (household_origin_uuid(visit.household) if origin),
+          "location" => visit.location
         }
         patient = visit.patient or return [ row, [] ]
 

@@ -9,7 +9,8 @@
 #   "no_cpf", "justification", "birth_date" (ISO), "sex" (0/1 do LEDI) }) }].
 # CPF xor CNS (Ledi::Fichas::CitizenDocument); nascimento às 00h no fuso da
 # cidade, como o dataAtendimento (o dicionário o quer ≤ dataAtendimento). Nunca
-# numProntuario, latitude, longitude nem ivcf. Medidas pelo nome do IDL, lido de
+# numProntuario nem ivcf; latitude e longitude só da visita do app com GPS
+# ("location", módulo 24c, ADR 0053). Medidas pelo nome do IDL, lido de
 # config/ledi/visit_activity_dictionaries.yml (`ledi`), no tipo do campo Thrift.
 module Ledi
   module Fichas
@@ -50,6 +51,7 @@ module Ledi
                        dtNascimento: RegistrationFields.epoch_ms(person.fetch("birth_date")))
         end
         attrs.merge!(measurements(klass, row["measurements"].to_h))
+        attrs.merge!(FieldLocation.ledi(row["location"]))
         klass.new(**attrs)
       end
 

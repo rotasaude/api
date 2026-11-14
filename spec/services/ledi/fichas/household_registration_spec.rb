@@ -109,4 +109,46 @@ RSpec.describe Ledi::Fichas::HouseholdRegistration do
     expect(TerritoryRegistry::Catalog::UF_TO_DNE.size).to eq(27)
     expect(TerritoryRegistry::Catalog::UF_TO_DNE.values).to match_array(TerritoryRegistry::Dictionary.string_domain("uf").keys)
   end
+
+  # Módulo 24c (ADR 0053; contrato §4, Q36, Q40): o ponto do imóvel nos campos
+  # 17 (latitude) e 18 (longitude) da ficha 3, lidos de volta do Thrift serializado.
+  describe "ponto do imóvel" do
+    let(:point) { { "latitude" => -25.42847123, "longitude" => -49.27325411, "accuracy_m" => 8.5, "source" => "gps" } }
+
+    def round_trip(struct)
+      Ledi::Version.deserialize(struct.class, Ledi::Version.serialize(struct))
+    end
+
+    it "com ponto: latitude e longitude iguais aos gravados, com 8 casas" do
+      read = round_trip(thrift("location" => point))
+      expect([ read.latitude, read.longitude ]).to eq([ -25.42847123, -49.27325411 ])
+      expect([ read.latitude, read.longitude ]).to all(be_a(Float))
+    end
+
+    it "sem ponto: os campos 17 e 18 ficam ausentes" do
+      read = round_trip(thrift)
+      expect([ read.latitude, read.longitude ]).to eq([ nil, nil ])
+      expect(round_trip(thrift("location" => nil)).latitude).to be_nil
+    end
+
+    it "ficha de atualização só do ponto: fichaAtualizada e o ponto novo" do
+      read = round_trip(thrift("location" => point.merge("latitude" => -25.5, "source" => "map").except("accuracy_m"), originating: "1234567-h0"))
+      expect([ read.fichaAtualizada, read.uuidFichaOriginadora, read.latitude, read.longitude ]).to eq([ true, "1234567-h0", -25.5, -49.27325411 ])
+    end
+
+    it "com recusa e ponto: o endereço e o ponto vão; moradia e famílias não (Q36)" do
+      read = round_trip(thrift("refused" => true, "location" => point))
+      expect(read.statusTermoRecusa).to be(true)
+      expect(read.enderecoLocalPermanencia.nomeLogradouro).to eq("das Flores")
+      expect([ read.latitude, read.longitude ]).to eq([ -25.42847123, -49.27325411 ])
+      expect([ read.condicaoMoradia, read.familias ]).to eq([ nil, nil ])
+    end
+
+    it "o ponto não muda nenhum outro campo da ficha" do
+      with_point = thrift("location" => point)
+      with_point.latitude = nil
+      with_point.longitude = nil
+      expect(with_point).to eq(thrift)
+    end
+  end
 end

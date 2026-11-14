@@ -147,6 +147,17 @@ RSpec.describe Ledi::HouseholdRegistrationFicha do
 
   def inner(entry) = Ledi::Version.deserialize(Ledi::FichaTypes.klass("cadastro_domiciliar"), Ledi::Transport.read(entry.bytes).dadoSerializado)
 
+  # Módulo 24c (ADR 0053; Q36, Q40): o ponto da versão vai nos campos 17 e 18.
+  it "versão com ponto: a ficha 3 lida dos bytes traz latitude e longitude; sem ponto, não" do
+    household = registry_household!
+    point = { "latitude" => -25.42847123, "longitude" => -49.27325411, "source" => "map" }
+    version = registry_new_household_version!(household, location: point)
+    read = inner(LediOutboxEntry.find_by!(source_type: "HouseholdVersion", source_id: version.id))
+    expect([ read.latitude, read.longitude, read.fichaAtualizada ]).to eq([ -25.42847123, -49.27325411, true ])
+    first = inner(LediOutboxEntry.find_by!(source_type: "HouseholdVersion", source_id: household.versions.order(:version).first.id))
+    expect([ first.latitude, first.longitude ]).to eq([ nil, nil ])
+  end
+
   it "uma ficha por versão (tipo 3): endereço com o IBGE e a UF do perfil, bairro do cadastro de bairros, famílias do retrato" do
     household = registry_household!
     responsible = registry_patient!
