@@ -32,13 +32,27 @@
         "reference": { "type": ["string", "null"] }
       }
     },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Coordenada do imóvel ou da visita (24c §4, Q3): latitude e longitude com até 8 casas, source gps (leitura do aparelho) ou map (ponto marcado no mapa). accuracy_m, em metros com até 1 casa, é obrigatório com source gps e opcional com map (o app manda a resolução do toque; o dashboard não manda). A visita só aceita gps: é regra do api (domains-v1.json, location.visit_sources), não deste esquema. Erro de esquema aqui dentro volta rejected invalid_location com o mesmo path (Q2).",
+      "required": ["latitude", "longitude", "source"],
+      "properties": {
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90, "multipleOf": 0.00000001 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180, "multipleOf": 0.00000001 },
+        "accuracy_m": { "type": "number", "minimum": 0, "maximum": 10000, "multipleOf": 0.1 },
+        "source": { "enum": ["gps", "map"] }
+      },
+      "if": { "required": ["source"], "properties": { "source": { "const": "gps" } } },
+      "then": { "required": ["accuracy_m"] }
+    },
     "item": {
       "type": "object",
       "additionalProperties": false,
       "required": ["client_uuid", "type", "body"],
       "properties": {
         "client_uuid": { "$ref": "#/$defs/uuid", "description": "Gerado pelo app, um por item; chave de idempotência (field_sync_receipts). Só itens aceitos vão ao livro." },
-        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "individual_registration"] },
+        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "family", "individual_registration"] },
         "body": { "type": "object" }
       },
       "allOf": [
@@ -47,13 +61,14 @@
         { "if": { "required": ["type"], "properties": { "type": { "const": "collective_activity" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/collective_activity_body" } } } },
         { "if": { "required": ["type"], "properties": { "type": { "const": "patient" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/patient_body" } } } },
         { "if": { "required": ["type"], "properties": { "type": { "const": "household" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/household_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "family" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/family_body" } } } },
         { "if": { "required": ["type"], "properties": { "type": { "const": "individual_registration" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/individual_registration_body" } } } }
       ]
     },
     "home_visit_body": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Corpo do POST /home_visits (§6) sem client_uuid (vai no item). shift nunca vem: o api deriva de occurred_at no fuso da cidade. patient_client_uuid cita um item patient aceito antes (C11). latitude e longitude ficam para o 24c.",
+      "description": "Corpo do POST /home_visits (§6) sem client_uuid (vai no item). shift nunca vem: o api deriva de occurred_at no fuso da cidade. patient_client_uuid cita um item patient aceito antes (C11). location é a coordenada da visita (24c): ausente = sem coordenada; null não é aceito. family_client_uuid cita um item family aceito antes; no máximo um entre family_id e family_client_uuid.",
       "required": ["team_id", "occurred_at", "subject", "outcome", "reasons", "shared"],
       "properties": {
         "team_id": { "$ref": "#/$defs/uuid" },
@@ -68,6 +83,8 @@
         "patient_client_uuid": { "$ref": "#/$defs/uuid" },
         "new_patient": { "$ref": "#/$defs/new_patient" },
         "family_id": { "$ref": "#/$defs/uuid" },
+        "family_client_uuid": { "$ref": "#/$defs/uuid", "description": "Cita um item family aceito antes, no mesmo lote ou em outro. No máximo um entre family_id e family_client_uuid." },
+        "location": { "$ref": "#/$defs/location" },
         "duplicates_reviewed": { "type": "boolean" },
         "outcome": { "enum": [1, 2, 3], "description": "1 Realizada, 2 Recusada, 3 Ausente." },
         "reasons": { "type": "array", "uniqueItems": true, "maxItems": 36, "items": { "$ref": "#/$defs/visit_reason" }, "description": "No máximo 36 (motivosVisita do LEDI; Q36); estourar → no app, rejected invalid_request com path reasons (Q31); na rota da equipe, 422 invalid_home_visit." },
@@ -77,7 +94,8 @@
       },
       "allOf": [
         { "not": { "required": ["household_id", "household_client_uuid"] } },
-        { "not": { "required": ["patient_id", "patient_client_uuid"] } }
+        { "not": { "required": ["patient_id", "patient_client_uuid"] } },
+        { "not": { "required": ["family_id", "family_client_uuid"] } }
       ]
     },
     "visit_reason": {
@@ -221,7 +239,7 @@
     "household_body": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Corpo do POST/PATCH /territory/households do 24a (§4, L6, L7); na atualização, household_id e version (a esperada; vencida → stale_version). Família tem rota própria e não entra no v1 (K-4). living_conditions: seção do dicionário do 24a (§15), conferida pelo api.",
+      "description": "Corpo do POST/PATCH /territory/households do 24a (§4, L6, L7); na atualização, household_id e version (a esperada; vencida → stale_version). Família vai no item family (v1.2.0). location: o ponto do imóvel (24c); null apaga, ausente não mexe. living_conditions: seção do dicionário do 24a (§15), conferida pelo api.",
       "required": ["micro_area_id", "property_type"],
       "properties": {
         "household_id": { "$ref": "#/$defs/uuid" },
@@ -232,9 +250,37 @@
         "living_conditions": { "type": "object" },
         "contact_phone": { "type": ["string", "null"] },
         "refused": { "type": "boolean" },
-        "status": { "enum": ["active", "inactive"] }
+        "status": { "enum": ["active", "inactive"] },
+        "location": { "anyOf": [{ "$ref": "#/$defs/location" }, { "type": "null" }] }
       },
       "dependentRequired": { "household_id": ["version"], "version": ["household_id"] }
+    },
+    "family_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Família do domicílio (24a, TerritoryRegistry::SaveFamily; 24c §2, Q1). Cita o domicílio por household_id ou por household_client_uuid (um item household aceito antes), exatamente um. Sem family_id é família nova; com family_id é atualização. version é a versão esperada do DOMICÍLIO (vencida → stale_version com id = o domicílio, Q4); em domicílio criado no mesmo lote, 1. responsible aninhado como no 24a: patient_id, ou patient_client_uuid citando um item patient ou um item individual_registration com new_patient aceito antes (Q26). responsible é obrigatório na família nova: regra do api (invalid_family, path responsible.patient_id), não deste esquema.",
+      "required": ["version", "income_band", "members_count", "living_since"],
+      "properties": {
+        "household_id": { "$ref": "#/$defs/uuid" },
+        "household_client_uuid": { "$ref": "#/$defs/uuid" },
+        "family_id": { "$ref": "#/$defs/uuid" },
+        "version": { "type": "integer", "minimum": 1 },
+        "responsible": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "maxProperties": 1,
+          "properties": {
+            "patient_id": { "$ref": "#/$defs/uuid" },
+            "patient_client_uuid": { "$ref": "#/$defs/uuid" }
+          }
+        },
+        "income_band": { "type": ["string", "null"] },
+        "members_count": { "type": ["integer", "null"], "minimum": 0 },
+        "living_since": { "type": ["string", "null"] },
+        "moved_out": { "type": "boolean" }
+      },
+      "oneOf": [{ "required": ["household_id"] }, { "required": ["household_client_uuid"] }]
     },
     "individual_registration_body": {
       "type": "object",
@@ -251,6 +297,7 @@
         "household_id": { "$ref": "#/$defs/uuid" },
         "household_client_uuid": { "$ref": "#/$defs/uuid", "description": "Cita um item household aceito antes, no mesmo lote ou em outro (Q27, §9.3). No máximo um entre household_id e household_client_uuid." },
         "family_id": { "$ref": "#/$defs/uuid" },
+        "family_client_uuid": { "$ref": "#/$defs/uuid", "description": "Cita um item family aceito antes, no mesmo lote ou em outro. No máximo um entre family_id e family_client_uuid." },
         "is_responsible": { "type": "boolean" },
         "team_id": { "$ref": "#/$defs/uuid" },
         "identification": { "type": "object" },
@@ -270,7 +317,8 @@
       "dependentRequired": { "registration_id": ["version"], "version": ["registration_id"] },
       "allOf": [
         { "not": { "required": ["household_id", "household_client_uuid"] } },
-        { "not": { "required": ["patient_id", "patient_client_uuid"] } }
+        { "not": { "required": ["patient_id", "patient_client_uuid"] } },
+        { "not": { "required": ["family_id", "family_client_uuid"] } }
       ]
     }
   }

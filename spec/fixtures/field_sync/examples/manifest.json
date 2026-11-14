@@ -22,6 +22,18 @@
         {
           "file": "invalid-session-token-key.json",
           "expect": "/token schema"
+        },
+        {
+          "file": "session-without-map.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-session-without-reference-version.json",
+          "expect": "(root) required"
+        },
+        {
+          "file": "invalid-session-map-short-sha.json",
+          "expect": "/map/sha256 pattern"
         }
       ]
     },
@@ -129,6 +141,14 @@
           "expect": "/items/2/body not"
         },
         {
+          "file": "invalid-home-visit-two-patients.json",
+          "expect": "/items/0/body not"
+        },
+        {
+          "file": "invalid-registration-two-households.json",
+          "expect": "/items/0/body not"
+        },
+        {
           "file": "invalid-withdrawal-reason-short.json",
           "expect": "/items/0/body/reason minLength"
         },
@@ -183,6 +203,66 @@
         {
           "file": "invalid-household-property-type-integer.json",
           "expect": "/items/0/body/property_type enum"
+        },
+        {
+          "file": "upload-family-new.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-family-new-from-registration.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-family-update.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-household-location.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-household-location-cleared.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-home-visit-location.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-home-visit-family-client-uuid.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-location-latitude-only.json",
+          "expect": "/items/0/body/location required"
+        },
+        {
+          "file": "invalid-location-latitude-out-of-range.json",
+          "expect": "/items/0/body/location/latitude minimum"
+        },
+        {
+          "file": "invalid-location-nine-decimals.json",
+          "expect": "/items/0/body/location/latitude multipleOf"
+        },
+        {
+          "file": "invalid-location-gps-without-accuracy.json",
+          "expect": "/items/0/body/location required"
+        },
+        {
+          "file": "invalid-home-visit-location-null.json",
+          "expect": "/items/0/body/location object"
+        },
+        {
+          "file": "invalid-family-two-households.json",
+          "expect": "/items/0/body oneOf"
+        },
+        {
+          "file": "invalid-family-responsible-two-patients.json",
+          "expect": "/items/0/body/responsible maxProperties"
+        },
+        {
+          "file": "invalid-registration-two-families.json",
+          "expect": "/items/0/body not"
         }
       ]
     },
@@ -248,6 +328,42 @@
         {
           "file": "upload-response-stale-registration.json",
           "expect": "valid"
+        },
+        {
+          "file": "upload-response-accepted-with-version.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-duplicate-without-version.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-stale-family.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-invalid-location.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-family-not-found.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-response-household-accepted-without-version.json",
+          "expect": "/results/0 required"
+        },
+        {
+          "file": "invalid-response-home-visit-with-version.json",
+          "expect": "/results/0/version schema"
+        },
+        {
+          "file": "invalid-response-duplicate-suspected-without-candidates.json",
+          "expect": "/results/0 required"
+        },
+        {
+          "file": "invalid-response-empty-results.json",
+          "expect": "/results minItems"
         },
         {
           "file": "invalid-response-rejected-without-client-uuid.json",
@@ -327,6 +443,14 @@
           "expect": "valid"
         },
         {
+          "file": "changes-household-location-null.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-changes-household-without-location.json",
+          "expect": "/items/1/body required"
+        },
+        {
           "file": "invalid-changes-who-null-on-last-page.json",
           "expect": "/who_to_visit object"
         },
@@ -365,6 +489,35 @@
         {
           "file": "invalid-changes-cursor-null.json",
           "expect": "/next_cursor string"
+        }
+      ]
+    },
+    {
+      "schema": "reference-response-v1.json",
+      "cases": [
+        {
+          "file": "reference.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-reference-version-short.json",
+          "expect": "/reference_version pattern"
+        },
+        {
+          "file": "invalid-reference-professional-with-cpf.json",
+          "expect": "/team_professionals/0/cpf schema"
+        },
+        {
+          "file": "invalid-reference-professional-without-has-cns.json",
+          "expect": "/team_professionals/0 required"
+        },
+        {
+          "file": "invalid-reference-domain-as-object.json",
+          "expect": "/registration_dictionaries/domains/renda_familiar array"
+        },
+        {
+          "file": "invalid-reference-without-health-units.json",
+          "expect": "(root) required"
         }
       ]
     }

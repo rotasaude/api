@@ -5,7 +5,7 @@
   "description": "GET /field/v1/session (contrato do 24b §9.3): quem é o aparelho, as microáreas que ele baixa (ACS: as de que é responsável; outros CBOs da Tabela 7: as atribuídas pelo enfermeiro, 6A) e os interruptores. Sem trilha. Fechado.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["contract", "server_time", "user", "professional", "teams", "features", "min_date"],
+  "required": ["contract", "server_time", "user", "professional", "teams", "features", "min_date", "map", "reference_version"],
   "properties": {
     "contract": { "const": "field-sync-v1" },
     "server_time": { "$ref": "#/$defs/datetime" },
@@ -67,7 +67,24 @@
         "territory_registry": { "type": "boolean" }
       }
     },
-    "min_date": { "$ref": "#/$defs/date", "description": "Primeiro dia aceito pelo prazo do SIAPS (§3, C2)." }
+    "min_date": { "$ref": "#/$defs/date", "description": "Primeiro dia aceito pelo prazo do SIAPS (§3, C2)." },
+    "map": {
+      "description": "Mapa offline do município (24c §3.1): o arquivo que GET /field/v1/map entrega. null = a cidade ainda não tem mapa gerado. O app baixa de novo quando version ou sha256 mudam e confere o SHA-256 do arquivo inteiro antes de usar.",
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "size_bytes", "sha256"],
+          "properties": {
+            "version": { "$ref": "#/$defs/date" },
+            "size_bytes": { "type": "integer", "minimum": 1 },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        }
+      ]
+    },
+    "reference_version": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 da referência offline (GET /field/v1/reference, reference-response-v1.json). O app baixa a referência de novo quando este valor muda." }
   },
   "$defs": {
     "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },

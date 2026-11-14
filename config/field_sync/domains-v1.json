@@ -389,7 +389,13 @@
       "invalid_limit",
       "too_many_requests",
       "payload_too_large",
-      "json_required"
+      "json_required",
+      "device_suspended",
+      "map_not_found",
+      "range_not_satisfiable",
+      "unknown_city",
+      "city_suspended",
+      "city_schema_behind"
     ],
     "item": [
       "invalid_request",
@@ -434,7 +440,17 @@
       "invalid_patient",
       "internal_error",
       "household_changed",
-      "too_many_requests"
+      "too_many_requests",
+      "invalid_location",
+      "family_not_found"
     ]
+  },
+  "location": {
+    "latitude": { "min": -90, "max": 90 },
+    "longitude": { "min": -180, "max": 180 },
+    "decimals": 8,
+    "accuracy_m": { "min": 0, "max": 10000, "decimals": 1, "required_for": ["gps"] },
+    "sources": ["gps", "map"],
+    "visit_sources": ["gps"]
   }
 }

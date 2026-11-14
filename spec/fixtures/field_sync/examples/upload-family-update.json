@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee34-0000-4000-8000-000000000034",
+      "type": "family",
+      "body": {
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "family_id": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",
+        "version": 4,
+        "income_band": "4",
+        "members_count": 3,
+        "living_since": "2019-03",
+        "moved_out": false
+      }
+    }
+  ]
+}

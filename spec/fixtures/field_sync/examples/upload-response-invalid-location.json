@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee06-0000-4000-8000-000000000006",
+      "status": "rejected",
+      "type": "household",
+      "error": "invalid_location",
+      "path": "location.latitude"
+    }
+  ]
+}

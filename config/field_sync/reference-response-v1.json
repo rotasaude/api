@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rota-saude/schemas/field-sync/reference-response-v1.json",
+  "title": "rotasaude.field_sync.reference_response.v1",
+  "description": "GET /field/v1/reference (contrato do 24c §3.5): o que o app precisa para montar os formulários sem rede — dicionários do cadastro, bairros, unidades, profissionais da equipe e domínios da visita e da atividade coletiva. Nenhum dado de cidadão; do profissional, só nome, CBO e se tem CNS (nunca CPF nem CNS). Fechado no topo; as seções de dicionário ficam abertas, porque a fonte é o YAML do api (K-2). reference_version é o mesmo valor da sessão: o app compara, nunca recalcula.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reference_version", "registration_dictionaries", "string_domains", "neighborhoods", "health_units", "team_professionals", "home_visit_domains", "collective_activity_domains"],
+  "properties": {
+    "reference_version": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "registration_dictionaries": {
+      "type": "object",
+      "description": "config/ledi/registration_dictionaries.yml do api sem string_domains. Cada domínio é uma LISTA na ordem do YAML (Q27): um objeto { \"117\": … } perderia a ordem, porque o JavaScript reordena chaves inteiras.",
+      "required": ["version", "domains", "sections"],
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "domains": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["code", "label"],
+              "properties": {
+                "code": { "type": ["integer", "string"] },
+                "label": { "type": "string" }
+              }
+            }
+          }
+        },
+        "sections": { "type": "object" }
+      }
+    },
+    "string_domains": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uf", "tipo_logradouro"],
+      "properties": {
+        "uf": { "type": "array", "items": { "$ref": "#/$defs/string_entry" } },
+        "tipo_logradouro": { "type": "array", "items": { "$ref": "#/$defs/string_entry" } }
+      }
+    },
+    "neighborhoods": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "$ref": "#/$defs/uuid" },
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "health_units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "cnes", "name"],
+        "properties": {
+          "id": { "$ref": "#/$defs/uuid" },
+          "cnes": { "type": ["string", "null"], "pattern": "^[0-9]{7}$", "description": "null = unidade sem CNES (Q6): a atividade coletiva a recusa como local." },
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "team_professionals": {
+      "type": "array",
+      "description": "Profissionais das equipes do aparelho (Q6); o recorte por equipe é o team_id (Q7).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["team_id", "professional_id", "name", "cbo", "has_cns"],
+        "properties": {
+          "team_id": { "$ref": "#/$defs/uuid" },
+          "professional_id": { "$ref": "#/$defs/uuid" },
+          "name": { "type": "string", "minLength": 1 },
+          "cbo": { "type": "string", "pattern": "^[0-9]{6}$" },
+          "has_cns": { "type": "boolean" }
+        }
+      }
+    },
+    "home_visit_domains": {
+      "type": "object",
+      "description": "HomeVisits::Json.domains do api, um bloco só.",
+      "required": ["motivo_visita", "desfecho", "turno", "tipo_glicemia", "tipo_de_imovel", "non_residential_property_types", "non_residential_reasons", "male_forbidden_reasons", "without_person_allowed_reasons", "responsible_document_reasons", "reasons_max", "measurement_ranges"]
+    },
+    "collective_activity_domains": {
+      "type": "object",
+      "description": "CollectiveActivities::Json.domains do api, um bloco só (Q7).",
+      "required": ["activity_types", "meeting_topics", "target_audience", "health_topics", "health_practices", "procedures", "rules"]
+    }
+  },
+  "$defs": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "string_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "label"],
+      "properties": {
+        "code": { "type": "string" },
+        "label": { "type": "string" }
+      }
+    }
+  }
+}

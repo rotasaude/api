@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": ["results"],
   "properties": {
-    "results": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/result" } }
+    "results": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "$ref": "#/$defs/result" } }
   },
   "$defs": {
         "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
@@ -56,11 +56,25 @@
         "reference": { "type": ["string", "null"] }
       }
     },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Coordenada do imóvel ou da visita (24c §4, Q3): latitude e longitude com até 8 casas, source gps (leitura do aparelho) ou map (ponto marcado no mapa). accuracy_m, em metros com até 1 casa, é obrigatório com source gps e opcional com map (o app manda a resolução do toque; o dashboard não manda). A visita só aceita gps: é regra do api (domains-v1.json, location.visit_sources), não deste esquema. Erro de esquema aqui dentro volta rejected invalid_location com o mesmo path (Q2).",
+      "required": ["latitude", "longitude", "source"],
+      "properties": {
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90, "multipleOf": 0.00000001 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180, "multipleOf": 0.00000001 },
+        "accuracy_m": { "type": "number", "minimum": 0, "maximum": 10000, "multipleOf": 0.1 },
+        "source": { "enum": ["gps", "map"] }
+      },
+      "if": { "required": ["source"], "properties": { "source": { "const": "gps" } } },
+      "then": { "required": ["accuracy_m"] }
+    },
     "household": {
       "type": "object",
       "additionalProperties": false,
       "description": "<household> do 24a (§2; L6, L7, L30; TerritoryRegistry::Json.household com full: true): com families e living_conditions. Responsável da família só com patient_id e display_name, nunca CPF.",
-      "required": ["id", "micro_area", "address", "property_type", "contact_phone", "refused", "status", "version", "registered_at", "registered_by", "families", "living_conditions"],
+      "required": ["id", "micro_area", "address", "property_type", "contact_phone", "refused", "status", "version", "registered_at", "registered_by", "location", "families", "living_conditions"],
       "properties": {
         "id": { "$ref": "#/$defs/uuid" },
         "micro_area": { "$ref": "#/$defs/micro_area_ref" },
@@ -72,6 +86,7 @@
         "version": { "type": "integer", "minimum": 1 },
         "registered_at": { "$ref": "#/$defs/datetime" },
         "registered_by": { "$ref": "#/$defs/registered_by" },
+        "location": { "anyOf": [{ "$ref": "#/$defs/location" }, { "type": "null" }], "description": "Ponto do imóvel (24c); null = sem ponto." },
         "families": { "type": "array", "items": { "$ref": "#/$defs/family" } },
         "living_conditions": { "type": "object", "description": "Seção do dicionário do 24a (§15): chaves e domínios do api, não deste esquema (K-2)." }
       }
@@ -182,13 +197,14 @@
       "required": ["status"],
       "properties": {
         "client_uuid": { "$ref": "#/$defs/uuid_or_null" },
-        "status": { "enum": ["accepted", "duplicate", "rejected", "stale_version"], "description": "stale_version só para domicílio ou cadastro individual que já existe (versão esperada vencida). Cadastro individual novo cujo domicílio citado mudou volta rejected household_changed (path household_id). Exceção inesperada num item volta rejected internal_error, sem path (Q63)." },
-        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "individual_registration", null] },
-        "id": { "$ref": "#/$defs/uuid", "description": "accepted e duplicate: o id gravado. stale_version: o id do domicílio ou do cadastro existente. rejected: só em already_registered (Q63), o registration_id do cadastro existente, e só quando ele está dentro do escopo do aparelho (6A); fora do escopo não há id. Proibido em qualquer outro rejected." },
+        "status": { "enum": ["accepted", "duplicate", "rejected", "stale_version"], "description": "stale_version só para domicílio, família ou cadastro individual (versão esperada vencida); na família, nova ou existente, a versão é a do domicílio e id é o domicílio (Q4). Cadastro individual novo cujo domicílio citado mudou volta rejected household_changed (path household_id). Exceção inesperada num item volta rejected internal_error, sem path (Q63)." },
+        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "family", "individual_registration", null] },
+        "id": { "$ref": "#/$defs/uuid", "description": "accepted e duplicate: o id gravado. stale_version: o id do domicílio (também para family) ou do cadastro existente. rejected: só em already_registered (Q63), o registration_id do cadastro existente, e só quando ele está dentro do escopo do aparelho (6A); fora do escopo não há id. Proibido em qualquer outro rejected." },
         "error": { "$ref": "#/$defs/error_code" },
         "path": { "type": "string", "minLength": 1, "description": "Notação pontilhada/colchetes do contrato, relativa ao body do item para campos do body (occurred_at, reasons[0], participants[1].new_patient); chave nua para as chaves do próprio item fora do body (client_uuid, type); body quando o body não é objeto. Campo obrigatório ausente: o caminho do campo que falta (occurred_at, participants[1].patient_id). Falha do próprio objeto (pares um-ou-outro do Q27, local da atividade, par de medida): o caminho do objeto (body para o corpo, measurements, participants[i]). Nunca vazio. Nenhum *_body declara type, client_uuid ou body, para o path não ser ambíguo." },
         "candidates": { "type": "array", "maxItems": 10, "items": { "$ref": "#/$defs/candidate" } },
         "confirmable": { "type": "boolean", "description": "Só em duplicate_participant (Q54; a mesma pessoa duas vezes na atividade coletiva; path participants[i], a segunda ocorrência; sem candidates). true = é só semelhança (dois new_patient com o mesmo nome e a mesma data de nascimento, sem documento igual): o app ou o painel pode reenviar com duplicates_reviewed: true naquele participante, para dizer que é outra pessoa. false = não há como liberar (mesmo patient_id, ou CPF ou CNS iguais). Obrigatório com duplicate_participant e proibido em qualquer outro erro." },
+        "version": { "type": "integer", "minimum": 1, "description": "Versão que o registro ficou depois do item (24c, Q5): obrigatória no accepted de household, family (a versão do domicílio) e individual_registration; opcional no duplicate desses três (recibo anterior à coluna result_version não a tem); proibida nos outros tipos e em rejected e stale_version." },
         "current_version": { "type": "integer", "minimum": 1 },
         "current": { "type": "object" }
       },
@@ -202,13 +218,23 @@
         { "if": { "required": ["error"], "properties": { "error": { "const": "already_registered" } } },
           "else": { "if": { "required": ["status"], "properties": { "status": { "const": "rejected" } } }, "then": { "properties": { "id": false } } } },
         { "if": { "required": ["status"], "properties": { "status": { "const": "stale_version" } } },
-          "then": { "required": ["id", "current_version", "current"], "properties": { "type": { "enum": ["household", "individual_registration"] }, "error": false, "path": false, "candidates": false } } },
+          "then": { "required": ["id", "current_version", "current"], "properties": { "type": { "enum": ["household", "family", "individual_registration"] }, "error": false, "path": false, "candidates": false } } },
         { "if": { "required": ["status", "type"], "properties": { "status": { "const": "stale_version" }, "type": { "const": "household" } } },
+          "then": { "properties": { "current": { "$ref": "#/$defs/household" } } } },
+        { "if": { "required": ["status", "type"], "properties": { "status": { "const": "stale_version" }, "type": { "const": "family" } } },
           "then": { "properties": { "current": { "$ref": "#/$defs/household" } } } },
         { "if": { "required": ["status", "type"], "properties": { "status": { "const": "stale_version" }, "type": { "const": "individual_registration" } } },
           "then": { "properties": { "current": { "$ref": "#/$defs/registration" } } } },
+        { "if": { "required": ["status", "type"], "properties": { "status": { "const": "accepted" }, "type": { "enum": ["household", "family", "individual_registration"] } } },
+          "then": { "required": ["version"] } },
+        { "if": { "required": ["status"], "properties": { "status": { "enum": ["accepted", "duplicate"] }, "type": { "not": { "enum": ["household", "family", "individual_registration"] } } } },
+          "then": { "properties": { "version": false } } },
+        { "if": { "required": ["status"], "properties": { "status": { "enum": ["rejected", "stale_version"] } } },
+          "then": { "properties": { "version": false } } },
         { "if": { "required": ["candidates"] },
           "then": { "properties": { "error": { "const": "duplicate_suspected" } } } },
+        { "if": { "required": ["error"], "properties": { "error": { "const": "duplicate_suspected" } } },
+          "then": { "required": ["candidates"] } },
         { "if": { "required": ["error"], "properties": { "error": { "const": "duplicate_participant" } } },
           "then": { "required": ["confirmable"] },
           "else": { "properties": { "confirmable": false } } }

@@ -1,0 +1,31 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee06-0000-4000-8000-000000000006",
+      "status": "accepted",
+      "type": "household",
+      "id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+      "version": 4
+    },
+    {
+      "client_uuid": "c0ffee34-0000-4000-8000-000000000034",
+      "status": "duplicate",
+      "type": "family",
+      "id": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",
+      "version": 5
+    },
+    {
+      "client_uuid": "c0ffee07-0000-4000-8000-000000000007",
+      "status": "accepted",
+      "type": "individual_registration",
+      "id": "2a3b4c5d-6e7f-4a8b-8c9d-0e1f2a3b4c5d",
+      "version": 2
+    },
+    {
+      "client_uuid": "c0ffee01-0000-4000-8000-000000000001",
+      "status": "accepted",
+      "type": "home_visit",
+      "id": "7f8a9b0c-1d2e-4f3a-9b4c-5d6e7f8a9b0c"
+    }
+  ]
+}

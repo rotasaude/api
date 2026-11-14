@@ -51,6 +51,12 @@
         "registered_by": {
           "name": "Rosângela Alves"
         },
+        "location": {
+          "latitude": -25.42847123,
+          "longitude": -49.27325411,
+          "accuracy_m": 8.5,
+          "source": "gps"
+        },
         "families": [
           {
             "id": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",

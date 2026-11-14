@@ -105,7 +105,7 @@ RSpec.describe "FieldSync::Upload", type: :model do
   it "item recusado no meio não derruba os outros" do
     results = upload(item("home_visit", visit_body),
                      item("home_visit", visit_body(occurred_at: (at_now - 400.days).iso8601)),
-                     { "client_uuid" => SecureRandom.uuid, "type" => "family", "body" => {} },
+                     { "client_uuid" => SecureRandom.uuid, "type" => "visit_sheet", "body" => {} },
                      item("home_visit", visit_body(reasons: [ 27 ])))
 
     valid_response!(results)

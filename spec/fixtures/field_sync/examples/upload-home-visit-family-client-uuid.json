@@ -1,0 +1,35 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee33-0000-4000-8000-000000000033",
+      "type": "family",
+      "body": {
+        "household_client_uuid": "c0ffee30-0000-4000-8000-000000000030",
+        "version": 1,
+        "responsible": {
+          "patient_client_uuid": "c0ffee31-0000-4000-8000-000000000031"
+        },
+        "income_band": "3",
+        "members_count": 2,
+        "living_since": "2026-11"
+      }
+    },
+    {
+      "client_uuid": "c0ffee37-0000-4000-8000-000000000037",
+      "type": "home_visit",
+      "body": {
+        "team_id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+        "occurred_at": "2026-11-12T09:40:00-03:00",
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "subject": "family_responsible",
+        "outcome": 1,
+        "reasons": [
+          11,
+          12
+        ],
+        "shared": false,
+        "family_client_uuid": "c0ffee33-0000-4000-8000-000000000033"
+      }
+    }
+  ]
+}

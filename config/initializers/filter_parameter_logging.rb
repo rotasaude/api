@@ -136,7 +136,10 @@ Rails.application.config.filter_parameters += [
   # campo, o texto do local, os candidatos do cadastro rápido e os motivos de
   # retirada/erro (`note`, `reasons`, `token`, `items`, `body`, `new_patient`,
   # `participants` e `reason` já estavam acima).
-  /\A(measurements|meeting_topics|target_audience|health_topics|health_practices|altered_evaluation|smoking|qr_payload|place_text|candidates|withdrawal_reason|mistaken_reason)\z/
+  /\A(measurements|meeting_topics|target_audience|health_topics|health_practices|altered_evaluation|smoking|qr_payload|place_text|candidates|withdrawal_reason|mistaken_reason)\z/,
+  # ADR 0053: a coordenada do imóvel e da visita é dado de pessoa (onde ela
+  # mora, onde foi visitada): nunca em log.
+  /\A(location|latitude|longitude|accuracy_m)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

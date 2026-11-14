@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee34-0000-4000-8000-000000000034",
+      "status": "rejected",
+      "type": "family",
+      "error": "family_not_found",
+      "path": "family_id"
+    }
+  ]
+}

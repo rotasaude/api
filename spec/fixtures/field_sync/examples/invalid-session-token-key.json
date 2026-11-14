@@ -32,5 +32,11 @@
     "territory_registry": true
   },
   "min_date": "2026-10-01",
+  "map": {
+    "version": "2026-11-01",
+    "size_bytes": 41234567,
+    "sha256": "abababababababababababababababababababababababababababababababab"
+  },
+  "reference_version": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
   "token": "rsf_x"
 }

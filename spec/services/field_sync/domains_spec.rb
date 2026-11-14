@@ -139,9 +139,57 @@ RSpec.describe "FieldSync domains-v1.json × api (Ruling A5)" do
     expect(domains.dig("patient", "justificativa_nao_possui_cpf", "codes")).to eq(TerritoryRegistry::Catalog::NO_CPF_REASONS)
   end
 
+  describe "coordenada e catálogo do 24c (ADR 0053)" do
+    it "location: os limites do §4 e da Q3 são os do FieldLocation" do
+      location = domains.fetch("location")
+      expect(location).to include("decimals" => FieldLocation::DECIMALS)
+      expect(location.fetch("latitude")).to eq("min" => -90, "max" => 90)
+      expect(location.fetch("longitude")).to eq("min" => -180, "max" => 180)
+      expect(location.fetch("accuracy_m")).to eq("min" => 0, "max" => 10_000, "decimals" => FieldLocation::ACCURACY_DECIMALS,
+                                                 "required_for" => FieldLocation::ACCURACY_REQUIRED_SOURCES)
+      expect(location.fetch("sources")).to match_array(FieldLocation::SOURCES)
+      expect(location.fetch("visit_sources")).to match_array(FieldLocation::VISIT_SOURCES)
+      expect([ FieldLocation::LATITUDE, FieldLocation::LONGITUDE, FieldLocation::ACCURACY ]).to eq([ (-90..90), (-180..180), (0..10_000) ])
+    end
+
+    it "o item family entra no catálogo e no livro de idempotência" do
+      expect(FieldSync::Catalog::ITEM_TYPES.last).to eq("family")
+      receipt = FieldSyncReceipt.new(item_type: "family")
+      receipt.valid?
+      expect(receipt.errors[:item_type]).to be_empty
+    end
+
+    it "motivos de revogação: device_revoked só para user e admin (Q17)" do
+      expect(FieldSync::Catalog::REVOKED_REASONS).to eq(%w[user admin replaced membership_ended user_disabled])
+      expect(FieldSync::Catalog::SUSPENDED_REASONS).to eq(%w[replaced membership_ended user_disabled])
+      expect(FieldSync::Catalog::REVOKED_REASONS - FieldSync::Catalog::SUSPENDED_REASONS).to eq(FieldSync::Catalog::REVOKED_BY_PERSON)
+    end
+
+    it "a coordenada nunca vai ao log de parâmetros" do
+      filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+      filtered = filter.filter("location" => { "latitude" => -25.42847123 }, "latitude" => 1, "longitude" => 2, "accuracy_m" => 3)
+      expect(filtered.values).to all(eq("[FILTERED]"))
+    end
+  end
+
   describe "códigos de erro" do
     it "errors.http tem todo código que a borda do app de campo responde" do
       expect(domains.dig("errors", "http")).to include(*FieldSync::Catalog::HTTP_ERRORS)
+    end
+
+    it "códigos novos do 24c em errors.http e errors.item (Q8, Q9)" do
+      expect(FieldSync::Catalog::HTTP_ERRORS).to include("device_suspended", "map_not_found", "range_not_satisfiable")
+      expect(domains.dig("errors", "http")).to include("device_suspended", "map_not_found", "range_not_satisfiable")
+      expect(domains.dig("errors", "item")).to include("invalid_location", "family_not_found", "cpf_or_reason_required")
+    end
+
+    # Lê os literais da borda da cidade: código novo ali sem entrada em
+    # errors.http quebra este exemplo (Q8).
+    it "os códigos de borda da cidade que o /field/v1 devolve estão em errors.http (Q8)" do
+      source = File.read(Rails.root.join("app/controllers/concerns/city_resolution.rb"), encoding: "utf-8")
+      codes = source.scan(/error: "([a-z_]+)"/).flatten.uniq
+      expect(codes).to include("unknown_city", "city_suspended", "city_schema_behind")
+      expect(codes - domains.dig("errors", "http")).to eq([])
     end
 
     # Varredura do texto inteiro (a chamada pode quebrar linha depois do parêntese):

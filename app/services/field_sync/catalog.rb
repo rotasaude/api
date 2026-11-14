@@ -8,7 +8,7 @@ module FieldSync
     QR_PREFIX = "rotasaude-field:v1:".freeze
     MAX_ACTIVE_DEVICES = 3
     DEVICE_NAME = (1..60)
-    ITEM_TYPES = %w[home_visit home_visit_withdrawal collective_activity patient household individual_registration].freeze
+    ITEM_TYPES = %w[home_visit home_visit_withdrawal collective_activity patient household individual_registration family].freeze
     MAX_ITEMS = 50
     MAX_BODY_BYTES = 2.megabytes
     PAGE_LIMIT = (1..500)
@@ -19,11 +19,20 @@ module FieldSync
     REMOVAL_REASONS = %w[moved erased out_of_scope].freeze
     TOMBSTONE_ENTITY_TYPES = %w[household registration].freeze
     TOMBSTONE_REASONS = %w[moved erased].freeze # gravadas; out_of_scope só existe no download
-    REVOKED_REASONS = %w[user admin membership_ended user_disabled].freeze
+    REVOKED_REASONS = %w[user admin replaced membership_ended user_disabled].freeze
+    # Módulo 24c (Q17): revogação que o tablet não escolheu (substituição do
+    # aparelho, fim de vínculo, usuário desativado) responde device_suspended,
+    # e o app guarda a fila; device_revoked fica só para user e admin.
+    SUSPENDED_REASONS = %w[replaced membership_ended user_disabled].freeze
     # Revogação com autor (revoked_by_user_id; ck_field_devices_revoked_by).
     REVOKED_BY_PERSON = %w[user admin].freeze
     # O que a borda de /field/v1 (FieldAuthentication) responde; todos em
     # domains-v1.json errors.http (spec/services/field_sync/domains_spec.rb).
-    HTTP_ERRORS = %w[too_many_requests feature_disabled invalid_token device_revoked json_required payload_too_large].freeze
+    HTTP_ERRORS = %w[too_many_requests feature_disabled invalid_token device_revoked json_required payload_too_large
+                     device_suspended map_not_found range_not_satisfiable].freeze
+    # Módulo 24c (ADR 0053): referência offline e mapa por município.
+    REFERENCE_CACHE = 5.minutes
+    MAP_CONTENT_TYPE = "application/vnd.pmtiles".freeze
+    MAP_CHUNK = 1.megabyte
   end
 end
