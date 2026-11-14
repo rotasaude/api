@@ -1046,6 +1046,7 @@ Rails.application.routes.draw do
     get  "session", to: "sessions#show"
     post "uploads", to: "uploads#create"
     get  "changes", to: "changes#index"
+    get  "reference", to: "references#show"
   end
 
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo

@@ -38,10 +38,12 @@ module FieldSync
         teams: field_teams(user).map { |team, role| team_json(user, team, role) },
         features: { home_visits: HomeVisits::Gate.usable?(city), collective_activities: CollectiveActivities::Gate.usable?(city),
                     territory_registry: TerritoryRegistry::Gate.usable?(city) },
-        min_date: HomeVisits::Rules.min_date(today).iso8601 }
+        min_date: HomeVisits::Rules.min_date(today).iso8601,
+        reference_version: Reference.version(user: user, city: city) }
     end
 
-    # [[equipe, papel]] com papel :acs ou :field (ordem: nome, INE).
+    # [[equipe, papel]] com papel :acs ou :field (ordem: nome, INE). Pública: a
+    # referência offline (FieldSync::Reference) usa as mesmas equipes.
     def field_teams(user)
       team_ids = HealthTeamMember.active.where(professional: user.professional).pluck(:health_team_id)
       HealthTeam.where(id: team_ids, active: true, kind: TerritoryRegistry::Catalog::TEAM_KINDS).order(:name, :ine).filter_map do |team|
@@ -82,6 +84,6 @@ module FieldSync
         micro_areas: areas.map { |area| HomeVisits::Json.micro_area(area).merge(scope: scope[:kind]) },
         out_of_area_allowed: role == :acs }
     end
-    private_class_method :field_teams, :team_json
+    private_class_method :team_json
   end
 end
