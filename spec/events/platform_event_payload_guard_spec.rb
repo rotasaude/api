@@ -21,6 +21,7 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
                                 medication_catalog.imported lab.template_changed care_line.template_changed notifiable_disease_list.published
                                 maintenance.lab_template.changed maintenance.care_line_template.changed
                                 maintenance.notifiable_disease_list.published
+                                maintenance.field_map.build_requested maintenance.field_map.base_refresh_requested
                                 channel.registered channel.token_rotated channel.unknown_seen
                                 operator.login operator.city_access operator.created
                                 operator.impersonated

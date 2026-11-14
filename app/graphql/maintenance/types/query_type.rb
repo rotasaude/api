@@ -49,6 +49,11 @@ module Maintenance
       # ADR 0033 (contrato §8): catálogo de medicamentos da plataforma.
       field :medication_catalog, Types::MedicationCatalogType, null: false,
             description: "Release ativa do CATMAT e itens em revisão"
+      # ADR 0053 (contrato do 24c §10): mapas de campo — plataforma, sem abrir cidade.
+      field :field_maps, [ Types::FieldMapType ], null: false,
+            description: "Mapa de campo de cada cidade que já teve geração pedida (cidade sem linha não aparece)"
+      field :field_map_base, Types::FieldMapBaseType, null: true,
+            description: "Base pronta dos mapas de campo; null se nunca foi copiada"
       # ADR 0035 (contrato §6): configuração do PEC da cidade (o tipo abre o
       # banco dela); só sessão humana (HumanOnly).
       field :city_pec_config, Types::CityPecConfigType, null: true,
@@ -100,6 +105,8 @@ module Maintenance
       def sncr_status = Sncr::Checks.status
 
       def medication_catalog = {}
+      def field_maps = FieldMap.joins(:city).includes(:city).order("cities.slug")
+      def field_map_base = FieldMapBase.current
 
       # Mesma forma de `city`: aqui só o escopo do token e a escolha da
       # cidade; quem abre o banco dela é CityPecConfigType (via CityReader).

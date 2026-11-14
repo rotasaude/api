@@ -15,13 +15,18 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus cityPecConfig labExamTemplates careLineTemplates notifiableDiseases],
+    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus cityPecConfig labExamTemplates careLineTemplates notifiableDiseases fieldMaps fieldMapBase],
     "SignatureProvider" => %w[key configured lastCheckAt lastCheckOk],
     "MedicationCatalog" => %w[currentRelease reviewItems],
     "MedicationCatalogRelease" => %w[id importedAt itemsCount hiddenCount],
     "MedicationCatalogItem" => %w[catmatCode sourceDescription parseStatus],
     "ImportMedicationCatalogPayload" => %w[ok errors releaseId added changed removed],
     "ImportAnvisaListsPayload" => %w[ok errors antimicrobials controlled],
+    # Módulo 24c (ADR 0053): mapa de campo por município — só estado, datas e tamanho.
+    "FieldMap" => %w[citySlug state version sizeBytes builtAt errorCode],
+    "FieldMapBase" => %w[version ageDays],
+    "BuildFieldMapPayload" => %w[ok errors fieldMap],
+    "RefreshFieldMapBasePayload" => %w[ok errors fieldMapBase],
     "SignerStatus" => %w[reachable version crlUpdatedAt],
     "SncrStatus" => %w[configured reachable lastCheckAt simulatedAvailable],
     "Maintainer" => %w[id emailAddress active enrolled createdAt],
@@ -29,7 +34,8 @@ RSpec.describe "Maintenance GraphQL schema" do
                      saveProtocolDraft submitProtocolForReview publishProtocol
                      activateProtocol retireProtocol revertProtocolActivation setCityFeature
                      importMedicationCatalog importAnvisaLists setCityPecOrigin rotateCityPecHmacKey
-                     upsertLabExamTemplate upsertLabAnalyteTemplate upsertCareLineTemplate publishNotifiableDiseaseList],
+                     upsertLabExamTemplate upsertLabAnalyteTemplate upsertCareLineTemplate publishNotifiableDiseaseList
+                     buildFieldMap refreshFieldMapBase],
     "LabExamTemplate" => %w[id sigtapCode name sector material container suggestedMethod preparation active analytes],
     "LabAnalyteTemplate" => %w[id key name loinc unit valueType choices decimals position referenceRanges],
     "LabReferenceRange" => %w[sex ageMinDays ageMaxDays low high text],
@@ -581,6 +587,7 @@ RSpec.describe "Maintenance GraphQL schema" do
         { "me" => "{ id }", "maintainers" => "{ id }", "maintenanceTokens" => "{ id }", "auditEvents" => "{ name }",
           "cities" => "{ slug }", "signatureProviders" => "{ key }", "signerStatus" => "{ reachable }", "sncrStatus" => "{ configured }",
           "medicationCatalog" => "{ currentRelease { id } }", "labExamTemplates" => "{ id }", "careLineTemplates" => "{ key }", "notifiableDiseases" => "{ version }",
+          "fieldMaps" => "{ citySlug }", "fieldMapBase" => "{ version }",
           "cityPecConfig" => "(citySlug: \"sem-cidade\") { hmacKeyConfigured }" }
       end
 

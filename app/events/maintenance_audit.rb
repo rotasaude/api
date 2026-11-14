@@ -37,6 +37,8 @@ module MaintenanceAudit
     maintenance.lab_template.changed
     maintenance.care_line_template.changed
     maintenance.notifiable_disease_list.published
+    maintenance.field_map.build_requested
+    maintenance.field_map.base_refresh_requested
   ].freeze
 
   OUTCOMES = %w[attempted ok rejected error].freeze
@@ -87,6 +89,8 @@ module MaintenanceAudit
     when "maintenance.lab_template.changed" then Platform.audit("maintenance.lab_template.changed", **payload)
     when "maintenance.care_line_template.changed" then Platform.audit("maintenance.care_line_template.changed", **payload)
     when "maintenance.notifiable_disease_list.published" then Platform.audit("maintenance.notifiable_disease_list.published", **payload)
+    when "maintenance.field_map.build_requested" then Platform.audit("maintenance.field_map.build_requested", **payload)
+    when "maintenance.field_map.base_refresh_requested" then Platform.audit("maintenance.field_map.base_refresh_requested", **payload)
     else
       # Sem isto, um nome novo em NAMES sem branch correspondente passaria na
       # validação acima, não escreveria nada, e ainda devolveria um
