@@ -13,7 +13,9 @@ class HomeVisit < ApplicationRecord
 
   serialize :reasons, coder: JSON
   serialize :measurements, coder: JSON
-  encrypts :reasons, :measurements, :note, :withdrawal_reason
+  # Módulo 24c (ADR 0053): coordenada da visita do app (FieldLocation), nula sem ponto.
+  serialize :location, coder: JSON
+  encrypts :reasons, :measurements, :note, :withdrawal_reason, :location
 
   validates :outcome, inclusion: { in: HomeVisits::Catalog::OUTCOMES.keys }
   validates :subject, inclusion: { in: HomeVisits::Catalog::SUBJECTS }

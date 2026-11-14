@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_900005) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -1562,8 +1562,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900005) do
     t.index ["token_digest"], name: "index_field_devices_on_token_digest", unique: true
     t.index ["user_id"], name: "idx_field_devices_active_by_user", where: "(revoked_at IS NULL)"
     t.check_constraint "((revoked_at IS NULL) = (revoked_reason IS NULL))", name: "ck_field_devices_revoked"
-    t.check_constraint "(revoked_by_user_id IS NULL) OR ((revoked_reason)::text = ANY (ARRAY['admin'::character varying::text, 'user'::character varying::text]))", name: "ck_field_devices_revoked_by"
-    t.check_constraint "(revoked_reason IS NULL) OR ((revoked_reason)::text = ANY (ARRAY['user'::character varying::text, 'admin'::character varying::text, 'membership_ended'::character varying::text, 'user_disabled'::character varying::text]))", name: "ck_field_devices_revoked_reason"
+    t.check_constraint "(revoked_by_user_id IS NULL) OR ((revoked_reason)::text = ANY (ARRAY['admin'::character varying::text, 'user'::character varying::text, 'replaced'::character varying::text]))", name: "ck_field_devices_revoked_by"
+    t.check_constraint "(revoked_reason IS NULL) OR ((revoked_reason)::text = ANY (ARRAY['user'::character varying::text, 'admin'::character varying::text, 'replaced'::character varying::text, 'membership_ended'::character varying::text, 'user_disabled'::character varying::text]))", name: "ck_field_devices_revoked_reason"
     t.check_constraint "(token_digest)::text ~ '^[0-9a-f]{64}$'::text", name: "ck_field_devices_token_digest"
     t.check_constraint "length(btrim((name)::text)) >= 1 AND length(btrim((name)::text)) <= 60", name: "ck_field_devices_name"
   end
@@ -1575,9 +1575,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900005) do
     t.string "item_type", null: false
     t.uuid "result_id", null: false
     t.string "result_type", null: false
+    t.integer "result_version"
     t.uuid "user_id", null: false
     t.index ["client_uuid"], name: "idx_field_sync_receipts_client_uuid", unique: true
-    t.check_constraint "(item_type)::text = ANY (ARRAY['home_visit'::character varying::text, 'home_visit_withdrawal'::character varying::text, 'collective_activity'::character varying::text, 'patient'::character varying::text, 'household'::character varying::text, 'individual_registration'::character varying::text])", name: "ck_field_sync_receipts_item_type"
+    t.check_constraint "(result_version IS NULL) OR (result_version >= 1)", name: "ck_field_sync_receipts_result_version"
+    t.check_constraint "(item_type)::text = ANY (ARRAY['home_visit'::character varying::text, 'home_visit_withdrawal'::character varying::text, 'collective_activity'::character varying::text, 'patient'::character varying::text, 'household'::character varying::text, 'individual_registration'::character varying::text, 'family'::character varying::text])", name: "ck_field_sync_receipts_item_type"
   end
 
   create_table "field_sync_tombstones", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1698,6 +1700,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900005) do
     t.boolean "has_reason", default: false, null: false
     t.uuid "home_visit_day_id", null: false
     t.uuid "household_id"
+    t.text "location"
     t.text "measurements"
     t.uuid "micro_area_id"
     t.text "note"
@@ -1737,6 +1740,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900005) do
     t.text "families_snapshot", null: false
     t.uuid "household_id", null: false
     t.text "living_conditions", null: false
+    t.text "location"
     t.uuid "micro_area_id", null: false
     t.uuid "neighborhood_id"
     t.string "origin", null: false

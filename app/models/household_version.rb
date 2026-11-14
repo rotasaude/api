@@ -2,13 +2,16 @@
 # re-cifra regrava só as colunas cifradas (trigger). Endereço, condições de
 # moradia e o retrato das famílias são JSON cifrado com a chave da cidade
 # (`serialize` ANTES de `encrypts`); a recusa é "true"/"false" cifrado.
+# Módulo 24c (ADR 0053): `location` é o ponto do imóvel (FieldLocation), JSON
+# cifrado e nulo sem ponto; nunca em inspect.
 class HouseholdVersion < ApplicationRecord
   ORIGINS = %w[save].freeze
 
   serialize :address, coder: JSON
   serialize :living_conditions, coder: JSON
   serialize :families_snapshot, coder: JSON
-  encrypts :address, :living_conditions, :contact_phone, :refused, :families_snapshot
+  serialize :location, coder: JSON
+  encrypts :address, :living_conditions, :contact_phone, :refused, :families_snapshot, :location
 
   belongs_to :household
   belongs_to :micro_area

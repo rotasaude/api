@@ -66,6 +66,11 @@ RSpec.describe "Esquema do aparelho de campo e da sincronização (ADR 0052)", t
       device!(revoked_at: Time.current, revoked_reason: "membership_ended", revoked_by_user_id: agent.id)
     end
     accepted { device!(revoked_at: Time.current, revoked_reason: "membership_ended") }
+    # Módulo 24c (Q17): a substituição do aparelho é revogação por pessoa, com autor.
+    accepted { device!(revoked_at: Time.current, revoked_reason: "replaced", revoked_by_user_id: agent.id) }
+    refused(/ck_field_devices_revoked_by/) do
+      device!(revoked_at: Time.current, revoked_reason: "user_disabled", revoked_by_user_id: agent.id)
+    end
 
     expect(device.reload).not_to be_revoked
     expect(FieldDevice.active).to include(device)

@@ -2319,7 +2319,7 @@ BEGIN
   IF to_regclass('public.individual_registrations') IS NOT NULL THEN
     EXECUTE 'DROP TRIGGER IF EXISTS household_versions_reencryption_only ON household_versions';
     EXECUTE 'CREATE TRIGGER household_versions_reencryption_only BEFORE UPDATE OR DELETE ON household_versions
-      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''address'', ''living_conditions'', ''contact_phone'', ''refused'', ''families_snapshot'')';
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''address'', ''living_conditions'', ''contact_phone'', ''refused'', ''families_snapshot'', ''location'')';
     EXECUTE 'DROP TRIGGER IF EXISTS individual_registration_versions_reencryption_only ON individual_registration_versions';
     EXECUTE 'CREATE TRIGGER individual_registration_versions_reencryption_only BEFORE UPDATE OR DELETE ON individual_registration_versions
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''identity'', ''identification'', ''sociodemographic'', ''health_conditions'',
@@ -3966,7 +3966,7 @@ $fn$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION rota_home_visit_guard() RETURNS trigger AS $fn$
 DECLARE
-  ciphered text[] := ARRAY['reasons', 'measurements', 'note', 'withdrawal_reason'];
+  ciphered text[] := ARRAY['reasons', 'measurements', 'note', 'withdrawal_reason', 'location'];
   withdrawal text[] := ARRAY['withdrawn_at', 'withdrawn_by_user_id', 'withdrawal_reason'];
   old_row jsonb := to_jsonb(OLD);
   new_row jsonb := to_jsonb(NEW);

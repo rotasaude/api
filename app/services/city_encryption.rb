@@ -218,6 +218,8 @@ module CityEncryption
     [ OmbudsmanReopenRequest, :reason ], [ OmbudsmanReopenRequest, :decision_text ],
     # ADR 0052 (módulo 24b): motivos, medidas, observação e motivo da retirada da visita.
     [ HomeVisit, :reasons ], [ HomeVisit, :measurements ], [ HomeVisit, :note ], [ HomeVisit, :withdrawal_reason ],
+    # ADR 0053 (módulo 24c): coordenada do domicílio e da visita.
+    [ HouseholdVersion, :location ], [ HomeVisit, :location ],
     # ADR 0052 (módulo 24b): temas, públicos, práticas, procedimento e motivo do engano da
     # atividade coletiva; avaliação, medidas e tabagismo do participante.
     [ CollectiveActivity, :meeting_topics ], [ CollectiveActivity, :target_audience ],
