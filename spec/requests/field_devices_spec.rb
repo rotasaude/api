@@ -211,4 +211,56 @@ RSpec.describe "Aparelhos de campo (dashboard)", type: :request do
     get "/field_devices/admin", params: { user_id: acs.id }
     expect(response).to have_http_status(:ok)
   end
+
+  # Módulo 24c (ADR 0053; contrato §1, Q16, Q17): substituir um aparelho.
+  describe "substituição (replaces_device_id)" do
+    def session_status(token) = get("/field/v1/session", headers: { "Authorization" => "Bearer #{token}" })
+
+    it "com step-up: cria o novo, revoga o antigo (replaced) e o token antigo recebe 401 device_suspended" do
+      stepped_up!(acs)
+      register("Tablet antigo")
+      old_id = json_body.dig("device", "id")
+      old_token = json_body.fetch("token")
+
+      log = capture_log { json_post("/field_devices", name: "Tablet novo", replaces_device_id: old_id) }
+      expect(response).to have_http_status(:created)
+      expect(response.headers["Cache-Control"]).to eq("no-store")
+      expect(json_body.keys).to match_array(%w[device token qr_payload])
+      new_token = json_body.fetch("token")
+      expect(new_token).not_to eq(old_token)
+      expect(log).not_to include(new_token)
+      expect(FieldDevice.find(old_id)).to have_attributes(revoked_reason: "replaced", revoked_by_user_id: acs.id)
+
+      get "/field_devices"
+      old = json_body.fetch("items").find { |row| row["id"] == old_id }
+      expect(old).to include("status" => "revoked", "revoked_reason" => "replaced")
+      expect(response.body).not_to include(new_token)
+
+      # Review Focus 4: o tablet substituído guarda a fila (Q17), nunca apaga.
+      session_status(old_token)
+      expect([ response.status, json_body ]).to eq([ 401, { "error" => "device_suspended" } ])
+      session_status(new_token)
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "sem step-up → 401 mfa_required e nada revogado" do
+      old = device!(acs)
+      sign_in_as(acs)
+      json_post "/field_devices", name: "Tablet novo", replaces_device_id: old.id
+      expect([ response.status, json_body ]).to eq([ 401, { "error" => "mfa_required" } ])
+      expect(old.reload).not_to be_revoked
+      expect(FieldDevice.count).to eq(1)
+    end
+
+    it "aparelho do colega ou id malformado → 422 invalid_request com o path, sem token" do
+      stepped_up!(acs)
+      theirs = device!(colleague)
+      [ theirs.id, "abc" ].each do |id|
+        json_post "/field_devices", name: "Tablet novo", replaces_device_id: id
+        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "replaces_device_id" } ])
+      end
+      expect(theirs.reload).not_to be_revoked
+      expect(FieldDevice.where(user: acs)).to be_empty
+    end
+  end
 end

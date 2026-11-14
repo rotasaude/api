@@ -121,6 +121,6 @@ RSpec.describe "Esquema da coordenada e do livro do app de campo (ADR 0053)", ty
     expect { AddFieldLocations.new.down }.to raise_error(ActiveRecord::IrreversibleMigration)
     expect([ AddFieldLocations::ITEM_TYPES, AddFieldLocations::REVOKED_REASONS ])
       .to eq([ FieldSync::Catalog::ITEM_TYPES, FieldSync::Catalog::REVOKED_REASONS ])
-    expect(AddFieldLocations::REVOKED_WITH_AUTHOR).to match_array(FieldSync::Catalog::REVOKED_BY_PERSON + %w[replaced])
+    expect(AddFieldLocations::REVOKED_WITH_AUTHOR).to match_array(FieldSync::Catalog::REVOKED_BY_PERSON)
   end
 end

@@ -24,8 +24,9 @@ module FieldSync
     # aparelho, fim de vínculo, usuário desativado) responde device_suspended,
     # e o app guarda a fila; device_revoked fica só para user e admin.
     SUSPENDED_REASONS = %w[replaced membership_ended user_disabled].freeze
-    # Revogação com autor (revoked_by_user_id; ck_field_devices_revoked_by).
-    REVOKED_BY_PERSON = %w[user admin].freeze
+    # Revogação com autor (revoked_by_user_id; ck_field_devices_revoked_by). A
+    # substituição (replaced) é do dono, ao cadastrar o aparelho novo.
+    REVOKED_BY_PERSON = %w[user admin replaced].freeze
     # O que a borda de /field/v1 (FieldAuthentication) responde; todos em
     # domains-v1.json errors.http (spec/services/field_sync/domains_spec.rb).
     HTTP_ERRORS = %w[too_many_requests feature_disabled invalid_token device_revoked json_required payload_too_large

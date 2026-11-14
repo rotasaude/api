@@ -28,7 +28,8 @@ class FieldDevicesController < ApplicationController
   end
 
   def create
-    result = FieldDevices::Register.call(user: Current.user, name: request.request_parameters["name"])
+    result = FieldDevices::Register.call(user: Current.user, name: request.request_parameters["name"],
+                                         replaces_device_id: request.request_parameters["replaces_device_id"])
     return render_failure(result) if result.failure?
 
     device = result.payload.fetch(:device)

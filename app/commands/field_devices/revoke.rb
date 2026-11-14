@@ -1,7 +1,8 @@
 # Revoga um aparelho de campo (módulo 24b, ADR 0052; contrato §9.1, §9.2; Q7,
 # Q21). Final: revogado → 409 device_already_revoked. A linha travada decide a
 # corrida de duas revogações (dono e administrador, ou duas requisições do app).
-# `reason`: user (o dono) | admin (municipal_admin) — com `by` gravado em
+# `reason`: user (o dono) | admin (municipal_admin) | replaced (o dono, ao
+# cadastrar o aparelho que o substitui; módulo 24c, Q17) — com `by` gravado em
 # revoked_by_user_id — | membership_ended | user_disabled (a borda do app,
 # FieldAuthentication; sem autor: ck_field_devices_revoked_by). Quem chama já
 # conferiu quem pode e o step-up. Evento só com ids e o motivo (código).

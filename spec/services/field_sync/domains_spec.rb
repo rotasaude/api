@@ -162,7 +162,9 @@ RSpec.describe "FieldSync domains-v1.json × api (Ruling A5)" do
     it "motivos de revogação: device_revoked só para user e admin (Q17)" do
       expect(FieldSync::Catalog::REVOKED_REASONS).to eq(%w[user admin replaced membership_ended user_disabled])
       expect(FieldSync::Catalog::SUSPENDED_REASONS).to eq(%w[replaced membership_ended user_disabled])
-      expect(FieldSync::Catalog::REVOKED_REASONS - FieldSync::Catalog::SUSPENDED_REASONS).to eq(FieldSync::Catalog::REVOKED_BY_PERSON)
+      expect(FieldSync::Catalog::REVOKED_REASONS - FieldSync::Catalog::SUSPENDED_REASONS).to eq(%w[user admin])
+      # Com autor: o dono, o administrador e a substituição (feita pelo dono).
+      expect(FieldSync::Catalog::REVOKED_BY_PERSON).to eq(%w[user admin replaced])
     end
 
     it "a coordenada nunca vai ao log de parâmetros" do
