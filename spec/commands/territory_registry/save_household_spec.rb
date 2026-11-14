@@ -130,4 +130,79 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
       expect(stay.reload.address_street).to eq("das Flores")
     end
   end
+
+  # Módulo 24c (ADR 0053; contrato §4, Q3, Q13, Q37): o ponto do imóvel vai na
+  # versão. Chave ausente mantém, null apaga, objeto substitui.
+  describe "ponto do imóvel (location)" do
+    let(:gps) { { "latitude" => -25.42847123, "longitude" => -49.27325411, "accuracy_m" => 8.5, "source" => "gps" } }
+    let(:map) { { "latitude" => -25.42851, "longitude" => -49.2733, "source" => "map" } }
+
+    def save(household, extra)
+      described_class.call(params: registry_household_params(household).merge("version" => household.version).merge(extra),
+                           by: registry_acs_of(household), household: household)
+    end
+
+    it "domicílio novo com location grava a versão com o ponto e gera a ficha" do
+      area = registry_micro_area!(code: "01")
+      params = { "micro_area_id" => area.id, "property_type" => "1", "refused" => false, "address" => registry_address,
+                 "living_conditions" => registry_living_conditions, "location" => gps }
+      result = described_class.call(params: params, by: registry_acs_of(area))
+      expect(result).to be_ok
+      version = result.payload[:version]
+      expect(version.reload.location).to eq(gps)
+      expect(LediOutboxEntry.where(source_id: version.id, ficha_type: "cadastro_domiciliar")).to exist
+    end
+
+    it "PATCH só com location muda a versão e gera ficha de atualização" do
+      household = registry_household!
+      expect(household.latest_version.location).to be_nil
+      result = save(household, "location" => map)
+      expect(result).to be_ok
+      version = result.payload[:version]
+      expect(version.version).to eq(2)
+      expect(version.reload.location).to eq(map)
+      expect(version.location).not_to have_key("accuracy_m")
+      expect(LediOutboxEntry.where(source_id: version.id, ficha_type: "cadastro_domiciliar")).to exist
+    end
+
+    it "sem a chave mantém o ponto da versão anterior; null apaga" do
+      household = registry_household!
+      expect(save(household, "location" => gps)).to be_ok
+      kept = save(household.reload, "contact_phone" => "41988887777")
+      expect(kept).to be_ok
+      expect(kept.payload[:version].reload).to have_attributes(version: 3, location: gps, contact_phone: "41988887777")
+      cleared = save(household.reload, "location" => nil)
+      expect(cleared).to be_ok
+      expect(cleared.payload[:version].reload).to have_attributes(version: 4, location: nil)
+    end
+
+    it "o corpo inteiro do 24a com outro ponto grava só o ponto novo (correção do dashboard, Q13)" do
+      household = registry_household!
+      expect(save(household, "location" => gps)).to be_ok
+      before = household.reload.latest_version
+      result = save(household, "location" => map)
+      after = result.payload[:version].reload
+      expect(after.location).to eq(map)
+      expect(after.attributes.slice("address", "living_conditions", "contact_phone", "refused", "property_type"))
+        .to eq(before.attributes.slice("address", "living_conditions", "contact_phone", "refused", "property_type"))
+    end
+
+    it "a família gravada depois de um ponto mantém o ponto" do
+      household = registry_household!
+      expect(save(household, "location" => gps)).to be_ok
+      registry_family!(household.reload)
+      expect(household.reload.latest_version).to have_attributes(version: 3, location: gps)
+    end
+
+    it "coordenada inválida recusa com o path, sem o valor, e nada grava" do
+      household = registry_household!
+      result = save(household, "location" => gps.merge("latitude" => -25.428471234))
+      expect(result.reason).to eq(:invalid_location)
+      expect(result.details).to eq(path: "location.latitude")
+      expect(result.to_h.to_s).not_to include("25.4")
+      expect(save(household, "location" => gps.except("accuracy_m")).details).to eq(path: "location.accuracy_m")
+      expect(save(household, "location" => "aqui").details).to eq(path: "location")
+      expect(household.reload.version).to eq(1)
+    end
+  end
 end

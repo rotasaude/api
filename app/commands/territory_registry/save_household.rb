@@ -22,6 +22,10 @@
 #   - Evento household.saved só com ids.
 #   - Retrato (§14 L29): cada família com responsible_exited (Families); a
 #     família ativa cujo responsável saiu fica fora da ficha.
+#   - Ponto do imóvel (módulo 24c, ADR 0053; contrato §4): `location` ausente
+#     mantém o ponto da versão anterior; `null` apaga; objeto substitui
+#     (FieldLocation; recusa → invalid_location com o path, sem o valor). Por
+#     isso `params_of` não leva o ponto: quem regrava o domicílio o preserva.
 #
 # SaveFamily usa `call` com `lock_patient_ids:` (o responsável, travado com
 # os moradores) e `before_version:` (grava a família depois das travas, antes
@@ -121,8 +125,16 @@ module TerritoryRegistry
       living = Dictionary.parse("living_conditions", params["living_conditions"], prefix: "living_conditions")
       return living if living.failure?
 
+      location = :keep
+      if params.key?("location")
+        parsed = FieldLocation.parse(params["location"], sources: FieldLocation::SOURCES)
+        return parsed if parsed.failure?
+
+        location = parsed.payload[:location]
+      end
+
       Result.ok(property_type: type, refused: refused, contact_phone: phone.presence, status: status, address: address,
-                living_conditions: living.payload[:values] || {})
+                living_conditions: living.payload[:values] || {}, location: location)
     end
 
     # --- gravação (transação) -----------------------------------------------
@@ -182,6 +194,7 @@ module TerritoryRegistry
       now = Time.current
       area = attrs[:area]
       exited = Families.responsible_exited_ids(families)
+      location = attrs[:location] == :keep ? household&.latest_version&.location : attrs[:location]
       household ||= Household.new(version: 0)
       household.assign_attributes(micro_area: area, status: attrs[:status], version: household.version + 1, registered_at: now,
                                   registered_by_user: by)
@@ -190,6 +203,7 @@ module TerritoryRegistry
         household: household, version: household.version, micro_area: area, team: area.team, property_type: attrs[:property_type],
         address: attrs[:address], living_conditions: attrs[:living_conditions], contact_phone: attrs[:contact_phone],
         refused: attrs[:refused].to_s, families_snapshot: families.map { |family| snapshot(family, exited) }, status: attrs[:status],
+        location: location,
         neighborhood_id: attrs[:address]["neighborhood_id"], origin: "save", saved_by_user: by,
         saved_by_professional: by.professional, saved_cbo: attrs[:cbo], created_at: now
       )

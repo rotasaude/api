@@ -283,4 +283,50 @@ RSpec.describe "Território — domicílios e famílias", type: :request do
     json_post "/territory/families/#{family.id}/replace_responsible", responsible: { patient_id: heir.id }, version: household.reload.version
     expect(json_body).to eq("error" => "invalid_family", "path" => "moved_out")
   end
+
+  # Módulo 24c (ADR 0053; contrato §4, Q37): o ponto do imóvel em toda forma do <household>.
+  describe "ponto do imóvel (location)" do
+    let(:point) { { latitude: -25.42847123, longitude: -49.27325411, source: "map" } }
+
+    before { sign_in_as(acs) }
+
+    it "cria com o ponto, e o detalhe e a lista o trazem; sem ponto vem null" do
+      json_post "/territory/households", body.merge(location: point)
+      expect(response).to have_http_status(:created)
+      expect(json_body["location"]).to eq("latitude" => -25.42847123, "longitude" => -49.27325411, "source" => "map")
+      with_point = json_body["id"]
+      json_post "/territory/households", body
+      expect(json_body).to include("location" => nil)
+      without_point = json_body["id"]
+
+      get "/territory/households/#{with_point}"
+      expect(json_body["location"]).to eq("latitude" => -25.42847123, "longitude" => -49.27325411, "source" => "map")
+      get "/territory/households", params: { micro_area_id: area.id }
+      rows = json_body["households"].index_by { |row| row["id"] }
+      expect(rows.fetch(with_point)["location"]).to include("source" => "map")
+      expect(rows.fetch(without_point)).to include("location" => nil)
+    end
+
+    it "PATCH com latitude de 9 casas → 422 invalid_location com o path, sem o valor na resposta nem no log" do
+      json_post "/territory/households", body
+      id = json_body["id"]
+      log = capture_log do
+        json_patch "/territory/households/#{id}", body.merge(version: 1, location: point.merge(latitude: -25.428471234))
+      end
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body).to eq("error" => "invalid_location", "path" => "location.latitude")
+      expect(response.body).not_to include("25.428")
+      expect(log).not_to include("25.428")
+      expect(log).not_to include("49.273")
+      expect(HouseholdVersion.where(household_id: id).count).to eq(1)
+    end
+
+    it "PATCH com location null apaga o ponto" do
+      json_post "/territory/households", body.merge(location: point)
+      id = json_body["id"]
+      json_patch "/territory/households/#{id}", body.merge(version: 1, location: nil)
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to include("version" => 2, "location" => nil)
+    end
+  end
 end

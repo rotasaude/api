@@ -27,6 +27,7 @@ module TerritoryRegistry
                address: address(version.address), property_type: version.property_type, contact_phone: version.contact_phone,
                refused: version.refused?, status: household.status, version: household.version,
                registered_at: household.registered_at.iso8601, registered_by: { name: household.registered_by_user.professional&.professional_name },
+               location: version.location,
                families: families.map { |row| family(row, responsible_exited: exited.include?(row.id)) } }
       json[:living_conditions] = version.living_conditions.to_h if full
       json
