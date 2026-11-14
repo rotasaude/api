@@ -216,7 +216,8 @@ RSpec.describe "Sigilo da coordenada (24c) — eventos de plataforma do módulo"
 
   it "o módulo publica exatamente os quatro nomes, todos no R18 e no catálogo" do
     direct = names(/Platform\.audit\(\s*"([a-z_.]+)"/m, "app/jobs/field_maps/*.rb", "app/services/field_maps/*.rb")
-    audited = names(/audited\(\s*event:\s*"([a-z_.]+)"/m, "app/graphql/maintenance/mutations/*field_map*.rb")
+    # `audited(event:)` nas mutations de plataforma e `on_platform(…, event:)` nas de cidade (CityMutation).
+    audited = names(/\b(?:audited|on_platform|in_city)\([^)]*?\bevent:\s*"([a-z_.]+)"/m, "app/graphql/maintenance/mutations/*field_map*.rb")
     expect(direct).to eq(FieldMaps::Catalog::EVENTS.sort)
     expect(audited).to eq(FieldMaps::Catalog::AUDIT.sort)
     expect((direct + audited).sort).to eq(FieldLocationSecrecy::PLATFORM_EVENTS.sort)
