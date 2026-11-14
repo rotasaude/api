@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_04_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -225,6 +225,43 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900001) do
     t.string "name"
     t.uuid "snapshot_id", null: false
     t.index ["snapshot_id", "ine"], name: "index_cnes_teams_on_snapshot_id_and_ine", unique: true
+  end
+
+  create_table "field_map_bases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "error_code"
+    t.datetime "ready_at"
+    t.string "sha256", limit: 64
+    t.bigint "size_bytes"
+    t.string "source_url", null: false
+    t.string "state", null: false
+    t.string "storage_key"
+    t.datetime "updated_at", null: false
+    t.date "version", null: false
+    t.index ["version"], name: "idx_field_map_bases_version", unique: true
+    t.check_constraint "(state)::text = ANY ((ARRAY['copying'::character varying, 'ready'::character varying, 'failed'::character varying])::text[])", name: "ck_field_map_bases_state"
+    t.check_constraint "((error_code IS NULL) OR ((error_code)::text = ANY ((ARRAY['base_missing'::character varying, 'extract_failed'::character varying, 'boundary_missing'::character varying])::text[]))) AND (((state)::text = 'failed'::text) = (error_code IS NOT NULL))", name: "ck_field_map_bases_error"
+    t.check_constraint "(((state)::text = 'ready'::text) AND (storage_key IS NOT NULL) AND (size_bytes IS NOT NULL) AND (size_bytes > 0) AND (sha256 IS NOT NULL) AND (ready_at IS NOT NULL)) OR (((state)::text <> 'ready'::text) AND (storage_key IS NULL) AND (size_bytes IS NULL) AND (sha256 IS NULL) AND (ready_at IS NULL))", name: "ck_field_map_bases_ready"
+    t.check_constraint "(sha256 IS NULL) OR ((sha256)::text ~ '^[0-9a-f]{64}$'::text)", name: "ck_field_map_bases_sha256"
+  end
+
+  create_table "field_maps", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "built_at"
+    t.uuid "city_id", null: false
+    t.datetime "created_at", null: false
+    t.string "error_code"
+    t.datetime "requested_at", null: false
+    t.string "sha256", limit: 64
+    t.bigint "size_bytes"
+    t.string "state", null: false
+    t.string "storage_key"
+    t.datetime "updated_at", null: false
+    t.date "version"
+    t.index ["city_id"], name: "idx_field_maps_city", unique: true
+    t.check_constraint "(state)::text = ANY ((ARRAY['building'::character varying, 'ready'::character varying, 'failed'::character varying])::text[])", name: "ck_field_maps_state"
+    t.check_constraint "((error_code IS NULL) OR ((error_code)::text = ANY ((ARRAY['base_missing'::character varying, 'extract_failed'::character varying, 'boundary_missing'::character varying])::text[]))) AND (((state)::text = 'failed'::text) = (error_code IS NOT NULL))", name: "ck_field_maps_error"
+    t.check_constraint "((version IS NULL) AND (size_bytes IS NULL) AND (sha256 IS NULL) AND (storage_key IS NULL) AND (built_at IS NULL)) OR ((version IS NOT NULL) AND (size_bytes IS NOT NULL) AND (size_bytes > 0) AND (sha256 IS NOT NULL) AND (storage_key IS NOT NULL) AND (built_at IS NOT NULL))", name: "ck_field_maps_published"
+    t.check_constraint "(sha256 IS NULL) OR ((sha256)::text ~ '^[0-9a-f]{64}$'::text)", name: "ck_field_maps_sha256"
   end
 
   create_table "lab_analyte_templates", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -675,6 +712,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900001) do
   add_foreign_key "cnes_establishments", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
   add_foreign_key "cnes_professional_bonds", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
   add_foreign_key "cnes_teams", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
+  add_foreign_key "field_maps", "cities"
   add_foreign_key "lab_analyte_templates", "lab_exam_templates"
   add_foreign_key "medication_catalog_items", "medication_catalog_releases", column: "first_release_id"
   add_foreign_key "medication_catalog_items", "medication_catalog_releases", column: "last_release_id"

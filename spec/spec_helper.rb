@@ -67,6 +67,8 @@ RSpec.configure do |config|
   # rodam com LEDI_PEC_URL definida — nunca na CI. (Fica aqui, fora do bloco
   # =begin/=end das "configurações sugeridas", que está comentado.)
   config.filter_run_excluding :pec unless ENV["LEDI_PEC_URL"].to_s.strip != ""
+  # Módulo 24c: o recorte com o binário go-pmtiles de verdade só roda quando pedido.
+  config.filter_run_excluding :pmtiles_cli unless ENV["FIELD_MAPS_PMTILES_IT"].to_s.strip != ""
 
 # The settings below are suggested to provide a good initial experience
 # with RSpec, but feel free to customize to your heart's content.

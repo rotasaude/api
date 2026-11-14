@@ -1,0 +1,20 @@
+# Mapa offline por município (módulo 24c, ADR 0053). Sem segredo.
+#   pmtiles_bin: o CLI go-pmtiles instalado na imagem (Dockerfile).
+#   builds_index_url / build_url_template: a build pública do Protomaps de onde
+#     sai a base (%{key} é o nome do arquivo no índice, ex.: 20261113.pmtiles).
+#   base_bbox: a caixa da base [min_lon, min_lat, max_lon, max_lat]. Produção e
+#     staging guardam o Brasil; em desenvolvimento, o Paraná (Curitiba e
+#     Maringá), porque a base do país não cabe numa prova local.
+#   cache_dir: cópia local da base no worker, conferida pelo SHA-256.
+shared:
+  pmtiles_bin: /usr/local/bin/pmtiles
+  builds_index_url: https://build-metadata.protomaps.dev/builds.json
+  build_url_template: "https://build.protomaps.com/%{key}"
+  base_bbox: [-74.1, -33.8, -28.8, 5.3]
+  cache_dir: tmp/field_maps
+
+development:
+  base_bbox: [-54.7, -26.8, -48.0, -22.5]
+
+test:
+  base_bbox: [-54.7, -26.8, -48.0, -22.5]

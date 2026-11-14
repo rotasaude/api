@@ -38,6 +38,25 @@ RUN apt-get update -qq && \
       tzdata && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
+# Módulo 24c (ADR 0053): CLI go-pmtiles, que recorta o mapa offline de cada
+# município (FieldMaps::Cli). Versão fixada pela prova técnica do app de campo
+# (contrato do 24c, Q12); o SHA-256 de cada arquitetura é o da página de
+# releases de protomaps/go-pmtiles. Mudou a versão? Troque os três valores.
+ARG PMTILES_VERSION=1.31.2
+ARG PMTILES_SHA256_AMD64=3ed7dbf4ec2e6dfe5e25b6f70d1ffc932729f93c86db353bf514dd71010a312f
+ARG PMTILES_SHA256_ARM64=f8bd47e7ea866863489cad588fbaf2f31f42e5821f7a03f009b3769f05801cb1
+RUN arch="$(dpkg --print-architecture)" && \
+    case "$arch" in \
+      amd64) asset="go-pmtiles_${PMTILES_VERSION}_Linux_x86_64.tar.gz"; sha="${PMTILES_SHA256_AMD64}" ;; \
+      arm64) asset="go-pmtiles_${PMTILES_VERSION}_Linux_arm64.tar.gz"; sha="${PMTILES_SHA256_ARM64}" ;; \
+      *) echo "go-pmtiles: arquitetura sem binário: $arch" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSLo /tmp/pmtiles.tar.gz "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/${asset}" && \
+    echo "${sha}  /tmp/pmtiles.tar.gz" | sha256sum -c - && \
+    tar -xzf /tmp/pmtiles.tar.gz -C /usr/local/bin pmtiles && \
+    rm /tmp/pmtiles.tar.gz && \
+    pmtiles version
+
 
 FROM base AS build
 
