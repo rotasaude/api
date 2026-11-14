@@ -972,6 +972,7 @@ Rails.application.routes.draw do
     post  "admin/micro_areas",     to: "micro_areas#create"
     patch "admin/micro_areas/:id", to: "micro_areas#update"
     get   "map",                     to: "maps#show"
+    get   "map/households",          to: "maps#households"
     get   "households",              to: "households#index"
     post  "households",              to: "households#create"
     get   "households/:id",          to: "households#show"

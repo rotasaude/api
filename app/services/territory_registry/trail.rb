@@ -6,11 +6,19 @@
 module TerritoryRegistry
   module Trail
     ACCESS = "territory_registry".freeze
+    # Módulo 24c (ADR 0053): os pontos da microárea no mapa do dashboard.
+    MAP_ACCESS = "territory_map".freeze
 
     module_function
 
     def households_listed!(user:, micro_area_id:, household_ids:)
       DomainEvents.publish("clinical_record.viewed", access: ACCESS, micro_area_id: micro_area_id, household_ids: household_ids,
+                                                     user_id: user.id)
+    end
+
+    # Uma por consulta do mapa, com os domicílios mostrados (só ids, nunca a coordenada).
+    def map_households_listed!(user:, micro_area_id:, household_ids:)
+      DomainEvents.publish("clinical_record.viewed", access: MAP_ACCESS, micro_area_id: micro_area_id, household_ids: household_ids,
                                                      user_id: user.id)
     end
 
