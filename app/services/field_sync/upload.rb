@@ -37,8 +37,24 @@
 #    do `current` do stale_version. Os comandos recebem um coletor como `trail:`
 #    para a trilha não ir embora com o rollback do item.
 #
-# Nada de nome, CPF, CNS, motivo, medida ou observação no resultado de erro, no
-# log ou em evento: só código, path, ids e a forma `candidate`/`current` do 24a.
+# Módulo 24c (ADR 0053; contrato §2–§4):
+#   - item `family` (TerritoryRegistry::SaveFamily; só o ACS): domicílio por
+#     `household_id` ou `household_client_uuid`, responsável aninhado por
+#     `patient_id` ou `patient_client_uuid` (Q1); `version` é a do domicílio, e
+#     vencida volta `stale_version` com o <household> atual e `id` = o
+#     domicílio (Q4); `family_id` de outro domicílio → `family_not_found`;
+#   - citações: `family_client_uuid` (visita e cadastro) e `patient_client_uuid`
+#     resolvido pelo recibo de `patient` ou de `individual_registration` — o
+#     client_uuid do cadastro vale pelo paciente dele (Q26, Q51);
+#   - erro de esquema sob `/body/location` → `rejected invalid_location`, com o
+#     mesmo path que o invalid_request teria (Q2);
+#   - `version` no resultado: a versão que o domicílio (household e family) ou o
+#     cadastro ficou, gravada no livro (`result_version`); o `duplicate` devolve
+#     a do livro, e o recibo anterior à coluna sai sem ela (Q5).
+#
+# Nada de nome, CPF, CNS, motivo, medida, observação ou coordenada no resultado
+# de erro, no log ou em evento: só código, path, ids e a forma
+# `candidate`/`current` do 24a.
 module FieldSync
   module Upload
     ITEM_REF = "#/$defs/item".freeze
@@ -47,7 +63,12 @@ module FieldSync
     PATH_MAX = 128
     RESULT_TYPES = { "home_visit" => "HomeVisit", "home_visit_withdrawal" => "HomeVisit",
                      "collective_activity" => "CollectiveActivity", "patient" => "Patient", "household" => "Household",
-                     "individual_registration" => "IndividualRegistration" }.freeze
+                     "individual_registration" => "IndividualRegistration", "family" => "Family" }.freeze
+    # Citações pelo livro (Q27; family no 24c): <tipo>_client_uuid → <tipo>_id.
+    CITATIONS = %w[patient household family].freeze
+    # Q26, Q51: quem cita uma pessoa pode citar o item que a registrou ou o cadastro dela.
+    PERSON_ITEMS = %w[patient individual_registration].freeze
+    LOCATION_POINTER = %r{\A/body/location(/|\z)}
     # Palavras do esquema que são falha do próprio objeto (Q46): o `required`
     # dentro delas não aponta o campo que falta.
     COMPOSITE = %r{/(oneOf|anyOf|not)/}
@@ -135,7 +156,7 @@ module FieldSync
           raise ActiveRecord::Rollback unless outcome[:receipt]
 
           FieldSyncReceipt.create!(client_uuid: uuid, item_type: type, result_type: RESULT_TYPES.fetch(type), result_id: outcome[:id],
-                                   field_device: context[:device], user: context[:user])
+                                   result_version: outcome[:version], field_device: context[:device], user: context[:user])
         end
       rescue StandardError => e
         # Q63 a: só a classe e o client_uuid (a mensagem pode trazer valor do
@@ -161,7 +182,8 @@ module FieldSync
       return nil unless receipt
       return rejected("client_uuid_conflict") unless receipt.item_type == type && receipt.user_id == user.id
 
-      { status: "duplicate", id: receipt.result_id, receipt: false }
+      # A versão daquele recebimento (Q5): nula no recibo anterior à coluna e nos tipos sem versão.
+      { status: "duplicate", id: receipt.result_id, version: receipt.result_version, receipt: false }
     end
 
     def dispatch(type, uuid, body, context, shown)
@@ -172,6 +194,7 @@ module FieldSync
       when "patient" then patient(body, context, shown)
       when "household" then household(body, context)
       when "individual_registration" then registration(body, context, shown)
+      when "family" then family(body, context)
       else raise ArgumentError, "type fora do esquema"
       end
     end
@@ -216,7 +239,7 @@ module FieldSync
           next participant unless participant.is_a?(Hash) && participant.key?("patient_client_uuid")
           return rejected("invalid_collective_activity", "participants[#{index}]") if participant.key?("patient_id") || participant.key?("new_patient")
 
-          id = cited_id(participant["patient_client_uuid"], "patient", context[:user])
+          id = cited_patient_id(participant["patient_client_uuid"], context[:user])
           return rejected("not_found", "participants[#{index}].patient_client_uuid") unless id
 
           participant.except("patient_client_uuid").merge("patient_id" => id)
@@ -257,7 +280,45 @@ module FieldSync
       return stale_household(household) if result.failure? && result.reason == :stale_version && household
       return failure(result) if result.failure?
 
-      accepted(result.payload[:household].id)
+      accepted(result.payload[:household].id, version: result.payload[:household].version)
+    end
+
+    # 24c: família do domicílio (SaveFamily). O domicílio vem pelo id ou pelo
+    # livro, e só vale na microárea que o usuário cadastra; o responsável, pelo
+    # id ou pelo livro (Q26). `version` é a do domicílio: vencida → o
+    # stale_version do domicílio (Q4). Aceito → a versão nova do domicílio.
+    def family(body, context)
+      refusal = registry_refusal(context)
+      return refusal if refusal
+
+      user = context[:user]
+      params, missing = cite(body.except("responsible"), user)
+      return missing if missing
+
+      household = Household.includes(micro_area: :team).find_by(id: params["household_id"])
+      visible = household && TerritoryRegistry::Access.visible_micro_area_ids(user, household.micro_area.team).include?(household.micro_area_id)
+      return rejected("not_found", "household_id") unless visible
+
+      responsible = body["responsible"]
+      if responsible.is_a?(Hash) && responsible.key?("patient_client_uuid")
+        patient_id = cited_patient_id(responsible["patient_client_uuid"], user)
+        return rejected("not_found", "responsible.patient_client_uuid") unless patient_id
+
+        responsible = { "patient_id" => patient_id }
+      end
+
+      existing = nil
+      if params.key?("family_id")
+        existing = Family.find_by(id: params["family_id"], household_id: household.id)
+        return rejected("family_not_found", "family_id") unless existing
+      end
+
+      result = TerritoryRegistry::SaveFamily.call(household: household, by: user, family: existing,
+                                                  params: params.except("household_id", "family_id").merge({ "responsible" => responsible }.compact))
+      return stale_household(household) if result.failure? && result.reason == :stale_version
+      return failure(result) if result.failure?
+
+      accepted(result.payload[:family].id, version: result.payload[:household].version)
     end
 
     # 24a: na atualização, registration_id + version (o cadastro que o usuário
@@ -289,7 +350,7 @@ module FieldSync
         return failure(result)
       end
 
-      accepted(result.payload[:registration].id)
+      accepted(result.payload[:registration].id, version: result.payload[:registration].version)
     end
 
     # --- apoio -------------------------------------------------------------------
@@ -302,15 +363,17 @@ module FieldSync
       rejected("cbo_not_allowed") unless context[:acs]
     end
 
-    # Q27: patient_client_uuid → patient_id e household_client_uuid →
-    # household_id pelo livro. -> [params, nil] | [nil, rejected]
+    # Q27: patient_client_uuid → patient_id, household_client_uuid →
+    # household_id e (24c) family_client_uuid → family_id, pelo livro.
+    # -> [params, nil] | [nil, rejected]
     def cite(body, user)
       params = body.dup
-      %w[patient household].each do |kind|
+      CITATIONS.each do |kind|
         key = "#{kind}_client_uuid"
         next unless params.key?(key)
 
-        id = cited_id(params.delete(key), kind, user)
+        uuid = params.delete(key)
+        id = kind == "patient" ? cited_patient_id(uuid, user) : cited_id(uuid, kind, user)
         return [ nil, rejected("not_found", key) ] unless id
 
         params["#{kind}_id"] = id
@@ -324,6 +387,16 @@ module FieldSync
     def person_search?(params) = params["new_patient"].is_a?(Hash) || %w[cpf cns].any? { |key| params[key].present? }
 
     def cited_id(uuid, item_type, user) = FieldSyncReceipt.where(client_uuid: uuid, item_type: item_type, user_id: user.id).pick(:result_id)
+
+    # Q26, Q51: o client_uuid de um item `patient` aceito vale pelo paciente
+    # criado; o de um `individual_registration` aceito, pelo paciente daquele
+    # cadastro (sem coluna nova no livro).
+    def cited_patient_id(uuid, user)
+      type, id = FieldSyncReceipt.where(client_uuid: uuid, item_type: PERSON_ITEMS, user_id: user.id).pick(:item_type, :result_id)
+      return id if type == "patient"
+
+      IndividualRegistration.where(id: id).pick(:patient_id) if type
+    end
 
     def acs?(user)
       return false unless user&.professional
@@ -380,7 +453,10 @@ module FieldSync
       context[:trail].records_viewed!(user: context[:user], **viewed) if viewed
     end
 
-    def accepted(id, replayed: false) = { status: replayed ? "duplicate" : "accepted", id: id, receipt: true }
+    # `version`: só household, family (a do domicílio) e individual_registration.
+    def accepted(id, version: nil, replayed: false)
+      { status: replayed ? "duplicate" : "accepted", id: id, version: version, receipt: true }
+    end
 
     # O código e o path do Result; candidates só no duplicate_suspected,
     # confirmable só no duplicate_participant (o resto dos details fica fora).
@@ -400,7 +476,9 @@ module FieldSync
     def result_json(uuid, type, outcome)
       json = { "client_uuid" => uuid, "status" => outcome[:status], "type" => type }
       case outcome[:status]
-      when "accepted", "duplicate" then json["id"] = outcome[:id]
+      when "accepted", "duplicate"
+        json["id"] = outcome[:id]
+        json["version"] = outcome[:version] if outcome[:version]
       when "stale_version"
         json.merge!("id" => outcome[:id], "current_version" => outcome[:current_version], "current" => outcome[:current])
       else
@@ -415,8 +493,17 @@ module FieldSync
 
     # --- item fora do esquema (Q31, Q32, Q46) ------------------------------------
 
+    # Q2 (24c): quando o primeiro erro está sob /body/location, o código é
+    # invalid_location e o path é o do erro mais fundo dali (o domicílio aceita
+    # objeto ou null, e o json_schemer reporta os dois ramos).
     def invalid_item(item, errors)
-      json = { "status" => "rejected", "error" => "invalid_request", "path" => schema_path(errors.first) }
+      error = errors.first
+      code = "invalid_request"
+      if error[:pointer].to_s.match?(LOCATION_POINTER)
+        code = "invalid_location"
+        error = errors.select { |e| e[:pointer].to_s.match?(LOCATION_POINTER) }.max_by { |e| e[:pointer].to_s.count("/") }
+      end
+      json = { "status" => "rejected", "error" => code, "path" => schema_path(error) }
       if item.is_a?(Hash)
         json = { "client_uuid" => item["client_uuid"] }.merge(json) if item["client_uuid"].is_a?(String) && item["client_uuid"].match?(UUID)
         json["type"] = item["type"] if Catalog::ITEM_TYPES.include?(item["type"])
@@ -445,7 +532,7 @@ module FieldSync
 
     def invalid_envelope(path) = Result.fail(:invalid_request, details: { path: path })
     private_class_method :process, :lock!, :ledger, :dispatch, :home_visit, :withdrawal, :collective_activity, :patient, :household,
-                         :registration, :registry_refusal, :cite, :person_search?, :cited_id, :acs?, :stale_household, :stale_registration,
+                         :family, :registration, :registry_refusal, :cite, :person_search?, :cited_id, :cited_patient_id, :acs?, :stale_household, :stale_registration,
                          :registration_duplicate, :already_registered, :trail!, :accepted, :failure, :rejected, :result_json, :invalid_item, :schema_path,
                          :invalid_envelope
   end

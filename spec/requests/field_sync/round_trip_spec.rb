@@ -89,4 +89,33 @@ RSpec.describe "App de campo — ida e volta (envio → download)", type: :reque
     expect(removals).to eq([ { "type" => "registration", "id" => saved.id, "reason" => "moved" } ])
     expect(registry_items(items).map(&:second)).not_to include(saved.id)
   end
+
+  # Módulo 24c (ADR 0053; contrato §2, §4): a família nova e o ponto do imóvel
+  # enviados pelo app voltam no download seguinte, no <household>.
+  it "domicílio com ponto e família nova (responsável pelo cadastro com new_patient) voltam no download" do
+    household_uuid, registration_uuid, family_uuid = Array.new(3) { SecureRandom.uuid }
+    point = { "latitude" => -25.42847123, "longitude" => -49.27325411, "accuracy_m" => 8.5, "source" => "gps" }
+    household = { "micro_area_id" => area.id, "property_type" => "1", "refused" => false, "address" => registry_address,
+                  "living_conditions" => registry_living_conditions, "location" => point }
+    registration = registry_registration_sections.deep_stringify_keys.merge(
+      "is_responsible" => true, "household_client_uuid" => household_uuid,
+      "new_patient" => { "full_name" => "Benedita Alves Rocha", "birth_date" => "1951-03-08", "sex" => "female", "no_cpf_reason" => "3" },
+      "patient_demographics" => { "race_color" => "01", "ethnicity" => nil }
+    )
+    registration["identification"] = registration["identification"].merge("desconhece_nome_mae" => true)
+    family = { "household_client_uuid" => household_uuid, "version" => 1, "responsible" => { "patient_client_uuid" => registration_uuid },
+               "income_band" => "3", "members_count" => 1, "living_since" => "2026-11" }
+
+    results = send_upload(item("household", household, uuid: household_uuid),
+                          item("individual_registration", registration, uuid: registration_uuid),
+                          item("family", family, uuid: family_uuid), at: start)
+    expect(results.map { _1["status"] }).to eq(%w[accepted accepted accepted])
+    expect(results.map { _1["version"] }).to eq([ 1, 1, 2 ])
+
+    items, = download(nil, at: start + 10.seconds)
+    row = items.find { |entry| entry["type"] == "household" && entry["id"] == results[0]["id"] }
+    expect(row).to include("version" => 2)
+    expect(row.fetch("body")).to include("location" => point)
+    expect(row.dig("body", "families").map { _1["id"] }).to eq([ results[2]["id"] ])
+  end
 end

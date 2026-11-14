@@ -475,4 +475,209 @@ RSpec.describe "FieldSync::Upload", type: :model do
       expect(FieldSyncReceipt.count).to eq(0)
     end
   end
+
+  # Módulo 24c (ADR 0053; contrato §2–§4; Q1, Q2, Q4, Q5, Q25, Q26, Q51): item
+  # family, family_client_uuid, citação de pessoa pelo cadastro, erro de esquema
+  # da coordenada e a versão no resultado.
+  describe "família, coordenada e versão no resultado (24c)" do
+    let(:gps) { { "latitude" => -25.42847123, "longitude" => -49.27325411, "accuracy_m" => 8.5, "source" => "gps" } }
+
+    def registration_body(**over)
+      body = registry_registration_sections.deep_stringify_keys
+      body["identification"] = body["identification"].merge("desconhece_nome_mae" => true)
+      body.merge("is_responsible" => false, "patient_demographics" => { "race_color" => "01", "ethnicity" => nil }).merge(over.stringify_keys)
+    end
+
+    def family_body(**over)
+      { "version" => 1, "income_band" => "3", "members_count" => 2, "living_since" => "2026-11" }.merge(over.stringify_keys)
+    end
+
+    it "paciente, cadastro, família (responsável por client_uuid) e outro morador por family_client_uuid → quatro accepted" do
+      household = registry_household!(micro_area: area)
+      patient_uuid, family_uuid = SecureRandom.uuid, SecureRandom.uuid
+      results = upload(
+        item("patient", { "new_patient" => typed }, uuid: patient_uuid),
+        item("individual_registration", registration_body(patient_client_uuid: patient_uuid, household_id: household.id, is_responsible: true)),
+        item("family", family_body(household_id: household.id, version: household.version,
+                                   responsible: { "patient_client_uuid" => patient_uuid }), uuid: family_uuid),
+        item("individual_registration", registration_body(new_patient: typed("Carlos Alves Rocha", birth_date: "1979-06-02"),
+                                                          household_id: household.id, family_client_uuid: family_uuid))
+      )
+      valid_response!(results)
+      expect(statuses(results)).to eq(%w[accepted accepted accepted accepted])
+      family = Family.find(results[2]["id"])
+      expect(family).to have_attributes(household_id: household.id, responsible_patient_id: results[0]["id"])
+      expect(results[2]).to include("type" => "family", "version" => household.reload.version)
+      expect(household.version).to eq(2)
+      expect(IndividualRegistration.find(results[3]["id"]).family_id).to eq(family.id)
+      expect(IndividualRegistration.find(results[1]["id"]).reload).to have_attributes(family_id: family.id, is_responsible: true)
+      expect(FieldSyncReceipt.find_by!(client_uuid: family_uuid)).to have_attributes(item_type: "family", result_type: "Family",
+                                                                                     result_id: family.id, result_version: 2)
+    end
+
+    # Review Focus 6 (Q26, Q51): o client_uuid do cadastro vale pelo paciente dele.
+    it "cadastro com new_patient citado pela família e pela visita → todos com o paciente criado" do
+      household = registry_household!(micro_area: area)
+      registration_uuid = SecureRandom.uuid
+      results = upload(
+        item("individual_registration", registration_body(new_patient: typed.merge("social_name" => "Dita"), household_id: household.id,
+                                                          is_responsible: true), uuid: registration_uuid),
+        item("family", family_body(household_id: household.id, version: household.version,
+                                   responsible: { "patient_client_uuid" => registration_uuid })),
+        item("home_visit", visit_body(subject: "resident", household_id: household.id, patient_client_uuid: registration_uuid, reasons: [ 11 ])
+                             .except("micro_area_id", "property_type"))
+      )
+      valid_response!(results)
+      expect(statuses(results)).to eq(%w[accepted accepted accepted])
+      patient_id = IndividualRegistration.find(results[0]["id"]).patient_id
+      expect(Family.find(results[1]["id"]).responsible_patient_id).to eq(patient_id)
+      expect(HomeVisit.find(results[2]["id"]).patient_id).to eq(patient_id)
+    end
+
+    it "o cadastro de paciente existente também é citável pelo client_uuid (Q51); client_uuid de outro tipo não" do
+      household = registry_household!(micro_area: area)
+      patient = registry_patient!
+      registration_uuid, household_uuid = SecureRandom.uuid, SecureRandom.uuid
+      results = upload(
+        item("individual_registration", registry_registration_params(household, patient: patient), uuid: registration_uuid),
+        item("household", household_body, uuid: household_uuid),
+        item("home_visit", visit_body(subject: "resident", household_id: household.id, patient_client_uuid: registration_uuid, reasons: [ 11 ])
+                             .except("micro_area_id", "property_type")),
+        item("home_visit", visit_body(subject: "resident", patient_client_uuid: household_uuid, reasons: [ 11 ]))
+      )
+      valid_response!(results)
+      expect(statuses(results)).to eq(%w[accepted accepted accepted rejected])
+      expect(HomeVisit.find(results[2]["id"]).patient_id).to eq(patient.id)
+      expect(failure(results[3])).to eq("status" => "rejected", "error" => "not_found", "path" => "patient_client_uuid")
+    end
+
+    it "household e individual_registration aceitos trazem version; a visita e o paciente, não" do
+      household_uuid = SecureRandom.uuid
+      results = upload(item("household", household_body(location: gps), uuid: household_uuid),
+                       item("individual_registration", registration_body(new_patient: typed, household_client_uuid: household_uuid)),
+                       item("home_visit", visit_body(location: gps)),
+                       item("patient", { "new_patient" => typed("Rita Alves Rocha", birth_date: "1988-01-20") }))
+      valid_response!(results)
+      expect(statuses(results)).to eq(%w[accepted accepted accepted accepted])
+      expect(results.map { _1["version"] }).to eq([ 1, 1, nil, nil ])
+      expect(results[2]).not_to have_key("version")
+      expect(Household.find(results[0]["id"]).latest_version.location).to eq(gps)
+      expect(HomeVisit.find(results[2]["id"]).location).to eq(gps)
+      expect(FieldSyncReceipt.where(item_type: %w[household individual_registration]).pluck(:result_version)).to eq([ 1, 1 ])
+      expect(FieldSyncReceipt.where(item_type: %w[home_visit patient]).pluck(:result_version)).to eq([ nil, nil ])
+    end
+
+    # Review Focus 3: a versão do duplicate é a do livro, não a de agora.
+    it "reenvio depois de outra gravação → duplicate com a versão daquele recebimento" do
+      household = registry_household!(micro_area: area)
+      household_item = item("household", registry_household_params(household).merge("household_id" => household.id, "version" => 1,
+                                                                                    "contact_phone" => "41988887777"))
+      first = upload(household_item).sole
+      expect(first).to include("status" => "accepted", "version" => 2)
+      family_item = item("family", family_body(household_id: household.id, version: 2, responsible: { "patient_id" => registry_patient!.id }))
+      family = upload(family_item).sole
+      expect(family).to include("status" => "accepted", "version" => 3)
+      registry_new_household_version!(household.reload)
+      expect(household.reload.version).to eq(4)
+
+      again = upload(household_item, family_item)
+      valid_response!(again)
+      expect(again.map { _1.slice("status", "id", "version") })
+        .to eq([ { "status" => "duplicate", "id" => household.id, "version" => 2 },
+                 { "status" => "duplicate", "id" => family["id"], "version" => 3 } ])
+    end
+
+    it "recibo anterior à coluna result_version → duplicate sem version, válido no esquema (Q5)" do
+      household = registry_household!(micro_area: area)
+      uuid = SecureRandom.uuid
+      FieldSyncReceipt.create!(client_uuid: uuid, item_type: "household", result_type: "Household", result_id: household.id,
+                               field_device: device, user: acs)
+      result = upload(item("household", household_body, uuid: uuid)).sole
+      valid_response!([ result ])
+      expect(result).to eq("client_uuid" => uuid, "status" => "duplicate", "type" => "household", "id" => household.id)
+    end
+
+    it "family de quem não é ACS → cbo_not_allowed" do
+      tacs = field_agent!(cbo: "322255", team: team)
+      assignment!(area, tacs.professional)
+      tablet = FieldDevices::Register.call(user: tacs, name: "Tablet").payload.fetch(:device)
+      household = registry_household!(micro_area: area)
+      result = upload(item("family", family_body(household_id: household.id, responsible: { "patient_id" => registry_patient!.id })),
+                      user: tacs, dev: tablet).sole
+      expect(failure(result)).to eq("status" => "rejected", "error" => "cbo_not_allowed")
+    end
+
+    it "family_id de outro domicílio → family_not_found; domicílio fora do escopo ou citação não aceita → not_found com o path" do
+      household = registry_household!(micro_area: area)
+      other = registry_household!(micro_area: area)
+      foreign_family = registry_family!(other)
+      outside = registry_household!(micro_area: registry_micro_area!(code: "09", team: registry_team!))
+      results = upload(
+        item("family", family_body(household_id: household.id, family_id: foreign_family.id, version: household.version)),
+        item("family", family_body(household_id: outside.id, responsible: { "patient_id" => registry_patient!.id })),
+        item("family", family_body(household_client_uuid: SecureRandom.uuid, responsible: { "patient_id" => registry_patient!.id })),
+        item("family", family_body(household_id: household.id, responsible: { "patient_client_uuid" => SecureRandom.uuid })),
+        item("home_visit", visit_body(subject: "family_responsible", household_id: household.id, family_client_uuid: SecureRandom.uuid)
+                             .except("micro_area_id", "property_type"))
+      )
+      valid_response!(results)
+      expect(results.map { failure(_1) }).to eq([
+        { "status" => "rejected", "error" => "family_not_found", "path" => "family_id" },
+        { "status" => "rejected", "error" => "not_found", "path" => "household_id" },
+        { "status" => "rejected", "error" => "not_found", "path" => "household_client_uuid" },
+        { "status" => "rejected", "error" => "not_found", "path" => "responsible.patient_client_uuid" },
+        { "status" => "rejected", "error" => "not_found", "path" => "family_client_uuid" }
+      ])
+      expect(FieldSyncReceipt.count).to eq(0)
+    end
+
+    it "family com version vencida → stale_version com id do domicílio e o <household> atual (Q4); nada no livro" do
+      household = registry_household!(micro_area: area)
+      registry_new_household_version!(household, location: gps)
+      result = upload(item("family", family_body(household_id: household.id, version: 1, responsible: { "patient_id" => registry_patient!.id }))).sole
+      valid_response!([ result ])
+      expect(result).to include("status" => "stale_version", "type" => "family", "id" => household.id, "current_version" => 2)
+      expect(result.fetch("current")).to include("id" => household.id, "version" => 2, "location" => gps, "families" => [])
+      expect(FieldSyncReceipt.count).to eq(0)
+      expect(Family.count).to eq(0)
+    end
+
+    it "família nova de responsável sem cadastro ativo no domicílio é aceita (Q25); recusada não vai ao livro e o reenvio corrigido entra" do
+      household = registry_household!(micro_area: area)
+      uuid = SecureRandom.uuid
+      refused = upload(item("family", family_body(household_id: household.id), uuid: uuid)).sole
+      expect(failure(refused)).to eq("status" => "rejected", "error" => "invalid_family", "path" => "responsible.patient_id")
+      expect(FieldSyncReceipt.count).to eq(0)
+
+      accepted = upload(item("family", family_body(household_id: household.id, responsible: { "patient_id" => registry_patient!.id }), uuid: uuid)).sole
+      valid_response!([ accepted ])
+      expect(accepted).to include("status" => "accepted", "type" => "family", "version" => 2)
+    end
+
+    # Q2: erro de esquema sob /body/location vira invalid_location, com o mesmo path.
+    it "coordenada fora do esquema → rejected invalid_location com o path, sem o valor; outra chave → invalid_request" do
+      results = upload(
+        item("household", household_body(location: gps.merge("latitude" => -25.428471234))),
+        item("home_visit", visit_body(location: nil)),
+        item("home_visit", visit_body(location: gps.except("accuracy_m"))),
+        item("home_visit", visit_body(location: gps.merge("altitude" => 934))),
+        item("home_visit", visit_body(altitude: 934))
+      )
+      valid_response!(results)
+      expect(results.map { failure(_1) }).to eq([
+        { "status" => "rejected", "error" => "invalid_location", "path" => "location.latitude" },
+        { "status" => "rejected", "error" => "invalid_location", "path" => "location" },
+        { "status" => "rejected", "error" => "invalid_location", "path" => "location.accuracy_m" },
+        { "status" => "rejected", "error" => "invalid_location", "path" => "location.altitude" },
+        { "status" => "rejected", "error" => "invalid_request", "path" => "altitude" }
+      ])
+      expect(results.to_s).not_to include("25.428")
+      expect([ Household.count, HomeVisit.count ]).to eq([ 0, 0 ])
+    end
+
+    it "visita do app com ponto do mapa passa no esquema e é recusada pela regra (visit_sources)" do
+      result = upload(item("home_visit", visit_body(location: gps.merge("source" => "map")))).sole
+      expect(failure(result)).to eq("status" => "rejected", "error" => "invalid_location", "path" => "location.source")
+    end
+  end
 end
