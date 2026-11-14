@@ -37,8 +37,12 @@ RSpec.describe "Sala de vacina — ESAVI", type: :request do
     post_esavi
     events = DomainEvent.where(name: "disease_notification.created")
     expect(events.sole.payload).to eq("notification_id" => json_body["notification_id"], "immediate" => true)
-    dumped = DomainEvent.all.map { |e| e.payload.to_json }.join
-    expect(dumped).not_to include(dose.immunobiological_code.to_s + "\"", "lot_number")
+    # Valores, não substring: o código é curto ("42") e `42"` aparece no fim
+    # de qualquer UUID do payload que termine em 42 — o teste falhava ao acaso.
+    leaves = ->(v) { v.is_a?(Hash) ? v.values.flat_map(&leaves) : v.is_a?(Array) ? v.flat_map(&leaves) : [ v ] }
+    values = DomainEvent.all.flat_map { |e| leaves.(e.payload) }
+    expect(values).not_to include(dose.immunobiological_code, dose.immunobiological_code.to_s)
+    expect(DomainEvent.all.map { |e| e.payload.to_json }.join).not_to include("lot_number")
   end
 
   it "já aberta → 200 com o mesmo id e existing: true; nada novo" do
