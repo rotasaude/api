@@ -14,6 +14,9 @@ module TerritoryRegistry
     before_action :require_reader!, only: :show
 
     def show
+      # Nenhuma chave na query: nada de coordenada ou pessoa na URL.
+      return unless query_only!
+
       render_field_map(FieldMap.published_for(Current.city.id))
     end
 
