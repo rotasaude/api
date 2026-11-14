@@ -315,7 +315,8 @@ RSpec.describe "Maintenance analyzers" do
   # abre a cidade).
   describe "step-up on the acts that approve or put a version in use" do
     def step_up_required = %w[publishProtocol activateProtocol retireProtocol revertProtocolActivation rotateCityPecHmacKey]
-    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview setCityFeature setCityPecOrigin]
+    # buildFieldMap (24c, Q22): pede a geração do mapa de campo; nada é apagado nem posto em uso.
+    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview setCityFeature setCityPecOrigin buildFieldMap]
 
     include MaintenanceCityMutationSpecHelpers
 

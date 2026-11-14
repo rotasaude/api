@@ -17,6 +17,7 @@ module Maintenance
         labExamTemplates upsertLabExamTemplate upsertLabAnalyteTemplate
         careLineTemplates upsertCareLineTemplate
         notifiableDiseases publishNotifiableDiseaseList
+        fieldMaps fieldMapBase buildFieldMap refreshFieldMapBase
       ].freeze
 
       # Campos de raiz que um token PODE usar. Existe para a guarda de

@@ -91,13 +91,28 @@ RSpec.describe "Maintenance: mapas de campo", type: :request do
   end
 
   it "slug desconhecido ou cidade que não está ativa → ok false com o path, nada enfileirado e auditoria rejected" do
-    expect do
-      gql!(%(mutation { buildFieldMap(citySlug: "nao-existe") { ok errors { path message } fieldMap { state } } }))
-    end.not_to have_enqueued_job(FieldMaps::BuildJob)
-    expect(json.dig("data", "buildFieldMap")).to eq("ok" => false, "errors" => [ { "path" => "citySlug", "message" => "cidade não encontrada" } ],
-                                                    "fieldMap" => nil)
+    refused = lambda do |slug|
+      expect do
+        gql!(%(mutation { buildFieldMap(citySlug: "#{slug}") { ok errors { path message } fieldMap { state } } }))
+      end.not_to have_enqueued_job(FieldMaps::BuildJob)
+      json.dig("data", "buildFieldMap")
+    end
+
+    expect(refused.call("nao-existe"))
+      .to eq("ok" => false, "errors" => [ { "path" => "citySlug", "message" => "cidade inexistente" } ], "fieldMap" => nil)
     expect(audit("maintenance.field_map.build_requested")).to eq(%w[attempted rejected])
+
+    city.update_columns(status: "suspended")
+    expect(refused.call(city.slug))
+      .to eq("ok" => false, "errors" => [ { "path" => "citySlug", "message" => "cidade não está ativa (suspended)" } ], "fieldMap" => nil)
+    expect(audit("maintenance.field_map.build_requested")).to eq(%w[attempted rejected attempted rejected])
     expect(FieldMap.count).to eq(0)
+  end
+
+  it "slug malformado não chega à auditoria (o texto do cliente não entra na trilha imutável)" do
+    gql!(%(mutation { buildFieldMap(citySlug: "Não É Slug") { ok errors { path message } } }))
+    expect(json.dig("data", "buildFieldMap")).to eq("ok" => false, "errors" => [ { "path" => "citySlug", "message" => "slug de cidade inválido" } ])
+    expect(audit("maintenance.field_map.build_requested")).to eq([])
   end
 
   it "refreshFieldMapBase enfileira a cópia da base; com uma cópia em curso, recusa" do

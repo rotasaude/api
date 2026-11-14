@@ -862,7 +862,9 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
           "setCityFeature" => [ Platform::Features, :set! ],
           # ADR 0035: configuração do PEC da cidade.
           "setCityPecOrigin" => [ PecExternal::Configure, :set_origin ],
-          "rotateCityPecHmacKey" => [ PecExternal::Configure, :rotate_key ]
+          "rotateCityPecHmacKey" => [ PecExternal::Configure, :rotate_key ],
+          # ADR 0053 (24c): pedido de geração do mapa de campo, escrita de plataforma.
+          "buildFieldMap" => [ FieldMaps::Request, :build! ]
         }
       end
 
@@ -890,6 +892,12 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
           gql!(<<~GQL, citySlug: city.slug, key: "chave-qualquer-0123456789", code: code)
             mutation($citySlug: String!, $key: String!, $code: String!) {
               rotateCityPecHmacKey(citySlug: $citySlug, key: $key, code: $code) { ok errors { path message } }
+            }
+          GQL
+        when "buildFieldMap"
+          gql!(<<~GQL, citySlug: city.slug)
+            mutation($citySlug: String!) {
+              buildFieldMap(citySlug: $citySlug) { ok errors { path message } }
             }
           GQL
         else raise "no call defined for #{name} — add one to call_mutation above"
