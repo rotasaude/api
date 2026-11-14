@@ -3,9 +3,8 @@ require "rails_helper"
 # Módulo 24b (ADR 0052; contrato §9.4): a cópia dos esquemas do field-sync em
 # config/field_sync/ é a do rotasaude/contracts, presa por SHA-256; os exemplos
 # do manifest do contracts (cópia em spec/fixtures/field_sync/examples/) dão o
-# mesmo resultado aqui, com o json_schemer do api. Os SHA são os da v1.2.0
-# (módulo 24c, ADR 0053): commit 1012666 do rotasaude/contracts, ainda sem
-# tag; a tag field-sync-v1.2.0 é presa na Task 18 do plano do api.
+# mesmo resultado aqui, com o json_schemer do api. Os SHA são os da tag
+# field-sync-v1.2.0 do rotasaude/contracts (módulo 24c, ADR 0053).
 RSpec.describe "FieldSync::Schemas (contrato field-sync-v1)" do
   let(:examples) { Rails.root.join("spec/fixtures/field_sync/examples") }
 
