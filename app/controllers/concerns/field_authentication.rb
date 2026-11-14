@@ -6,7 +6,11 @@
 #      para todo /field/v1 → 429 too_many_requests;
 #   2. interruptor home_visits (HomeVisitsGate) → 403 feature_disabled;
 #   3. o aparelho pelo índice único do digest: ausente/desconhecido → 401
-#      invalid_token; revogado → 401 device_revoked;
+#      invalid_token; revogado → 401 device_revoked ou device_suspended, pelo
+#      motivo GRAVADO (módulo 24c, ADR 0053; 6A, Q17): user e admin →
+#      device_revoked (o tablet apaga tudo); replaced, membership_ended e
+#      user_disabled → device_suspended (o tablet guarda a fila), sem dizer
+#      qual dos três;
 #   3b. a query (StrictQuery; `permitted_query_keys`, vazio por padrão) → 422
 #      invalid_request, depois de saber que o token existe e ANTES de qualquer
 #      efeito (revogação, last_used_at, trilha): quem não tem token continua
@@ -14,8 +18,9 @@
 #      sofre efeito por pedido recusado. Em TODA requisição: usuário
 #      ativo, papel health_professional e vínculo ativo da Tabela 7 em equipe
 #      ativa 70/76 (HomeVisits::Access.device_owner?); sem isso o aparelho é
-#      revogado agora (user_disabled | membership_ended) e a resposta é o mesmo
-#      401 device_revoked, sem o motivo (Q7). Sempre WWW-Authenticate: Bearer;
+#      revogado agora (user_disabled | membership_ended) e a resposta é o 401
+#      do motivo que ficou gravado: device_suspended, ou device_revoked se o
+#      dono revogou nesse meio-tempo (Q7). Sempre WWW-Authenticate: Bearer;
 #   4. last_used_at no máximo uma vez por minuto;
 #   5. escrita só JSON (415 json_required) e corpo até 2 MB (413 payload_too_large).
 # Nunca Current.session nem Current.user: o aparelho (@device), o dono
@@ -60,20 +65,26 @@ module FieldAuthentication
   def authenticate_device!
     device = FieldDevice.by_token(bearer_token)
     return refuse_device("invalid_token") unless device
-    return refuse_device("device_revoked") if device.revoked?
+    return refuse_device(revoked_error(device)) if device.revoked?
     return unless query_only!(*permitted_query_keys)
 
     user = device.user
     member = user.active? && HomeVisits::Access.device_owner?(user)
     unless member
       FieldDevices::Revoke.call(device, by: nil, reason: user.active? ? "membership_ended" : "user_disabled")
-      return refuse_device("device_revoked")
+      return refuse_device(revoked_error(device.reload))
     end
 
     @device = device
     @device_user = user
     @device_member = member
     touch_last_used!
+  end
+
+  # O 401 do aparelho revogado, pelo motivo gravado de fato (outra requisição
+  # pode ter revogado antes desta).
+  def revoked_error(device)
+    FieldSync::Catalog::SUSPENDED_REASONS.include?(device.revoked_reason) ? "device_suspended" : "device_revoked"
   end
 
   def touch_last_used!

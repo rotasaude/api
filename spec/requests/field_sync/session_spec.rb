@@ -4,8 +4,11 @@ require "rails_helper"
 # campo. Host da cidade, sem cookie, Authorization: Bearer rsf_…; ordem
 # rate_limit (120/min por digest, por IP sem token) → home_visits → token. O
 # vínculo é conferido em toda requisição: sem ele o aparelho é revogado agora
-# (membership_ended | user_disabled) e a resposta é o 401 device_revoked
-# uniforme. GET /field/v1/session na forma do session-response-v1, sem trilha.
+# (membership_ended | user_disabled). Módulo 24c (ADR 0053; 6A, Q17): o 401
+# diz se o tablet apaga tudo (device_revoked: o dono ou o administrador
+# revogou) ou guarda a fila (device_suspended: fim de vínculo, usuário
+# desativado ou aparelho substituído), sem dizer qual dos três. GET
+# /field/v1/session na forma do session-response-v1, sem trilha.
 RSpec.describe "App de campo — autenticação e GET /field/v1/session", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
@@ -76,32 +79,73 @@ RSpec.describe "App de campo — autenticação e GET /field/v1/session", type: 
     unauthorized_with("invalid_token")
   end
 
-  it "revogado → 401 device_revoked" do
+  it "revogado pelo dono ou pelo administrador → 401 device_revoked" do
     FieldDevices::Revoke.call(device, by: acs, reason: "user")
     session_get
     unauthorized_with("device_revoked")
+
+    other = FieldDevices::Register.call(user: acs, name: "Tablet").payload
+    FieldDevices::Revoke.call(other.fetch(:device), by: verifier!, reason: "admin")
+    session_get(other.fetch(:token))
+    unauthorized_with("device_revoked")
   end
 
-  it "vínculo encerrado → revoga membership_ended e 401" do
+  it "já revogado por fim de vínculo, usuário desativado ou substituição → 401 device_suspended, sem dizer o motivo" do
+    %w[membership_ended user_disabled replaced].each do |reason|
+      registered = FieldDevices::Register.call(user: acs, name: "Tablet #{reason}"[0, 60]).payload
+      registered.fetch(:device).update!(revoked_at: Time.current, revoked_reason: reason)
+      session_get(registered.fetch(:token))
+      unauthorized_with("device_suspended")
+      expect(response.body).not_to include(reason)
+    end
+  end
+
+  it "vínculo encerrado → revoga membership_ended e 401 device_suspended" do
     device
     HealthTeamMember.active.find_by!(professional: acs.professional, health_team: team).update!(ended_on: Time.zone.today)
     session_get
-    unauthorized_with("device_revoked")
+    unauthorized_with("device_suspended")
     expect(device.reload).to have_attributes(revoked_reason: "membership_ended", revoked_by_user_id: nil)
     expect(device.revoked_at).to be_present
     expect(DomainEvent.where(name: "field_device.revoked").sole.payload)
       .to eq("field_device_id" => device.id, "user_id" => acs.id, "reason" => "membership_ended")
 
     session_get
-    unauthorized_with("device_revoked")
+    unauthorized_with("device_suspended")
     expect(DomainEvent.where(name: "field_device.revoked").count).to eq(1)
+  end
+
+  it "aparelho suspenso cujo vínculo voltou continua suspenso" do
+    device
+    member = HealthTeamMember.active.find_by!(professional: acs.professional, health_team: team)
+    member.update!(ended_on: Time.zone.today)
+    session_get
+    unauthorized_with("device_suspended")
+    member.update!(ended_on: nil)
+    session_get
+    unauthorized_with("device_suspended")
+    expect(device.reload).to be_revoked
+  end
+
+  # Review Focus 4: a resposta é pelo motivo gravado de fato, não pelo que a
+  # borda ia gravar.
+  it "o dono revoga enquanto a borda ia suspender → 401 device_revoked" do
+    device
+    HealthTeamMember.active.find_by!(professional: acs.professional, health_team: team).update!(ended_on: Time.zone.today)
+    allow(FieldDevices::Revoke).to receive(:call).and_wrap_original do |original, target, **args|
+      original.call(FieldDevice.find(target.id), by: acs, reason: "user")
+      original.call(target, **args)
+    end
+    session_get
+    unauthorized_with("device_revoked")
+    expect(device.reload).to have_attributes(revoked_reason: "user", revoked_by_user_id: acs.id)
   end
 
   it "sem o papel health_professional → revoga membership_ended" do
     device
     acs.memberships.active.where(role: "health_professional").find_each(&:revoke!)
     session_get
-    unauthorized_with("device_revoked")
+    unauthorized_with("device_suspended")
     expect(device.reload.revoked_reason).to eq("membership_ended")
   end
 
@@ -109,7 +153,7 @@ RSpec.describe "App de campo — autenticação e GET /field/v1/session", type: 
     device
     acs.deactivate!
     session_get
-    unauthorized_with("device_revoked")
+    unauthorized_with("device_suspended")
     expect(device.reload).to have_attributes(revoked_reason: "user_disabled", revoked_by_user_id: nil)
   end
 
