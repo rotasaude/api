@@ -24,6 +24,7 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
                                 channel.registered channel.token_rotated channel.unknown_seen
                                 operator.login operator.city_access operator.created
                                 operator.impersonated
+                                field_map.built field_map.failed
                                 maintenance.session.started maintenance.session.failed
                                 maintenance.session.locked maintenance.session.ended
                                 maintenance.maintainer.invited maintenance.maintainer.enrolled

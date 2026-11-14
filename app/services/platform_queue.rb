@@ -23,7 +23,7 @@
 # mesma cidade (é o que CityScopedJob/EachCityJob e Whatsapp::Ingest garantem).
 module PlatformQueue
   # Jobs e mailers de ciclo de vida. Job novo de plataforma entra aqui.
-  JOBS = %w[ProvisionCityJob PurgePlatformAccessJob].freeze
+  JOBS = %w[ProvisionCityJob PurgePlatformAccessJob FieldMaps::BuildJob FieldMaps::RefreshBaseJob].freeze
   MAILERS = %w[InvitationMailer].freeze
   # Job do próprio Solid Queue para tarefas recorrentes do tipo command: cada
   # banco limpa a sua fila.

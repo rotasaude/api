@@ -1,0 +1,12 @@
+municipios_bbox.csv — caixa (bounding box) de cada município do Brasil
+
+Origem: API de malhas do IBGE, malha municipal por estado
+  https://servicodados.ibge.gov.br/api/v3/malhas/estados/<UF>?formato=application/vnd.geo+json&intrarregiao=municipio&qualidade=intermediaria
+  (as 27 unidades da federação; propriedade `codarea` = código IBGE de 7 dígitos)
+Baixado em: 2026-11-14
+Conteúdo: ibge_code,min_lon,min_lat,max_lon,max_lat (graus decimais, 5 casas), 5.570 municípios, em ordem de código.
+Como foi gerado: mínimo e máximo de longitude e latitude dos vértices de cada município.
+Precisão: a qualidade "intermediaria" simplifica o contorno; a caixa fica até ~250 m menor que a da
+  qualidade "maxima" (medido em Curitiba e Maringá). O recorte soma 2 km de margem (FieldMaps::Boundaries).
+SHA-256: d66dd593a762953081c8c4fcf4b8a1163494929dcf1c5636e8ebc882224aa1b4
+Licença: dados públicos do IBGE.
