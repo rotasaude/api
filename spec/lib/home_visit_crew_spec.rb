@@ -176,6 +176,43 @@ RSpec.describe HomeVisitCrew, type: :model do
     end
   end
 
+  # Módulo 24c (ADR 0053): os domicílios semeados ganham o ponto do imóvel e o
+  # app deixa uma visita com GPS, para a prova do mapa no navegador e no tablet.
+  describe "pontos do mapa (24c)" do
+    let(:box) { FieldMaps::Boundaries.bbox("4106902") }
+
+    def inside?(location) = location["longitude"].between?(box[0], box[2]) && location["latitude"].between?(box[1], box[3])
+
+    it "todo domicílio semeado ganha um ponto de GPS dentro de Curitiba, com versão e ficha; semear de novo não cria versão" do
+      before = HouseholdVersion.count
+      seed
+      households = Household.all.to_a
+      expect(households.size).to eq(TerritoryRegistryCrew::HOUSEHOLDS.size)
+      locations = households.map { |household| household.latest_version.location }
+      expect(locations).to all(be_present)
+      expect(locations).to all(satisfy { |location| inside?(location) })
+      expect(locations.map { _1["source"] }.uniq).to eq([ "gps" ])
+      expect(locations.map { _1["accuracy_m"] }).to all(be_between(5, 15))
+      expect(locations.map { _1.values_at("latitude", "longitude") }.uniq.size).to eq(households.size)
+      expect(HouseholdVersion.count).to eq(before + households.size)
+      latest = households.map { |household| household.latest_version.id }
+      expect(LediOutboxEntry.where(source_type: "HouseholdVersion", source_id: latest).count).to eq(households.size)
+
+      expect { seed }.not_to(change { [ HouseholdVersion.count, LediOutboxEntry.count, HomeVisit.count ] })
+    end
+
+    it "uma visita do app com GPS, pelo aparelho da semente; nenhum mapa semeado" do
+      seed
+      visit = HomeVisit.where(origin: "field_app").sole
+      expect(visit.field_device_id).to eq(FieldDevice.where(user: tacs).sole.id)
+      expect(visit.location).to include("source" => "gps")
+      expect(inside?(visit.location)).to be(true)
+      expect(visit.location["accuracy_m"]).to be_between(5, 15)
+      expect(visit.occurred_at.to_date).to eq(today)
+      expect([ FieldMap.count, FieldMapBase.count ]).to eq([ 0, 0 ])
+    end
+  end
+
   it "fora de Curitiba não liga nada" do
     expect(described_class.seed_current_city(slug: "maringa", ddd: "44")).to include(switch: "desligado (só Curitiba liga)")
     expect([ HomeVisitDay.count, CollectiveActivity.count, FieldDevice.count ]).to eq([ 0, 0, 0 ])

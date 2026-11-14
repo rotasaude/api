@@ -39,6 +39,13 @@ require_relative "territory_registry_crew"
 # do dia (a folha que ficou aberta recebe as visitas de ontem e fecha). A
 # retirada, o fechamento, a atribuição e o aparelho conferem o estado antes.
 # Roda depois do TerritoryRegistryCrew.
+#
+# Módulo 24c (ADR 0053), para a prova do mapa: cada domicílio do
+# TerritoryRegistryCrew ganha o ponto do imóvel (GPS, dentro de Curitiba, no
+# bairro do endereço semeado), gravado pela enfermeira com o SaveHousehold
+# (versão nova e ficha) só quando ainda não tem ponto; e o aparelho do TACS
+# deixa uma visita com GPS, antes de ser revogado. Nenhum mapa é semeado: ele
+# nasce pelo maintenance, na prova.
 class HomeVisitCrew
   UNIT = CareLinesCrew::UNIT
   TEAM_NAME = CareLinesCrew::TEAM_NAME
@@ -55,6 +62,14 @@ class HomeVisitCrew
            secret_env: "DEV_TACS_OTP_SECRET", default_secret: "TACSVISITADOMICILIARSEMENTEQUATR" }.freeze
   DEVICE_NAME = "Celular de campo — Moto G24".freeze
   WITHDRAWAL = "Visita lançada em duplicidade: a orientação já consta na visita à família.".freeze
+  # 24c: o ponto de cada domicílio do TerritoryRegistryCrew (latitude,
+  # longitude, precisão em metros), em Butiatuvinha e São João, e o da visita
+  # do app, num comércio da microárea 02.
+  POINTS = { acacias: [ -25.4031284, -49.3562917, 8.0 ], ipe_1180: [ -25.4047631, -49.3581442, 6.5 ],
+             ipe_1236: [ -25.4049925, -49.3586038, 11.0 ], pedro_gusso: [ -25.4068173, -49.3179264, 7.5 ] }.freeze
+  APP_VISIT = { point: [ -25.4071406, -49.3183951, 9.0 ], property_type: "2", reasons: [ 34 ], ago: 30.minutes }.freeze
+  # Dia fixo no client_uuid: a visita do app existe uma vez só, no dia em que a semente a gravou.
+  APP_VISIT_DAY = Date.new(2026, 11, 14)
   # Namespace dos client_uuid da semente (UUID v5 sobre a URL abaixo).
   NAMESPACE = Digest::UUID.uuid_v5(Digest::UUID::URL_NAMESPACE, "https://rotasaude.app/seeds/home_visit_crew")
 
@@ -123,7 +138,8 @@ class HomeVisitCrew
       yesterday = yesterday!(slug, staff[:tacs], place, people)
       today = today!(slug, staff[:tacs], place)
       activities = ACTIVITIES.to_h { |key, data| [ key, activity!(slug, key, data, staff, team, people) ] }
-      device!(staff[:tacs])
+      points!(team, staff[:nurse])
+      device!(slug, staff[:tacs], place)
 
       summary(city, team, area, staff[:tacs], yesterday, today, activities)
     end
@@ -288,7 +304,7 @@ class HomeVisitCrew
 
     # Um aparelho do TACS, revogado por ele. O token do cadastro não sai daqui:
     # só o aparelho do payload é lido.
-    def device!(tacs)
+    def device!(slug, tacs, place)
       device = FieldDevice.where(user_id: tacs.id).order(:created_at).first
       unless device
         registered = FieldDevices::Register.call(user: tacs, name: DEVICE_NAME)
@@ -296,10 +312,40 @@ class HomeVisitCrew
 
         device = registered.payload[:device]
       end
+      app_visit!(slug, tacs, device, place)
       return if device.revoked?
 
       revoked = FieldDevices::Revoke.call(device, by: tacs, reason: "user")
       raise "semente da visita domiciliar: revogação recusada (#{revoked.reason})" if revoked.failure?
+    end
+
+    # 24c: a visita que o aparelho mandou, com GPS (um comércio da microárea
+    # 02, sem pessoa). Idempotente pelo client_uuid fixo.
+    def app_visit!(slug, tacs, device, place)
+      latitude, longitude, accuracy = APP_VISIT[:point]
+      now = Time.current
+      params = { "client_uuid" => client_uuid(slug, "home_visit", "app_gps", APP_VISIT_DAY), "team_id" => place[:team].id,
+                 "occurred_at" => [ now - APP_VISIT[:ago], now.beginning_of_day ].max.iso8601, "micro_area_id" => place[:area].id,
+                 "property_type" => APP_VISIT[:property_type], "subject" => "none", "outcome" => 1, "reasons" => APP_VISIT[:reasons],
+                 "shared" => false,
+                 "location" => { "latitude" => latitude, "longitude" => longitude, "accuracy_m" => accuracy, "source" => "gps" } }
+      recorded = HomeVisits::Record.call(params: params, by: tacs, origin: "field_app", device: device)
+      raise "semente da visita domiciliar: visita do app recusada (#{recorded.reason} #{recorded.details})" if recorded.failure?
+    end
+
+    # 24c: o ponto de cada domicílio semeado, só quando ainda não tem.
+    def points!(team, nurse)
+      households = Household.where(micro_area: MicroArea.where(team: team)).to_a
+      POINTS.each do |key, (latitude, longitude, accuracy)|
+        address = TerritoryRegistryCrew::HOUSEHOLDS.fetch(key).fetch(:address)
+        household = households.detect { |row| row.latest_version.address.values_at("zip", "number") == address.values_at("zip", "number") }
+        next if household.nil? || household.latest_version.location.present?
+
+        location = { "latitude" => latitude, "longitude" => longitude, "accuracy_m" => accuracy, "source" => "gps" }
+        params = TerritoryRegistry::SaveHousehold.params_of(household).merge("version" => household.version, "location" => location)
+        saved = TerritoryRegistry::SaveHousehold.call(params: params, by: nurse, household: household)
+        raise "semente da visita domiciliar: ponto do domicílio #{key} recusado (#{saved.reason} #{saved.details})" if saved.failure?
+      end
     end
 
     def switch_label(city)
