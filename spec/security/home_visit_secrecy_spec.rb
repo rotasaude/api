@@ -488,11 +488,12 @@ RSpec.describe "Sigilo da visita (24b) — query de toda rota", type: :request d
     end.uniq
   end
 
-  it "o módulo tem as 27 rotas do plano (17 da visita, 7 da atividade e 3 do app)" do
+  it "o módulo tem as 29 rotas dos planos (17 da visita, 7 da atividade e 5 do app: 3 do 24b, reference e map do 24c)" do
     routes = module_routes
     expect(routes.count { |_, path| path.start_with?("/home_visits") }).to eq(17)
     expect(routes.count { |_, path| path.start_with?("/collective_activities") }).to eq(7)
-    expect(routes.count { |_, path| path.start_with?("/field/v1/") }).to eq(3)
+    expect(routes.select { |_, path| path.start_with?("/field/v1/") }.map(&:last))
+      .to match_array(%w[/field/v1/session /field/v1/uploads /field/v1/changes /field/v1/reference /field/v1/map])
   end
 
   it "toda rota recusa cpf e note na query (422 invalid_request, sem o valor)" do
