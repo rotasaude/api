@@ -40,6 +40,9 @@ module HomeVisits
       client_uuid team_id occurred_at household_id micro_area_id out_of_area property_type subject patient_id new_patient
       family_id duplicates_reviewed outcome reasons shared measurements note
     ].freeze
+    # Módulo 24c (ADR 0053; contrato §4): só a visita do app tem coordenada, e
+    # só do GPS do aparelho. No dashboard a chave segue desconhecida.
+    FIELD_APP_KEYS = %w[location].freeze
     ID_KEYS = %w[team_id household_id micro_area_id patient_id family_id].freeze
     KEY_PATH_MAX = 64
 
@@ -67,7 +70,7 @@ module HomeVisits
       replay = replayed(uuid, by)
       return replay if replay
 
-      shape = shape_error(params)
+      shape = shape_error(params, origin)
       return shape if shape
 
       team = HealthTeam.find_by(id: params["team_id"])
@@ -120,15 +123,28 @@ module HomeVisits
 
     # --- antes da transação ---------------------------------------------------
 
-    def shape_error(params)
-      unknown = (params.keys - ALLOWED).first
+    def shape_error(params, origin)
+      allowed = origin == "field_app" ? ALLOWED + FIELD_APP_KEYS : ALLOWED
+      unknown = (params.keys - allowed).first
       return refuse(:invalid_home_visit, unknown[0, KEY_PATH_MAX]) if unknown
 
       # Sem equipe o corpo é malformado (422 com path, não 403; A-M5).
       return refuse(:invalid_home_visit, "team_id") if params["team_id"].nil?
 
       bad = ID_KEYS.find { |key| !params[key].nil? && !uuid?(params[key]) }
-      bad && refuse(:invalid_home_visit, bad)
+      return refuse(:invalid_home_visit, bad) if bad
+
+      location = location_of(params)
+      location if location.failure?
+    end
+
+    # Ausente = sem coordenada; `null` não é aceito na visita (Q3). A recusa
+    # leva só o path, nunca o valor.
+    def location_of(params)
+      return Result.ok(location: nil) unless params.key?("location")
+      return refuse(:invalid_location, "location") if params["location"].nil?
+
+      FieldLocation.parse(params["location"], sources: FieldLocation::VISIT_SOURCES)
     end
 
     def replayed(uuid, by)
@@ -323,6 +339,7 @@ module HomeVisits
         subject: input["subject"], family: (family if input["subject"] == "family_responsible"), patient: patient,
         outcome: input["outcome"], has_reason: reasons.any?, reasons: reasons, shared: input["shared"] == true,
         measurements: Rules.measurements(input["measurements"]), note: Rules.note(input["note"]),
+        location: location_of(input).payload[:location],
         origin: origin, field_device_id: device&.id, recorded_by_user: by
       )
     end
@@ -330,7 +347,7 @@ module HomeVisits
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
     def refuse(reason, path) = Result.fail(reason, details: { path: path })
     def refuse!(result) = raise(Refused, result)
-    private_class_method :write, :shape_error, :replayed, :instant, :patients_to_lock, :lock_patients!, :place!, :family!,
+    private_class_method :write, :shape_error, :location_of, :replayed, :instant, :patients_to_lock, :lock_patients!, :place!, :family!,
                          :family_visit, :well_placed?, :existing_patient!, :facts, :person_facts, :new_patient!, :sheet!, :insert!,
                          :uuid?, :refuse, :refuse!
   end

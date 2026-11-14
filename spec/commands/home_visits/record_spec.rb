@@ -342,6 +342,61 @@ RSpec.describe HomeVisits::Record, type: :model do
     text = [ result.inspect, result.details.inspect ].join
     expect(text).not_to include("Ana Souza", "segredo", "111")
   end
+
+  # Módulo 24c (ADR 0053; contrato §4, Q3, Q37): a coordenada da visita só vem
+  # do app, só do GPS do aparelho, e só vai ao banco (cifrada) e à ficha.
+  describe "coordenada da visita (location)" do
+    let(:gps) { { "latitude" => -25.42847123, "longitude" => -49.27325411, "accuracy_m" => 8.5, "source" => "gps" } }
+    let(:device) do
+      FieldDevice.create!(user: acs, professional: acs.professional, name: "Tablet da microárea 1",
+                          token_digest: FieldDevice.digest("rsf_#{SecureRandom.urlsafe_base64(32)}"))
+    end
+
+    def from_app(params) = record(params, origin: "field_app", device: device)
+
+    it "visita do app com GPS grava a coordenada cifrada" do
+      result = from_app(body(location: gps))
+      expect(result).to be_ok
+      visit = result.payload[:visit].reload
+      expect(visit).to have_attributes(location: gps, origin: "field_app", field_device_id: device.id)
+      stored = HomeVisit.connection.select_value("SELECT location FROM home_visits WHERE id = '#{visit.id}'")
+      expect(stored).to be_present
+      expect(stored).not_to include("25.42847123")
+    end
+
+    it "sem location grava sem coordenada" do
+      result = from_app(body)
+      expect(result).to be_ok
+      expect(result.payload[:visit].reload.location).to be_nil
+    end
+
+    it "recusa null, GPS sem precisão, ponto do mapa e mais de 8 casas, sem gravar nem devolver o valor" do
+      expect(failure(from_app(body(location: nil)))).to eq([ :invalid_location, "location" ])
+      expect(failure(from_app(body(location: gps.except("accuracy_m"))))).to eq([ :invalid_location, "location.accuracy_m" ])
+      expect(failure(from_app(body(location: gps.merge("source" => "map"))))).to eq([ :invalid_location, "location.source" ])
+      result = from_app(body(location: gps.merge("latitude" => -25.428471234)))
+      expect(failure(result)).to eq([ :invalid_location, "location.latitude" ])
+      expect(result.to_h.to_s).not_to include("25.4")
+      expect(HomeVisit.count).to eq(0)
+    end
+
+    it "visita do dashboard com location é chave desconhecida" do
+      expect(failure(record(body(location: gps)))).to eq([ :invalid_home_visit, "location" ])
+      expect(HomeVisit.count).to eq(0)
+    end
+
+    it "o evento, o Result e a forma da equipe não têm a coordenada" do
+      result = from_app(body(location: gps))
+      visit = result.payload[:visit]
+      expect(recorded_events.last.payload.keys).to match_array(%w[home_visit_id home_visit_day_id user_id])
+      [ result.to_h.to_s, recorded_events.last.payload.to_s, visit.reload.inspect ].each do |text|
+        expect(text).not_to include("25.4")
+        expect(text).not_to include("latitude")
+      end
+      # Q37: as rotas da equipe não expõem a coordenada da visita.
+      expect(File.read(Rails.root.join("app/services/home_visits/json.rb"))).not_to include("location")
+    end
+  end
 end
 
 # Review Focus 1 (plano, Task 8; contrato §2, Q6; pre-flight 1.8): visitas
