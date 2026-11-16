@@ -6,7 +6,7 @@ on:
 
 jobs:
   rspec:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # postgres:16 de propósito: é a versão de PRODUÇÃO (deploy/production/deploy.yml).
     # A suíte local roda no Postgres do host (15), então o caminho sensível a
     # versão — CREATEROLE sem herança implícita, resolvido pelo GRANT explícito
@@ -75,7 +75,7 @@ jobs:
       - run: bundle exec rspec
 
   production-boot:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # F1 do fix pass (2026-09-16): nada em spec/ ou no job `rspec` acima carrega
     # RAILS_ENV=production — a suíte inteira passava com
     # `config.hosts += PlatformHosts.for("production")` levantando
@@ -114,7 +114,7 @@ jobs:
           '
 
   staging-boot:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Spec da API de manutenção §4/§10: staging é ensaio de produção, com
     # RAILS_ENV=staging. Nada na suíte (RAILS_ENV=test) carrega esse ambiente —
     # uma stanza esquecida, credentials caindo no arquivo compartilhado ou uma
