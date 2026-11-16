@@ -680,4 +680,89 @@ RSpec.describe "FieldSync::Upload", type: :model do
       expect(failure(result)).to eq("status" => "rejected", "error" => "invalid_location", "path" => "location.source")
     end
   end
+
+  # Q82(6) (24c): o que o app de campo supõe do servidor, preso aqui.
+  describe "o que o app supõe (Q82 6)" do
+    # (a) I2 do app: o dependente, no mesmo lote, de um item só adiado volta à
+    # fila com ele. O servidor não o adia sozinho: sem recibo do citado, é o
+    # not_found com o path *_client_uuid de sempre (Q27) — o app reconhece o
+    # par pelo path e pelo depends_on.
+    it "(a) dependente de item adiado por too_many_requests → not_found patient_client_uuid, nada gravado dos dois" do
+      allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+      HomeVisits::SearchBudget::RATE.times { expect(HomeVisits::SearchBudget.new(acs).charge!).to be(true) }
+      patient_uuid = SecureRandom.uuid
+      results = upload(item("patient", { "new_patient" => typed }, uuid: patient_uuid),
+                       item("home_visit", visit_body(subject: "resident", patient_client_uuid: patient_uuid, reasons: [ 11 ])))
+
+      valid_response!(results)
+      expect(results.map { failure(_1) }).to eq([ { "status" => "rejected", "error" => "too_many_requests" },
+                                                  { "status" => "rejected", "error" => "not_found", "path" => "patient_client_uuid" } ])
+      expect([ HomeVisit.count, FieldSyncReceipt.count ]).to eq([ 0, 0 ])
+    end
+
+    it "(a) dependente de item que deu internal_error → not_found household_client_uuid" do
+      household_uuid = SecureRandom.uuid
+      allow(TerritoryRegistry::SaveHousehold).to receive(:call).and_raise(ArgumentError, "boom")
+      results = nil
+      capture_log do
+        results = upload(item("household", household_body, uuid: household_uuid),
+                         item("home_visit", visit_body(household_client_uuid: household_uuid).except("micro_area_id", "property_type")))
+      end
+
+      valid_response!(results)
+      expect(results.map { failure(_1) }).to eq([ { "status" => "rejected", "error" => "internal_error" },
+                                                  { "status" => "rejected", "error" => "not_found", "path" => "household_client_uuid" } ])
+      expect([ HomeVisit.count, FieldSyncReceipt.count ]).to eq([ 0, 0 ])
+    end
+
+    it "(a) dependente de cadastro recusado household_changed → not_found patient_client_uuid (o cadastro vale pela pessoa, Q51)" do
+      household = registry_household!(micro_area: area)
+      moved_to = registry_micro_area!(code: "05", team: team, acs: acs)
+      allow(Household).to receive(:lock).and_wrap_original do |original, *args|
+        household.update_columns(micro_area_id: moved_to.id)
+        original.call(*args)
+      end
+      registration_uuid = SecureRandom.uuid
+      results = upload(item("individual_registration", registry_registration_params(household, patient: registry_patient!), uuid: registration_uuid),
+                       item("home_visit", visit_body(subject: "resident", patient_client_uuid: registration_uuid, reasons: [ 11 ])))
+
+      valid_response!(results)
+      expect(results.map { failure(_1) }).to eq([ { "status" => "rejected", "error" => "household_changed", "path" => "household_id" },
+                                                  { "status" => "rejected", "error" => "not_found", "path" => "patient_client_uuid" } ])
+      expect([ HomeVisit.count, IndividualRegistration.count, FieldSyncReceipt.count ]).to eq([ 0, 0, 0 ])
+    end
+
+    # (c) O cadastro com new_patient cria a pessoa: never already_registered (o
+    # paciente novo não tem cadastro). Pessoa já gravada → duplicate_suspected
+    # com os candidatos no resultado (o registration_id diz quem já tem
+    # cadastro); com o CPF dela → cpf_taken. already_registered é só de quem
+    # chega por patient_id / patient_client_uuid / citizen_id (Q63 c, acima).
+    it "(c) cadastro com new_patient de pessoa já gravada e cadastrada → duplicate_suspected com candidates e registration_id, sem paciente novo" do
+      existing = registry_patient!
+      registration = registry_registration!(patient: existing, household: registry_household!(micro_area: area))
+      patients = Patient.count
+      result = upload(item("individual_registration",
+                           registry_registration_params(team).merge("new_patient" => typed(existing.full_name, birth_date: existing.birth_date.to_s)))).sole
+
+      valid_response!([ result ])
+      expect(failure(result)).to eq("status" => "rejected", "error" => "duplicate_suspected", "path" => "new_patient")
+      expect(result.keys).not_to include("id")
+      expect(result["candidates"].map { _1.slice("patient_id", "registration_id") })
+        .to eq([ { "patient_id" => existing.id, "registration_id" => registration.id } ])
+      expect([ Patient.count, IndividualRegistration.count, FieldSyncReceipt.count ]).to eq([ patients, 1, 0 ])
+    end
+
+    it "(c) cadastro com new_patient com o CPF de pessoa já gravada → cpf_taken, sem paciente novo" do
+      existing = registry_patient!
+      patients = Patient.count
+      typed_with_cpf = typed("Rosalina Prado Lopes").except("no_cpf_reason").merge("cpf" => existing.cpf)
+      result = upload(item("individual_registration", registry_registration_params(team).merge("new_patient" => typed_with_cpf))).sole
+
+      valid_response!([ result ])
+      # Sem path: o cpf_taken do cadastro vem do Patients::AddCpf sem details (o item `patient`, pelo
+      # HomeVisits::People, leva "new_patient.cpf"). Preso como está; a diferença foi levada ao coordenador.
+      expect(failure(result)).to eq("status" => "rejected", "error" => "cpf_taken")
+      expect([ Patient.count, IndividualRegistration.count, FieldSyncReceipt.count ]).to eq([ patients, 0, 0 ])
+    end
+  end
 end
