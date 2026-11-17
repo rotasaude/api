@@ -3,19 +3,23 @@
 # chama, na transação da visita:
 #   - facts! (logo depois do domicílio, antes das regras): trava o perfil do
 #     imóvel FOR UPDATE (criado se faltar; SaveProfile.lock_profiles!), lê o
-#     quarteirão citado FOR SHARE, trava o item do LIRAa FOR UPDATE e lê o
-#     bloqueio FOR SHARE — a ordem pacientes → domicílio → perfil → item do
-#     LIRAa → bloqueio → folha → visita → lotes → local — e devolve os
-#     InspectionRules::Facts;
+#     quarteirão citado FOR SHARE, trava o item do LIRAa FOR UPDATE, lê o
+#     bloqueio FOR SHARE e os produtos das medidas FOR SHARE (Task 7: a troca
+#     de unidade ou carga do VectorControl::SaveProduct, FOR UPDATE, espera a
+#     visita, e a quantidade da medida usa a carga relida sob a trava) — a ordem
+#     pacientes → domicílio → perfil → item do LIRAa → bloqueio → produtos →
+#     folha → visita → lotes → local — e devolve os InspectionRules::Facts;
 #   - call (depois do insert! da visita, com as regras já aceitas): a
 #     inspeção (quarteirão do perfil congelado; `recovered`), os depósitos, as
 #     medidas (quantidade pelo produto da hora, A-2), as amostras (etiqueta do
 #     §9; colisão no idx_vector_samples_label → recusa sample_label_taken com o
 #     índice da amostra, Q7(1)), o perfil (quarteirão da regra 10, risco, o
 #     último trabalho; version + 1 e household_vector_profile.changed) e o item
-#     do LIRAa (Liraa::Items.inspected!).
-# A baixa de estoque das medidas entra na Task 7 (marcado abaixo). Nenhum
-# evento próprio: a inspeção vai no home_visit.recorded (§17).
+#     do LIRAa (Liraa::Items.inspected!). Depois das medidas e antes das
+#     amostras, a baixa de estoque (VectorControl::ApplyStock: lotes → local,
+#     savepoint por medida, falta em vez de recusa).
+# Nenhum evento próprio: a inspeção vai no home_visit.recorded (§17); a falta
+# publica vector_stock.shortfall_recorded.
 module VectorControl
   module RecordInspection
     UUID = InspectionRules::UUID
@@ -48,7 +52,6 @@ module VectorControl
     # -> VectorInspection (refusal sample_label_taken levanta
     # HomeVisits::Record::Refused, que desfaz a visita inteira).
     def call(visit:, input:, facts:, by:, today:)
-      _ = today
       day = visit.occurred_at.in_time_zone.to_date
       block_id = facts.profile_block_id || input["city_block_id"]&.downcase
       inspection = VectorInspection.create!(
@@ -61,8 +64,7 @@ module VectorControl
       )
       deposits!(inspection, input)
       measures!(inspection, input, facts)
-      # Task 7: a baixa de estoque das medidas químicas (VectorControl::DeductStock)
-      # entra aqui, depois das medidas e antes das amostras (lotes → local).
+      ApplyStock.call(inspection: inspection, by: by, today: today)
       samples!(inspection, input, visit)
       profile!(visit, input, day, by)
       item = inspection.liraa_draw_item_id && LiraaDrawItem.find(inspection.liraa_draw_item_id) # já travado no facts!
@@ -104,7 +106,7 @@ module VectorControl
       ids = Array(measures).filter_map { |measure| measure["vector_product_id"] if measure.is_a?(Hash) && uuid?(measure["vector_product_id"]) }
       return {} if ids.empty?
 
-      VectorProduct.where(id: ids).to_h do |product|
+      VectorProduct.where(id: ids.map(&:downcase).uniq).order(:id).lock("FOR SHARE").to_h do |product|
         [ product.id, { active: product.active, uses: product.uses, unit: product.unit, charge_size: product.charge_size } ]
       end
     end

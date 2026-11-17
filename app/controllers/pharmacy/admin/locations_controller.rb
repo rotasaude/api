@@ -1,7 +1,8 @@
 # GET/POST/PATCH /pharmacy/admin/locations[/:id] (contrato §3): locais de
 # estoque. Só municipal_admin; escrita com step-up. Nunca se apaga: desativa-se
 # (`active: false`), e só sem saldo. Escritas devolvem o objeto, sem envelope.
-# Só os locais da farmácia (central e unit): a rede de frio e a sala de vacina
+# Só os locais da farmácia (central e unit) e o da vigilância ambiental
+# (vector_control, módulo 35a, A-12): a rede de frio e a sala de vacina
 # (módulo 29) se administram por /vaccination/admin — fora da lista, e 404 por id.
 module Pharmacy
   module Admin
@@ -32,7 +33,7 @@ module Pharmacy
 
       private
 
-      def pharmacy_locations = StockLocation.where(kind: Catalog::LOCATION_KINDS)
+      def pharmacy_locations = StockLocation.where(kind: Catalog::STOCK_LOCATION_KINDS)
     end
   end
 end

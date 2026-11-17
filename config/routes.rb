@@ -1046,6 +1046,13 @@ Rails.application.routes.draw do
     post   "households/assign_block",         to: "households#assign_block"
     get    "households/:id",                  to: "households#show", constraints: member_id
     patch  "households/:id/profile",          to: "households#update_profile", constraints: member_id
+    get    "products",                        to: "products#index"
+    post   "products",                        to: "products#create"
+    patch  "products/:id",                    to: "products#update", constraints: member_id
+    get    "settings",                        to: "settings#show"
+    put    "settings",                        to: "settings#update"
+    get    "stock_shortfalls",                to: "stock_shortfalls#index"
+    post   "stock_shortfalls/:id/reconcile",  to: "stock_shortfalls#reconcile", constraints: member_id
   end
 
   # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard

@@ -1,0 +1,47 @@
+# Baixa de estoque de UMA medida química do boletim (módulo 35a, ADR 0054;
+# contrato §4; W-7): escolhe o lote — um só, sem dividir a quantidade, como o
+# Urgency::DeductStock — ou a causa da falta. Não grava nada: quem grava é o
+# VectorControl::ApplyStock, no savepoint { DeductStock; Ledger.record! }.
+#
+# Local: o `vector_control_settings.stock_location_id` (lido pelo chamador),
+# do tipo vector_control e ATIVO até a trava; ausente, de outro tipo,
+# inativo ou desativado até a trava (Ledger::Inactive) → no_location, sem local.
+# Lote: o primeiro do FEFO (VectorControl::Fefo) com saldo ≥ quantidade,
+# relido sob a trava; algum com saldo > 0 mas nenhum que baste →
+# insufficient_balance; nenhum com saldo > 0 (vencido e bloqueado não contam)
+# → no_lot.
+#
+# Ordem de trava (a do Ledger, depois das travas da visita): LOTES
+# (Ledger.lock_lots!, FOR UPDATE em ordem de id) → LOCAL (lock_location!, FOR
+# SHARE). Duas visitas que disputam a última carga leem o mesmo saldo no
+# FEFO, mas só a primeira o acha depois da trava; a segunda vira falta.
+module VectorControl
+  module DeductStock
+    module_function
+
+    # `measure`: VectorInspectionMeasure com produto e `quantity` > 0.
+    # -> Result.ok(location:, lot:, quantity:) | Result.ok(shortfall_cause:, location:, quantity:)
+    def call(measure:, location_id:, today:)
+      quantity = measure.quantity
+      location = location_id && StockLocation.find_by(id: location_id, kind: "vector_control", active: true)
+      return shortfall("no_location", nil, quantity) unless location
+
+      candidates = Fefo.lots(product_id: measure.vector_product_id, location: location, today: today)
+      locked = Pharmacy::Ledger.lock_lots!(candidates.map { |entry| entry.lot.id })
+      location = Pharmacy::Ledger.lock_location!(location.id)
+
+      fresh = Fefo.lots(product_id: measure.vector_product_id, location: location, today: today).select { |entry| locked.key?(entry.lot.id) }
+      return shortfall("no_lot", location, quantity) if fresh.empty?
+
+      entry = fresh.find { |row| row.balance >= quantity }
+      return shortfall("insufficient_balance", location, quantity) unless entry
+
+      Result.ok(location: location, lot: locked.fetch(entry.lot.id), quantity: quantity)
+    rescue Pharmacy::Ledger::Inactive
+      shortfall("no_location", nil, quantity)
+    end
+
+    def shortfall(cause, location, quantity) = Result.ok(shortfall_cause: cause, location: location, quantity: quantity)
+    private_class_method :shortfall
+  end
+end

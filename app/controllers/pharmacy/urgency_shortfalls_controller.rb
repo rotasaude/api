@@ -23,7 +23,7 @@ module Pharmacy
       scope = UrgencyStockShortfall.all
       if params.key?(:location_id)
         location = existing_location or return
-        return not_found if Stock::Domain.immunobiological?(location)
+        return not_found unless Stock::Domain.medication?(location)
         return forbid unless ReconcileUrgencyShortfall.allowed?(user: Current.user, location: location)
 
         scope = scope.where(stock_location_id: location.id)

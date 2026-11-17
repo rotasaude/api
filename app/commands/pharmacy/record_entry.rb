@@ -48,6 +48,16 @@
 # ou de vacina em local de medicamento → `item_not_allowed_here` (path da
 # linha, `items[i]`), sozinha na linha. O lote de vacina é único por (código,
 # número); a abertura, por (local, código).
+#
+# Módulo 35a (ADR 0054, Q4; A-12): no local `vector_control` a linha é
+# `{ "vector_product_id", "lot_number", "expires_on", "manufacturer"?,
+# "quantity" }` (sem embalagem), de produto ATIVO do vector_products
+# (`invalid_item`, path `items[i].vector_product_id`); o lote grava a `unit` do
+# produto como unidade de dispensação. Linha de outro domínio, nos dois
+# sentidos → `item_not_allowed_here`. Os produtos das linhas são travados FOR
+# SHARE antes dos lotes (produto → lotes → local): a troca de unidade ou carga
+# do produto (VectorControl::SaveProduct, FOR UPDATE) não passa entre a
+# leitura e o primeiro lote. O lote é único por (produto, número).
 module Pharmacy
   module RecordEntry
     ISO_DATE = /\A\d{4}-\d{2}-\d{2}\z/
@@ -57,17 +67,36 @@ module Pharmacy
 
     # Prefixo da chave de item do imunobiológico (o id do catálogo é uuid: nunca colide).
     IMMUNOBIOLOGICAL_KEY = "immunobiological:".freeze
-    OPENING_INDEXES = %w[idx_stock_openings_once idx_stock_openings_immunobiological_once].freeze
+    # Prefixo da chave de item do produto da vigilância ambiental.
+    VECTOR_KEY = "vector_control:".freeze
+    OPENING_INDEXES = %w[idx_stock_openings_once idx_stock_openings_immunobiological_once idx_stock_openings_vector_product_once].freeze
+    # Chaves de item que não são do domínio do local (a linha inteira é recusada).
+    FOREIGN_KEYS = { Stock::Domain::MEDICATION => %w[immunobiological_code vector_product_id],
+                     Stock::Domain::IMMUNOBIOLOGICAL => %w[catalog_item_id vector_product_id],
+                     Stock::Domain::VECTOR_CONTROL => %w[catalog_item_id immunobiological_code] }.freeze
 
-    # Linha já validada: `item` (medicamento) OU `product` (imunobiológico, com
-    # a `manufacturer_key`).
-    Row = Struct.new(:index, :item, :product, :lot_number, :expires_on, :manufacturer, :manufacturer_key, :quantity, :package,
-                     keyword_init: true) do
-      def item_key = product ? "#{IMMUNOBIOLOGICAL_KEY}#{product.code}" : item.id
+    # Linha já validada: `item` (medicamento), `product` (imunobiológico, com
+    # a `manufacturer_key`) OU `vector_product` (insumo de campo).
+    Row = Struct.new(:index, :item, :product, :vector_product, :lot_number, :expires_on, :manufacturer, :manufacturer_key, :quantity,
+                     :package, keyword_init: true) do
+      def item_key
+        return "#{IMMUNOBIOLOGICAL_KEY}#{product.code}" if product
+        return "#{VECTOR_KEY}#{vector_product.id}" if vector_product
+
+        item.id
+      end
+
       def key = [ item_key, lot_number ]
-      # O fabricante que precisa bater com o lote: a key na vacina, o nome no medicamento.
+      # O fabricante que precisa bater com o lote: a key na vacina, o nome no medicamento e no insumo.
       def maker = product ? manufacturer_key : manufacturer
-      def opening_path = "items[#{index}].#{product ? 'immunobiological_code' : 'catalog_item_id'}"
+
+      def opening_path
+        field = if product then "immunobiological_code"
+                elsif vector_product then "vector_product_id"
+                else "catalog_item_id"
+                end
+        "items[#{index}].#{field}"
+      end
     end
 
     module_function
@@ -82,7 +111,9 @@ module Pharmacy
         return failure(problems)
       end
 
-      rows, row_problems = validate_rows(items, catalog, today, Stock::Domain.for(location))
+      domain = Stock::Domain.for(location)
+      products = domain == Stock::Domain::VECTOR_CONTROL ? vector_products(items) : {}
+      rows, row_problems = validate_rows(items, catalog, today, domain, products)
       problems += merge_by_line(row_problems, stored_lot_problems(rows))
       return failure(problems) if problems.any?
 
@@ -107,6 +138,7 @@ module Pharmacy
     end
 
     def write(location:, kind:, document:, rows:, by:, now:)
+      lock_vector_products!(rows)
       lots = ensure_lots(rows, by)
       mismatches = mismatch_problems(rows, lots)
       return failure(mismatches) if mismatches.any?
@@ -149,14 +181,14 @@ module Pharmacy
     end
 
     # -> [ [ Row ], [ problem ] ]. As linhas só valem sem problema algum.
-    def validate_rows(items, catalog, today, domain)
+    def validate_rows(items, catalog, today, domain, products)
       rows = []
       problems = []
       declared = {}
       items.each_with_index do |raw, index|
         next problems << problem("items[#{index}]", :invalid_request) unless raw.is_a?(Hash)
 
-        row, found = validate_row(raw, index, catalog, today, domain)
+        row, found = validate_row(raw, index, catalog, today, domain, products)
         problems.concat(found)
         next unless row
 
@@ -167,13 +199,18 @@ module Pharmacy
     end
 
     # -> [ Row | nil, [ problem ] ]
-    def validate_row(raw, index, catalog, today, domain)
+    def validate_row(raw, index, catalog, today, domain, products)
       prefix = "items[#{index}]"
-      immunobiological = domain == Stock::Domain::IMMUNOBIOLOGICAL
-      foreign = immunobiological ? raw["catalog_item_id"] : raw["immunobiological_code"]
-      return [ nil, [ problem(prefix, :item_not_allowed_here) ] ] unless foreign.nil?
+      foreign = FOREIGN_KEYS.fetch(domain).any? { |key| !raw[key].nil? }
+      return [ nil, [ problem(prefix, :item_not_allowed_here) ] ] if foreign
 
-      return validate_immunobiological_row(raw, index, today) if immunobiological
+      return validate_immunobiological_row(raw, index, today) if domain == Stock::Domain::IMMUNOBIOLOGICAL
+
+      if domain == Stock::Domain::VECTOR_CONTROL
+        id = raw["vector_product_id"]
+        vector_product = id.is_a?(String) ? products[id.downcase] : nil
+        return validate_vector_row(raw, index, (vector_product if vector_product&.active), today)
+      end
 
       problems = []
       item = raw["catalog_item_id"].is_a?(String) ? catalog[raw["catalog_item_id"]] : nil
@@ -199,6 +236,57 @@ module Pharmacy
 
       [ Row.new(index: index, item: item, lot_number: lot_number, expires_on: expires_on, manufacturer: manufacturer,
                 quantity: quantity, package: package), [] ]
+    end
+
+    # Linha do insumo de campo (35a): produto ativo, sem embalagem, quantidade
+    # do papel; o fabricante (nome) opcional, como no medicamento.
+    # -> [ Row | nil, [ problem ] ]
+    def validate_vector_row(raw, index, vector_product, today)
+      prefix = "items[#{index}]"
+      problems = []
+      problems << problem("#{prefix}.vector_product_id", :invalid_item) unless vector_product
+      problems.concat(lot_problems(raw, prefix, today))
+      manufacturer, manufacturer_problems = manufacturer_of(raw, prefix)
+      problems.concat(manufacturer_problems)
+      problems << problem("#{prefix}.package", :invalid_request) unless raw["package"].nil?
+      quantity = Quantity.parse(raw["quantity"])
+      problems << problem("#{prefix}.quantity", :invalid_quantity) unless quantity
+      return [ nil, problems ] if problems.any?
+
+      [ Row.new(index: index, vector_product: vector_product, lot_number: raw["lot_number"], expires_on: parse_date(raw["expires_on"]),
+                manufacturer: manufacturer, quantity: quantity), [] ]
+    end
+
+    # -> [ String | nil, [ problem ] ]
+    def manufacturer_of(raw, prefix)
+      manufacturer = raw["manufacturer"]
+      return [ nil, [] ] if manufacturer.nil?
+      return [ manufacturer.strip.presence, [] ] if manufacturer.is_a?(String) && manufacturer.strip.length <= Catalog::MANUFACTURER_MAX
+
+      [ nil, [ problem("#{prefix}.manufacturer", :invalid_request) ] ]
+    end
+
+    # Produtos citados nas linhas, lidos sem trava (a trava vem na escrita).
+    # -> { id => VectorProduct }
+    def vector_products(items)
+      return {} unless items.is_a?(Array)
+
+      ids = items.first(Catalog::MAX_ENTRY_ITEMS).filter_map do |raw|
+        id = raw["vector_product_id"] if raw.is_a?(Hash)
+        id.downcase if id.is_a?(String) && id.match?(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/)
+      end
+      ids.empty? ? {} : VectorProduct.where(id: ids.uniq).index_by(&:id)
+    end
+
+    # Passo 0 da ordem de travas: FOR SHARE nos produtos das linhas, em ordem de
+    # id, antes dos lotes (carry-over da Task 6: a unidade do lote novo é a do
+    # produto relido sob a trava).
+    def lock_vector_products!(rows)
+      ids = rows.filter_map { |row| row.vector_product&.id }.uniq.sort
+      return if ids.empty?
+
+      locked = VectorProduct.where(id: ids).order(:id).lock("FOR SHARE").index_by(&:id)
+      rows.each { |row| row.vector_product = locked.fetch(row.vector_product.id) if row.vector_product }
     end
 
     # Linha de vacina (§15 V4/V19): código do catálogo, fabricante pela key da
@@ -328,7 +416,16 @@ module Pharmacy
       # Antes de gravar, as divergências com o que já existe (imutável) valem.
       return lots if mismatch_problems(rows, lots).any?
 
-      medications, immunobiologicals = missing.partition(&:item)
+      vectors, others = missing.partition(&:vector_product)
+      medications, immunobiologicals = others.partition(&:item)
+      if vectors.any?
+        first_declared = vectors.to_h { |row| [ row.key, rows.select { |other| other.key == row.key }.filter_map(&:manufacturer).first ] }
+        StockLot.insert_all(vectors.map do |row|
+          { item_kind: Stock::Domain::VECTOR_CONTROL, vector_product_id: row.vector_product.id, lot_number: row.lot_number,
+            expires_on: row.expires_on, manufacturer: first_declared.fetch(row.key), dispensing_unit: row.vector_product.unit,
+            created_by_user_id: by.id }
+        end, unique_by: :idx_stock_lots_vector_product_number)
+      end
       if medications.any?
         first_declared = medications.to_h { |row| [ row.key, rows.select { |other| other.key == row.key }.filter_map(&:manufacturer).first ] }
         StockLot.insert_all(medications.map do |row|
@@ -351,16 +448,24 @@ module Pharmacy
     def find_lots(keys)
       return {} if keys.empty?
 
-      codes, item_ids = keys.map(&:first).uniq.partition { |key| key.start_with?(IMMUNOBIOLOGICAL_KEY) }
+      vector_keys, other_keys = keys.map(&:first).uniq.partition { |key| key.start_with?(VECTOR_KEY) }
+      codes, item_ids = other_keys.partition { |key| key.start_with?(IMMUNOBIOLOGICAL_KEY) }
       numbers = keys.map(&:last).uniq
       found = []
+      if vector_keys.any?
+        found += StockLot.where(vector_product_id: vector_keys.map { |key| key.delete_prefix(VECTOR_KEY) }, lot_number: numbers).to_a
+      end
       found += StockLot.where(catalog_item_id: item_ids, lot_number: numbers).to_a if item_ids.any?
       found += StockLot.where(immunobiological_code: codes.map { |key| key.delete_prefix(IMMUNOBIOLOGICAL_KEY) }, lot_number: numbers).to_a if codes.any?
       found.index_by { |lot| lot_key(lot) }.slice(*keys)
     end
 
     def lot_key(lot)
-      [ lot.immunobiological? ? "#{IMMUNOBIOLOGICAL_KEY}#{lot.immunobiological_code}" : lot.catalog_item_id, lot.lot_number ]
+      item = if lot.immunobiological? then "#{IMMUNOBIOLOGICAL_KEY}#{lot.immunobiological_code}"
+             elsif lot.vector_control? then "#{VECTOR_KEY}#{lot.vector_product_id}"
+             else lot.catalog_item_id
+             end
+      [ item, lot.lot_number ]
     end
 
     # Validade ou fabricante informado que diverge do lote gravado → lot_mismatch
@@ -382,12 +487,15 @@ module Pharmacy
       opened = openings.where(catalog_item_id: rows.filter_map { |row| row.item&.id }.uniq).pluck(:catalog_item_id).to_set
       opened += openings.where(immunobiological_code: rows.filter_map { |row| row.product&.code }.uniq)
                         .pluck(:immunobiological_code).map { |code| "#{IMMUNOBIOLOGICAL_KEY}#{code}" }
+      opened += openings.where(vector_product_id: rows.filter_map { |row| row.vector_product&.id }.uniq)
+                        .pluck(:vector_product_id).map { |id| "#{VECTOR_KEY}#{id}" }
       rows.select { |row| opened.include?(row.item_key) }.map { |row| problem(row.opening_path, :opening_exists) }
     end
 
     def mark_openings(location, entry, rows)
       rows.uniq(&:item_key).sort_by(&:item_key).each do |row|
-        StockOpening.create!(stock_location: location, catalog_item_id: row.item&.id, immunobiological_code: row.product&.code, stock_entry: entry)
+        StockOpening.create!(stock_location: location, catalog_item_id: row.item&.id, immunobiological_code: row.product&.code,
+                             vector_product_id: row.vector_product&.id, stock_entry: entry)
       end
     end
 
@@ -400,7 +508,8 @@ module Pharmacy
       Result.fail(first[:error], details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :persist, :write, :document_problems, :validate_rows, :validate_row, :validate_immunobiological_row, :lot_problems,
+    private_class_method :persist, :write, :document_problems, :validate_rows, :validate_row, :validate_vector_row, :manufacturer_of,
+                         :vector_products, :lock_vector_products!, :validate_immunobiological_row, :lot_problems,
                          :quantity_and_package, :package_product, :parse_date, :repeated_lot_problems, :stored_lot_problems, :merge_by_line,
                          :ensure_lots, :find_lots, :lot_key, :mismatch_problems, :opening_problems, :mark_openings, :problem, :failure
   end

@@ -20,8 +20,13 @@ module LocationReading
     @cold_chain_keeper
   end
 
+  # Módulo 35a (A-12): o local vector_control só é lido por quem tem papel nele.
   def readable?(location)
-    keeper = Stock::Domain.immunobiological?(location) ? cold_chain_keeper? : central_keeper?
+    keeper = case Stock::Domain.for(location)
+             when Stock::Domain::IMMUNOBIOLOGICAL then cold_chain_keeper?
+             when Stock::Domain::VECTOR_CONTROL then false
+             else central_keeper?
+             end
     keeper || Pharmacy::Access.roles_at(user: Current.user, location: location).any?
   end
 
@@ -45,7 +50,7 @@ module LocationReading
   def readable_location_ids
     return required_location&.then { |location| [ location.id ] } if params.key?(:location_id)
 
-    locations = Pharmacy::Access.locations_for(Current.user)
+    locations = Pharmacy::Access.locations_for(Current.user).select { |location| Stock::Domain.medication?(location) }
     if locations.empty?
       forbid
       return nil

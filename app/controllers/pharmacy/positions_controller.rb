@@ -18,6 +18,12 @@
 # vacina, `catalog_item_id` não casa nada, `below_minimum=true` não casa nada
 # (sem mínimos) e `q` casa o nome do catálogo da sala; o cursor é
 # `[location_id, código]`.
+#
+# Módulo 35a (A-12): o local vector_control (com `location_id`, interruptor
+# `vector_control`) pela mesma conta da vacina com a chave do produto
+# (Vaccination::StockPositions, `stock_domain: "vector_control"`): <item> do produto,
+# sem mínimos, `q` casa o nome ou o código do produto, cursor
+# `[location_id, vector_product_id]`. Sem `location_id`, só os de medicamento.
 module Pharmacy
   class PositionsController < BaseController
     include LocationReading
@@ -33,7 +39,8 @@ module Pharmacy
 
       locations = positions_locations or return
       location_ids = locations.map(&:id)
-      immunobiological = Stock::Domain.immunobiological?(locations.first)
+      domain = Stock::Domain.for(locations.first)
+      immunobiological = domain != Stock::Domain::MEDICATION
       expiring = flag(:expiring)
       below_minimum = flag(:below_minimum)
       return render_refusal(expiring.nil? ? "expiring" : "below_minimum") if expiring.nil? || below_minimum.nil?
@@ -43,8 +50,10 @@ module Pharmacy
 
       limit = page_limit or return
       cursor = params.key?(:before) ? Cursor.decode(params[:before]) : nil
-      return render_refusal("before", "invalid_cursor") if params.key?(:before) && !valid_position_cursor?(cursor, immunobiological)
-      return vaccine_positions(location_ids, expiring: expiring, below_minimum: below_minimum, cursor: cursor, limit: limit) if immunobiological
+      return render_refusal("before", "invalid_cursor") if params.key?(:before) && !valid_position_cursor?(cursor, domain)
+      if immunobiological
+        return vaccine_positions(location_ids, expiring: expiring, below_minimum: below_minimum, cursor: cursor, limit: limit, stock_domain: domain)
+      end
 
       item_ids = item_ids_for(item_id, location_ids)
       return if performed?
@@ -67,33 +76,44 @@ module Pharmacy
       require_pharmacy!
       return nil if performed?
 
-      locations = Access.locations_for(Current.user)
+      locations = Access.locations_for(Current.user).select { |location| Stock::Domain.medication?(location) }
       return forbid && nil if locations.empty?
 
       locations
     end
 
-    # [location_id, catalog_item_id] (dois uuids) ou, na vacina, [location_id, código].
-    def valid_position_cursor?(cursor, immunobiological)
+    # [location_id, catalog_item_id] (dois uuids); na vacina, [location_id,
+    # código]; no insumo de campo, [location_id, vector_product_id].
+    def valid_position_cursor?(cursor, domain)
       return false unless cursor && cursor.size == 2 && uuid?(cursor.first)
+      return cursor.last.is_a?(String) && cursor.last.match?(IMMUNOBIOLOGICAL_CODE) if domain == Stock::Domain::IMMUNOBIOLOGICAL
 
-      immunobiological ? cursor.last.is_a?(String) && cursor.last.match?(IMMUNOBIOLOGICAL_CODE) : uuid?(cursor.last)
+      uuid?(cursor.last)
     end
 
-    def vaccine_positions(location_ids, expiring:, below_minimum:, cursor:, limit:)
+    def vaccine_positions(location_ids, expiring:, below_minimum:, cursor:, limit:, stock_domain:)
       codes = nil
       codes = [] if params.key?(:catalog_item_id) || below_minimum
       if params.key?(:q) && params[:q].to_s.strip.present?
         q = params[:q]
         return render_refusal("q") unless q.is_a?(String) && q.strip.length.between?(Medications::Search::MIN_QUERY, Catalog::SEARCH_QUERY_MAX)
 
-        matched = Vaccination::StockPositions.codes_matching(q.strip)
+        matched = stock_domain == Stock::Domain::VECTOR_CONTROL ? vector_products_matching(q.strip) : Vaccination::StockPositions.codes_matching(q.strip)
         codes = codes ? codes & matched : matched
       end
       return render json: { positions: [], next_before: nil } if codes&.empty?
 
       render json: Vaccination::StockPositions.call(location_ids: location_ids, codes: codes, expiring: expiring, before: cursor, limit: limit,
-                                                    today: Time.zone.today, settings: Settings.current)
+                                                    today: Time.zone.today, settings: Settings.current, stock_domain: stock_domain)
+    end
+
+    # Ids (texto) dos produtos cujo nome ou código casa todos os termos de `q`.
+    def vector_products_matching(q)
+      tokens = Vaccination::StockPositions.fold(q).split.first(6)
+      VectorProduct.all.select do |product|
+        text = Vaccination::StockPositions.fold("#{product.code} #{product.name}")
+        tokens.all? { |token| text.include?(token) }
+      end.map(&:id)
     end
 
     # true | false | nil (valor inválido). Ausente e "false" valem false.

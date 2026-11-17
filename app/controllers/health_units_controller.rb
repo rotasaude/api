@@ -108,7 +108,7 @@ class HealthUnitsController < ApplicationController
             assign_waiting_room(@unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
 
-    conflict = caps_change_conflict(@unit) || upa_change_conflict(@unit)
+    conflict = caps_change_conflict(@unit) || upa_change_conflict(@unit) || vector_control_change_conflict(@unit)
     return render json: { error: conflict }, status: :conflict if conflict
     return render_invalid(@unit) unless @unit.save
 
@@ -263,6 +263,17 @@ class HealthUnitsController < ApplicationController
   end
 
   def upa_active_beds?(unit) = UrgencyBed.active_beds.where(health_unit_id: unit.id).exists?
+
+  # Módulo 35a (A-13): a unidade da vigilância ambiental com local de estoque
+  # `vector_control` ativo não muda de kind (409
+  # unit_has_vector_control_location); com o local desativado, passa. Sob o
+  # FOR UPDATE da unidade: a Pharmacy::SaveLocation trava a mesma linha ao
+  # criar ou reativar o local.
+  def vector_control_change_conflict(unit)
+    return unless unit.kind_changed? && unit.kind_was == Pharmacy::Catalog::VECTOR_CONTROL_UNIT_KIND
+
+    "unit_has_vector_control_location" if StockLocation.active_locations.exists?(kind: "vector_control", health_unit_id: unit.id)
+  end
 
   # Também a cobertura de bairro e o prestador próprio da regulação (P51): eles
   # levam pedidos da agenda automaticamente à unidade.

@@ -11,7 +11,14 @@
 #   - inspection → VectorInspection (o boletim no <home_visit> do 24b; Q8):
 #     os campos do §3 menos city_block_id (e risk_class, que fica no perfil),
 #     mais id, recovered e city_block; medidas com quantity (texto, 2 casas;
-#     null na mecânica) e product; amostras com id, label e result.
+#     null na mecânica) e product; amostras com id, label e result;
+#   - product → VectorProduct (`charge_size` em texto, 2 casas, Q15; `in_use` =
+#     há lote ou medida do produto); `products` em lote;
+#   - settings → VectorSettings (o local da baixa e as opções: os locais
+#     vector_control ativos);
+#   - shortfalls → VectorShortfall (o produto, o local, o dia da visita e quem
+#     conciliou; `reconciled_by: null` na conciliação do sistema). A nota
+#     nunca sai.
 module VectorControl
   module Json
     module_function
@@ -108,6 +115,43 @@ module VectorControl
       }
       { id: sample.id, number: sample.number, deposit_group: sample.deposit_group, larvae_collected: sample.larvae_collected,
         label: sample.label, result: result }
+    end
+
+    def products(products)
+      ids = products.map(&:id)
+      used = StockLot.where(vector_product_id: ids).distinct.pluck(:vector_product_id).to_set +
+             VectorInspectionMeasure.where(vector_product_id: ids).distinct.pluck(:vector_product_id)
+      products.map { |product| product(product, in_use: used.include?(product.id)) }
+    end
+
+    def product(product, in_use: nil)
+      return products([ product ]).first if in_use.nil?
+
+      { id: product.id, code: product.code, name: product.name, unit: product.unit, charge_size: format("%.2f", product.charge_size),
+        uses: product.uses, active: product.active, in_use: in_use }
+    end
+
+    def settings(setting)
+      location = setting.stock_location
+      { stock_location: location && { id: location.id, name: location.name },
+        options: StockLocation.active_locations.where(kind: "vector_control").order(:name, :id).map { |row| { id: row.id, name: row.name } } }
+    end
+
+    def shortfalls(rows)
+      measures = VectorInspectionMeasure.where(id: rows.map(&:vector_inspection_measure_id)).includes(vector_inspection: :home_visit).index_by(&:id)
+      products = VectorProduct.where(id: rows.map(&:vector_product_id)).index_by(&:id)
+      locations = StockLocation.where(id: rows.filter_map(&:stock_location_id)).index_by(&:id)
+      users = User.where(id: rows.filter_map(&:reconciled_by_user_id)).includes(:professional).index_by(&:id)
+      rows.map do |row|
+        product = products.fetch(row.vector_product_id)
+        location = locations[row.stock_location_id]
+        reconciler = users[row.reconciled_by_user_id]
+        { id: row.id, created_at: row.created_at.utc.iso8601(6), stock_location: location && { id: location.id, name: location.name },
+          product: { id: product.id, code: product.code, name: product.name, unit: product.unit },
+          quantity: format("%.2f", row.quantity), cause: row.cause,
+          visit_on: measures.fetch(row.vector_inspection_measure_id).vector_inspection.home_visit.occurred_at.in_time_zone.to_date.iso8601,
+          reconciled_at: row.reconciled_at&.utc&.iso8601, reconciled_by: reconciler && { name: reconciler.professional&.professional_name } }
+      end
     end
 
     # { block_id => [ids dos vizinhos vigentes] }, ordenados.

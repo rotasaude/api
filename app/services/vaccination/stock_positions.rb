@@ -11,6 +11,10 @@
 # `blocked`: bloqueio aberto (excursão de temperatura) do lote NAQUELE local.
 # Ordem estável por (local, código) com cursor opaco `[location_id, code]`.
 # Sem dado de paciente e sem trilha.
+#
+# Módulo 35a (A-12): a mesma conta para o insumo de campo (`stock_domain:
+# "vector_control"`), com a chave `vector_product_id` (em texto, o "código") e
+# o <item> do produto (Pharmacy::Json.vector_item).
 module Vaccination
   module StockPositions
     module_function
@@ -18,7 +22,9 @@ module Vaccination
     # `before` é o cursor JÁ decodificado e validado ([location_id, code]);
     # `codes` (opcional) restringe os imunobiológicos.
     # -> { positions: [<position>], next_before: String | nil }
-    def call(location_ids:, limit:, today:, settings:, before: nil, codes: nil, expiring: false)
+    KEYS = { Stock::Domain::IMMUNOBIOLOGICAL => "immunobiological_code", Stock::Domain::VECTOR_CONTROL => "vector_product_id" }.freeze
+
+    def call(location_ids:, limit:, today:, settings:, before: nil, codes: nil, expiring: false, stock_domain: Stock::Domain::IMMUNOBIOLOGICAL)
       cutoff = today + settings.expiry_alert_days
       tail = +"SELECT * FROM positions WHERE TRUE"
       binds = { fetch: limit + 1 }
@@ -32,10 +38,10 @@ module Vaccination
         binds.merge!(cursor_location: before.first, cursor_code: before.last)
       end
       tail << " ORDER BY location_id, code LIMIT :fetch"
-      rows = query(tail, location_ids: location_ids, cutoff: cutoff, binds: binds)
+      rows = query(tail, location_ids: location_ids, cutoff: cutoff, binds: binds, key: KEYS.fetch(stock_domain))
 
       page = rows.first(limit)
-      { positions: present(page, today: today, cutoff: cutoff),
+      { positions: present(page, today: today, cutoff: cutoff, stock_domain: stock_domain),
         next_before: rows.size > limit ? Pharmacy::Cursor.encode([ page.last["location_id"], page.last["code"] ]) : nil }
     end
 
@@ -51,22 +57,22 @@ module Vaccination
     def fold(text) = I18n.transliterate(text.to_s).upcase
 
     # CTEs `lots` (local, código, lote, saldo, trânsito) e `positions`.
-    def query(tail, location_ids:, cutoff:, binds: {})
+    def query(tail, location_ids:, cutoff:, binds: {}, key: KEYS.fetch(Stock::Domain::IMMUNOBIOLOGICAL))
       sql = <<~SQL
         WITH balances AS (
-          SELECT m.stock_location_id AS location_id, m.immunobiological_code AS code, m.stock_lot_id AS lot_id,
+          SELECT m.stock_location_id AS location_id, m.#{key}::text AS code, m.stock_lot_id AS lot_id,
                  SUM(m.quantity) AS balance, 0::numeric AS in_transit
           FROM stock_movements m
-          WHERE m.stock_location_id IN (:location_ids) AND m.immunobiological_code IS NOT NULL
-          GROUP BY m.stock_location_id, m.immunobiological_code, m.stock_lot_id
+          WHERE m.stock_location_id IN (:location_ids) AND m.#{key} IS NOT NULL
+          GROUP BY m.stock_location_id, m.#{key}, m.stock_lot_id
         ), transit AS (
-          SELECT t.to_location_id AS location_id, l.immunobiological_code AS code, i.stock_lot_id AS lot_id,
+          SELECT t.to_location_id AS location_id, l.#{key}::text AS code, i.stock_lot_id AS lot_id,
                  0::numeric AS balance, SUM(i.quantity_sent) AS in_transit
           FROM stock_transfer_items i
           JOIN stock_transfers t ON t.id = i.stock_transfer_id
           JOIN stock_lots l ON l.id = i.stock_lot_id
-          WHERE t.status = 'sent' AND t.to_location_id IN (:location_ids) AND l.immunobiological_code IS NOT NULL
-          GROUP BY t.to_location_id, l.immunobiological_code, i.stock_lot_id
+          WHERE t.status = 'sent' AND t.to_location_id IN (:location_ids) AND l.#{key} IS NOT NULL
+          GROUP BY t.to_location_id, l.#{key}, i.stock_lot_id
         ), lots AS (
           SELECT location_id, code, lot_id, SUM(balance) AS balance, SUM(in_transit) AS in_transit
           FROM (SELECT * FROM balances UNION ALL SELECT * FROM transit) joined
@@ -85,22 +91,23 @@ module Vaccination
     end
     private_class_method :query
 
-    def present(rows, today:, cutoff:)
+    def present(rows, today:, cutoff:, stock_domain:)
       return [] if rows.empty?
 
       keys = rows.map { |row| [ row["location_id"], row["code"] ] }
-      lot_rows = query("SELECT * FROM lots", location_ids: keys.map(&:first).uniq, cutoff: cutoff)
+      lot_rows = query("SELECT * FROM lots", location_ids: keys.map(&:first).uniq, cutoff: cutoff, key: KEYS.fetch(stock_domain))
                  .group_by { |row| [ row["location_id"], row["code"] ] }.slice(*keys)
       lot_ids = lot_rows.values.flatten.map { |row| row["lot_id"] }
       stock_lots = StockLot.where(id: lot_ids).index_by(&:id)
       blocked = StockLotBlock.open_blocks.where(stock_location_id: keys.map(&:first), stock_lot_id: lot_ids)
                              .pluck(:stock_location_id, :stock_lot_id).to_set
       locations = StockLocation.includes(:health_unit).where(id: keys.map(&:first)).index_by(&:id)
+      products = stock_domain == Stock::Domain::VECTOR_CONTROL ? VectorProduct.where(id: keys.map(&:last)).index_by(&:id) : {}
 
       rows.map do |row|
         key = [ row["location_id"], row["code"] ]
         { location: Pharmacy::Json.location(locations.fetch(row["location_id"])),
-          item: Pharmacy::Json.immunobiological_item(row["code"]),
+          item: stock_domain == Stock::Domain::VECTOR_CONTROL ? Pharmacy::Json.vector_item(products.fetch(row["code"])) : Pharmacy::Json.immunobiological_item(row["code"]),
           lots: lots_of(lot_rows.fetch(key, []), location_id: row["location_id"], stock_lots: stock_lots, blocked: blocked, today: today, cutoff: cutoff),
           balance: Pharmacy::Quantity.dump(row["balance"].to_d), minimum: nil, below_minimum: false,
           expiring_soon: ActiveModel::Type::Boolean.new.cast(row["expiring_soon"]) ? true : false }

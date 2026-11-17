@@ -25,7 +25,7 @@ module Pharmacy
 
     def load_location
       @location = uuid?(params[:id]) && StockLocation.find_by(id: params[:id])
-      not_found unless @location && !Stock::Domain.immunobiological?(@location)
+      not_found unless @location && Stock::Domain.medication?(@location)
     end
 
     def require_keeper

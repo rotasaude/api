@@ -1,13 +1,14 @@
-# Rotas do razão do 27a que também carregam imunobiológico (ADR 0047, Desvio 5):
-# entradas, transferências, ajustes, posição e extrato. A rota passa se
-# `pharmacy` OU `vaccination` está utilizável (nenhum: 403 com `pharmacy`, o
-# interruptor da família de rotas); cada ação, ao carregar o local, confere o
-# interruptor do domínio dele (Stock::Domain.feature_for).
+# Rotas do razão do 27a que também carregam imunobiológico (ADR 0047, Desvio 5)
+# e insumo de campo (35a, A-12): entradas, transferências, ajustes, posição e
+# extrato. A rota passa se `pharmacy`, `vaccination` OU `vector_control` está
+# utilizável (nenhum: 403 com `pharmacy`, o interruptor da família de rotas);
+# cada ação, ao carregar o local, confere o interruptor do domínio dele
+# (Stock::Domain.feature_for).
 module StockGate
   private
 
   def require_stock_feature!
-    return if Pharmacy::Gate.usable?(Current.city) || Vaccination::Gate.usable?(Current.city)
+    return if Stock::Domain::FEATURES.keys.any? { |domain| stock_domain_usable?(domain) }
 
     render json: { error: "feature_disabled", feature: Pharmacy::Gate::KEY }, status: :forbidden
   end

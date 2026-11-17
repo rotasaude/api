@@ -13,6 +13,13 @@
 # confere o saldo, já sob a trava do local: nenhum movimento novo entra sem o
 # FOR SHARE dele. Evento `pharmacy.settings_changed` só com ids, e só quando
 # algo mudou.
+#
+# Módulo 35a (ADR 0054, decisão 29; A-12): também o local `vector_control`,
+# só numa unidade `environmental_surveillance` ativa (senão `invalid_request`
+# path `health_unit_id`), um por unidade (`unit_taken`, pelo mesmo índice). A
+# unidade é travada FOR UPDATE (a troca de tipo dela trava a mesma linha e
+# recusa unit_has_vector_control_location, A-13); a marca `dispenses` não muda
+# (o local não dispensa). Reativar confere a unidade de novo.
 module Pharmacy
   module SaveLocation
     NAME_LENGTH = (3..Catalog::NAME_MAX)
@@ -34,7 +41,7 @@ module Pharmacy
 
     def create(attrs, by)
       kind = attrs["kind"]
-      return refuse("kind") unless Catalog::LOCATION_KINDS.include?(kind)
+      return refuse("kind") unless Catalog::STOCK_LOCATION_KINDS.include?(kind)
 
       name = valid_name(attrs["name"])
       return refuse("name") unless name
@@ -46,15 +53,15 @@ module Pharmacy
       return refuse("health_unit_id") unless kind == "central" ? unit_id.nil? : unit_id.is_a?(String)
 
       StockLocation.transaction(requires_new: true) do
-        unit = kind == "unit" ? lock_unit(unit_id) : nil
-        next refuse("health_unit_id") if kind == "unit" && unit.nil?
+        unit = kind == "central" ? nil : lock_unit(unit_id)
+        next refuse("health_unit_id") if kind != "central" && !unit_fits?(kind, unit)
         next Result.fail(:central_exists) if kind == "central" && StockLocation.exists?(kind: "central")
         # Módulo 29: a unidade pode ter também a sala de vacina (vaccine_room).
-        next Result.fail(:unit_taken) if unit && StockLocation.exists?(health_unit_id: unit.id, kind: "unit")
+        next Result.fail(:unit_taken) if unit && StockLocation.exists?(health_unit_id: unit.id, kind: kind)
         next refuse("name") if name_taken?(name)
 
         location = StockLocation.create!(kind: kind, name: name, health_unit_id: unit&.id, active: active, updated_by_user: by)
-        mark_dispenses(unit, active) if unit
+        mark_dispenses(unit, active) if kind == "unit"
         publish(location, by)
         Result.ok(location: location)
       end
@@ -90,7 +97,9 @@ module Pharmacy
       locked.active = active
       return locked unless locked.changed?
 
-      if locked.unit? && (activating || deactivating)
+      if locked.vector_control? && activating
+        return refuse("active") unless unit_fits?(locked.kind, lock_unit(locked.health_unit_id))
+      elsif locked.unit? && (activating || deactivating)
         unit = activating ? lock_unit(locked.health_unit_id) : HealthUnit.lock.find_by(id: locked.health_unit_id)
         return refuse("active") if activating && unit.nil?
 
@@ -106,6 +115,14 @@ module Pharmacy
     # desativação da unidade trava a mesma linha).
     def lock_unit(id)
       HealthUnit.where(active: true).lock.find_by(id: id)
+    end
+
+    # `unit`: qualquer unidade ativa; `vector_control`: só a da vigilância
+    # ambiental (A-12).
+    def unit_fits?(kind, unit)
+      return false if unit.nil?
+
+      kind != "vector_control" || unit.kind == Catalog::VECTOR_CONTROL_UNIT_KIND
     end
 
     def mark_dispenses(unit, value)
@@ -155,7 +172,7 @@ module Pharmacy
     # Todo 422 traz `problems` com ao menos um problema (regra do módulo).
     def refuse(path) = Result.fail(:invalid_request, details: { path: path, problems: [ { path: path, error: "invalid_request" } ] })
 
-    private_class_method :create, :update, :apply, :lock_unit, :mark_dispenses, :lot_ids_of, :lock_lots_of, :stocked?, :pending_work?, :valid_name,
+    private_class_method :create, :update, :apply, :lock_unit, :unit_fits?, :mark_dispenses, :lot_ids_of, :lock_lots_of, :stocked?, :pending_work?, :valid_name,
                          :name_taken?, :conflict, :publish, :refuse
   end
 end

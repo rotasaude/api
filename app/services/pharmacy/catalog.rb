@@ -3,6 +3,11 @@
 module Pharmacy
   module Catalog
     LOCATION_KINDS = %w[central unit].freeze
+    # Módulo 35a (A-12): a tela de locais do 27a também cria e lista o local
+    # `vector_control` (numa unidade environmental_surveillance); a dispensação
+    # continua só nos `unit`.
+    VECTOR_CONTROL_UNIT_KIND = "environmental_surveillance".freeze
+    STOCK_LOCATION_KINDS = (LOCATION_KINDS + %w[vector_control]).freeze
     ROLES = %w[pharmacist pharmacy_assistant stock_keeper].freeze
     DISPENSER_ROLES = %w[pharmacist pharmacy_assistant].freeze
 

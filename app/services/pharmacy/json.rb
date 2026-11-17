@@ -49,6 +49,15 @@ module Pharmacy
         name: Vaccination::Immunobiologicals.find(code)&.name, unit: "dose", dispensing_unit: "dose", controlled: false, controlled_list: nil }
     end
 
+    # <item> do insumo de campo (módulo 35a, Q8/D-8): sem CATMAT, com o produto
+    # do vector_products; a unidade de dispensação é a `unit` do produto. As
+    # chaves do <item> de medicamento ficam (nulas ou fixas).
+    def vector_item(product)
+      { catalog_item_id: nil, catmat_code: nil, vector_product_id: product.id, code: product.code,
+        item_kind: Stock::Domain::VECTOR_CONTROL, name: product.name, unit: product.unit, dispensing_unit: product.unit,
+        controlled: false, controlled_list: nil }
+    end
+
     # <lot>: `catalog` é { catalog_item_id => MedicationCatalogItem } (veja
     # `catalog_for`). A unidade de dispensação é a do LOTE, gravada na primeira
     # entrada; `item.unit` continua sendo a da concentração. Lote de
@@ -57,9 +66,15 @@ module Pharmacy
     # `manufacturer_key`; nunca o código RNDS do fabricante.
     def lot(lot, catalog:)
       return immunobiological_lot(lot) if lot.immunobiological?
+      return vector_lot(lot) if lot.vector_control?
 
       { id: lot.id, item: item(catalog.fetch(lot.catalog_item_id), dispensing_unit: lot.dispensing_unit),
         lot_number: lot.lot_number, expires_on: lot.expires_on.iso8601, manufacturer: lot.manufacturer }
+    end
+
+    def vector_lot(lot)
+      { id: lot.id, item: vector_item(lot.vector_product), lot_number: lot.lot_number, expires_on: lot.expires_on.iso8601,
+        manufacturer: lot.manufacturer }
     end
 
     def immunobiological_lot(lot)

@@ -46,18 +46,17 @@ module Pharmacy
       linked && granted(user, %w[stock_keeper]).any?
     end
 
-    # Locais ativos de MEDICAMENTO (central e unidades) onde o usuário tem
-    # algum papel; o almoxarife do central vê todos os ativos. Ordem estável:
-    # nome, id. Os locais de vacina saem por /vaccination/my_locations.
+    # Locais ativos de MEDICAMENTO (central e unidades) e da vigilância
+    # ambiental (vector_control, módulo 35a, A-12) onde o usuário tem algum
+    # papel; o almoxarife do central vê todos os de medicamento ativos (o
+    # vector_control, só com vínculo nele). Ordem estável: nome, id. Os locais
+    # de vacina saem por /vaccination/my_locations.
     def locations_for(user)
-      scope = StockLocation.active_locations.where(kind: Catalog::LOCATION_KINDS).includes(:health_unit).order(:name, :id)
-      return scope.to_a if central_keeper?(user)
+      scope = StockLocation.active_locations.where(kind: Catalog::STOCK_LOCATION_KINDS).includes(:health_unit).order(:name, :id)
+      ids = roles_by_location(user).keys
+      return scope.where(kind: Catalog::LOCATION_KINDS).or(scope.where(id: ids)).to_a if central_keeper?(user)
+      return [] if ids.empty?
 
-      by_location = StockLocationStaff.active.where(user_id: user.id).pluck(:stock_location_id, :role)
-      return [] if by_location.empty?
-
-      roles = granted(user, by_location.map(&:last).uniq)
-      ids = by_location.select { |_id, role| roles.include?(role) }.map(&:first).uniq
       scope.where(id: ids).to_a
     end
 

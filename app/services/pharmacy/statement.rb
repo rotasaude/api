@@ -7,7 +7,7 @@
 # (`created_at`) e, por último, pelo id: a ordem é a mesma a cada leitura.
 #
 # Cada movimento: `{ id, kind, quantity (com sinal), reason|null, at, by: { name },
-# document: { type: "entry"|"transfer"|"dispensation"|"adjustment"|"vial_opening"|"immunization"|"urgency_administration", id, number|null } }`.
+# document: { type: "entry"|"transfer"|"dispensation"|"adjustment"|"vial_opening"|"immunization"|"urgency_administration"|"vector_inspection_measure", id, number|null } }`.
 # O motivo (texto livre, cifrado) vai só no corpo; o da devolução (`return`) só
 # com `reasons: true` (farmacêutico ou auxiliar do local, como o `<transfer>`):
 # para os demais leitores sai `null`. A dispensação aparece SÓ com
@@ -65,6 +65,8 @@ module Pharmacy
         { type: "immunization", id: movement.immunization_id, number: nil }
       elsif movement.urgency_administration_id
         { type: "urgency_administration", id: movement.urgency_administration_id, number: nil }
+      elsif movement.vector_inspection_measure_id
+        { type: "vector_inspection_measure", id: movement.vector_inspection_measure_id, number: nil }
       else
         { type: "adjustment", id: movement.stock_adjustment_id, number: nil }
       end

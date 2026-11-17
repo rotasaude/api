@@ -11,7 +11,7 @@ module Pharmacy
       return unless query_only!(:location_id)
 
       location = required_location or return
-      return not_found if Stock::Domain.immunobiological?(location)
+      return not_found unless Stock::Domain.medication?(location)
 
       render json: Alerts.call(location: location, today: Time.zone.today, settings: Settings.current)
     end

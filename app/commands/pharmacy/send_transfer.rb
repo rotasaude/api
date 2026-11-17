@@ -35,11 +35,15 @@
 # lote precisa ser do domínio da origem (senão `item_not_allowed_here`, path
 # `items[i]`) e não pode estar bloqueado por excursão de temperatura na origem
 # (`lot_blocked`, path `items[i].lot_id`; conferido de novo sob a trava).
+#
+# Módulo 35a (A-12): o local `vector_control` envia para outro local
+# `vector_control` (nunca para si mesmo), com os lotes do produto da
+# vigilância ambiental.
 module Pharmacy
   module SendTransfer
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     # Origem → o único tipo de destino que ela atende.
-    DESTINATIONS = { "central" => "unit", "cold_chain_central" => "vaccine_room" }.freeze
+    DESTINATIONS = { "central" => "unit", "cold_chain_central" => "vaccine_room", "vector_control" => "vector_control" }.freeze
 
     # Linha já validada.
     Row = Struct.new(:index, :lot, :quantity, keyword_init: true)
@@ -176,7 +180,7 @@ module Pharmacy
       (row_problems + extra).uniq.each_with_index.sort_by { |found, position| [ found[:path][/\Aitems\[(\d+)\]/, 1].to_i, position ] }.map(&:first)
     end
 
-    def destination?(from, to) = !to.nil? && to.kind == DESTINATIONS.fetch(from.kind)
+    def destination?(from, to) = !to.nil? && to.id != from.id && to.kind == DESTINATIONS.fetch(from.kind)
 
     # Lotes com bloqueio aberto (excursão de temperatura) na origem. -> Set
     def blocked_lot_ids(from, lot_ids)
