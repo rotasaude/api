@@ -1,0 +1,43 @@
+# Efeitos da retirada da visita sobre o boletim (módulo 35a, ADR 0054;
+# contrato §3; plano, W-5, W-13, Review Focus 4). A inspeção fica (só
+# acréscimo), marcada pela visita retirada; o resto volta, na transação do
+# HomeVisits::Withdraw:
+#   - lock! (antes da folha): perfil FOR UPDATE e item do LIRAa FOR UPDATE,
+#     na ordem do registro (perfil → item → folha → visita), para a retirada
+#     e o registro no mesmo imóvel não se travarem;
+#   - call (depois do update! da visita): o perfil volta à inspeção válida
+#     anterior (ou fica sem last_*), com version + 1 e
+#     household_vector_profile.changed; o quarteirão e o risco ficam; o item
+#     volta a pending (Liraa::Items.released!) quando nenhuma outra inspeção
+#     válida o usa (o substituto, inspecionado ou não, fica como está, W-13).
+# O estorno da baixa de estoque entra na Task 7 (marcado abaixo).
+module VectorControl
+  module WithdrawInspection
+    module_function
+
+    # -> [perfil | nil, item | nil] travados (nada sem inspeção).
+    def lock!(visit)
+      inspection = VectorInspection.find_by(home_visit_id: visit.id)
+      return [ nil, nil ] unless inspection
+
+      profile = HouseholdVectorProfile.lock.find_by(household_id: inspection.household_id)
+      item = inspection.liraa_draw_item_id && LiraaDrawItem.lock.find_by(id: inspection.liraa_draw_item_id)
+      [ profile, item ]
+    end
+
+    # -> VectorInspection | nil. A visita já está retirada (update! antes).
+    def call(visit, by:)
+      inspection = VectorInspection.find_by(home_visit_id: visit.id)
+      return nil unless inspection
+
+      profile, item = lock!(visit)
+      # Task 7: o estorno das baixas das medidas (vector_application_reversal) e
+      # a conciliação das faltas pelo sistema entram aqui.
+      if item && !VectorInspection.valid_inspections.exists?(liraa_draw_item_id: item.id)
+        Liraa::Items.released!(item)
+      end
+      SaveProfile.write!(profile, RecordInspection.last_attributes(inspection.household_id), by, created: false) if profile
+      inspection
+    end
+  end
+end

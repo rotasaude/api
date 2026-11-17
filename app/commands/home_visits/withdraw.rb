@@ -7,7 +7,9 @@
 # fechamento trava a mesma folha: ou a retirada entra antes (a ficha sai sem
 # ela) ou espera e recebe day_closed. A linha só ganha os três campos de
 # retirada (trigger rota_home_visit_guard, que relê a folha FOR SHARE). A visita
-# sai das fontes na hora (decisão 23). Evento só com ids.
+# sai das fontes na hora (decisão 23). Evento só com ids. Módulo 35a: o boletim
+# da visita volta o perfil e o item do LIRAa na mesma transação
+# (VectorControl::WithdrawInspection, W-5).
 module HomeVisits
   module Withdraw
     EVENT = "home_visit.withdrawn".freeze
@@ -27,12 +29,16 @@ module HomeVisits
       return Result.fail(:not_found) unless by && HomeVisitDay.where(id: day_id, user_id: by.id).exists?
 
       HomeVisit.transaction(requires_new: true) do
+        # Módulo 35a: o perfil e o item do LIRAa do boletim antes da folha (a
+        # ordem do registro; nada sem boletim).
+        VectorControl::WithdrawInspection.lock!(visit)
         day = HomeVisitDay.lock.find(day_id)
         visit.lock!
         next Result.fail(:visit_changed) if visit.withdrawn? || expected_state != "recorded"
         next Result.fail(:day_closed) unless day.open?
 
         visit.update!(withdrawn_at: Time.current, withdrawn_by_user: by, withdrawal_reason: text)
+        VectorControl::WithdrawInspection.call(visit, by: by)
         DomainEvents.publish(EVENT, home_visit_id: visit.id, home_visit_day_id: day.id, user_id: by.id)
         Result.ok(visit: visit)
       end

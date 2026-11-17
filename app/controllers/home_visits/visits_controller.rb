@@ -25,7 +25,8 @@ module HomeVisits
     def create
       return unless query_only!
 
-      result = Record.call(params: body, by: Current.user)
+      # Módulo 35a: o gate do boletim lido fora da transação da cidade.
+      result = Record.call(params: body, by: Current.user, vector_control: VectorControl::Gate.usable?(Current.city))
       return render_failure(result) if result.failure?
 
       visit = load_visits(HomeVisit.where(id: result.payload[:visit].id)).sole

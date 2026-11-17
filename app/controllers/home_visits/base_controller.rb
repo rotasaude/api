@@ -19,7 +19,7 @@ module HomeVisits
       duplicate_suspected: :conflict, cpf_taken: :conflict, cns_taken: :conflict, already_assigned: :conflict,
       citizen_not_verified: :conflict, assignment_already_ended: :conflict, device_already_revoked: :conflict,
       identity_locked: :conflict, client_uuid_conflict: :conflict,
-      cbo_not_allowed: :forbidden, out_of_scope: :forbidden,
+      cbo_not_allowed: :forbidden, out_of_scope: :forbidden, feature_disabled: :forbidden,
       not_found: :not_found, person_not_found: :not_found,
       too_many_requests: :too_many_requests
     }.freeze

@@ -93,13 +93,17 @@ module HomeVisits
     # can_withdraw = dono, não retirada e folha aberta (Q14). Visitas com
     # home_visit_day (e equipe), micro_area, patient, recorded_by_user e
     # withdrawn_by_user (com :professional) carregados por quem chama.
+    # Módulo 35a: `vector_inspection` só na visita com boletim, os boletins da
+    # página carregados juntos (VectorControl::Json.inspections).
     def visits(visits, viewer:, note: false)
       addresses = addresses(visits.map(&:household_id))
+      inspections = VectorControl::Json.inspections(visits.map(&:id))
       readers = visits.map { |visit| visit.home_visit_day.team }.uniq(&:id).to_h { |team| [ team.id, Access.reads_team?(viewer, team) ] }
       visits.map do |visit|
         owner = visit.home_visit_day.user_id == viewer.id
-        visit(visit, address: addresses[visit.household_id], owner: owner,
-                     reason_visible: owner || readers[visit.home_visit_day.team_id], note: note)
+        json = visit(visit, address: addresses[visit.household_id], owner: owner,
+                            reason_visible: owner || readers[visit.home_visit_day.team_id], note: note)
+        inspections.key?(visit.id) ? json.merge(vector_inspection: inspections[visit.id]) : json
       end
     end
 

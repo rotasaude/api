@@ -27,6 +27,16 @@
 # 6. Grava (has_reason pelo api; medidas arredondadas pelo YAML; observação
 #    com strip) e publica home_visit.recorded só com os três ids.
 #
+# Módulo 35a (ADR 0054; contrato §3; plano, A-3, A-10, W-1): `vector_inspection`
+# (o boletim do agente de endemias), com `vector_control:` = o gate lido FORA da
+# transação por quem chama. Logo depois do domicílio e do escopo: trava o perfil
+# do imóvel, o item do LIRAa e o bloqueio (VectorControl::RecordInspection.facts!;
+# ordem pacientes → domicílio → perfil → item do LIRAa → bloqueio → folha →
+# visita), roda as VectorControl::InspectionRules e acrescenta os motivos
+# derivados 34–37 ao `reasons` ANTES da conversão Q43 e das regras do 24b; o
+# erro do 24b que cai num motivo derivado volta com `path` `subject` (A-3).
+# Depois do insert!, VectorControl::RecordInspection grava o boletim.
+#
 # A trilha dos candidatos do duplicado suspeito é gravada DEPOIS da transação,
 # com qualquer desfecho (People.candidates_viewed!). Motivo, medida,
 # observação, nome e documento nunca em Result.details, log ou evento.
@@ -38,7 +48,7 @@ module HomeVisits
     INSTANT = /\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})\z/
     ALLOWED = %w[
       client_uuid team_id occurred_at household_id micro_area_id out_of_area property_type subject patient_id new_patient
-      family_id duplicates_reviewed outcome reasons shared measurements note
+      family_id duplicates_reviewed outcome reasons shared measurements note vector_inspection
     ].freeze
     # Módulo 24c (ADR 0053; contrato §4): só a visita do app tem coordenada, e
     # só do GPS do aparelho. No dashboard a chave segue desconhecida.
@@ -59,7 +69,7 @@ module HomeVisits
     module_function
 
     # -> Result.ok(visit:, day:, replayed:) | Result.fail(<código>, details: { path: } ...)
-    def call(params:, by:, origin: "dashboard", device: nil, trail: Trail)
+    def call(params:, by:, origin: "dashboard", device: nil, trail: Trail, vector_control: false)
       raise ArgumentError, "origin" unless Catalog::ORIGINS.include?(origin)
       raise ArgumentError, "device: só (e sempre) com origin field_app" if (origin == "field_app") == device.nil?
 
@@ -81,7 +91,7 @@ module HomeVisits
       input = params.merge("occurred_at" => instant(params["occurred_at"]))
       shown = []
       result = begin
-        ApplicationRecord.transaction(requires_new: true) { write(input, by, team, member, origin, device, shown) }
+        ApplicationRecord.transaction(requires_new: true) { write(input, by, team, member, origin, device, shown, vector_control) }
       rescue Refused => e
         e.result
       rescue ActiveRecord::RecordNotUnique => e
@@ -93,7 +103,7 @@ module HomeVisits
       result
     end
 
-    def write(input, by, team, member, origin, device, shown)
+    def write(input, by, team, member, origin, device, shown, vector_control)
       locked = lock_patients!(patients_to_lock(input))
       household, area = place!(input, team)
       # Corpo sem lugar coerente (nem microárea nem fora de área, os dois, ou
@@ -105,18 +115,27 @@ module HomeVisits
         refuse!(Result.fail(access)) unless access == :ok
       end
 
+      vector = input.key?("vector_inspection") && inspection!(input, household, member, vector_control, by)
+      body_reasons = input["reasons"]
+      input = input.merge("reasons" => VectorControl::InspectionRules.derived_reasons(body_reasons, input["vector_inspection"])) if vector
+
       family = family!(input, household)
       input, family, conversion = family_visit(input, household, family, by)
       patient = existing_patient!(input, family, by, locked)
       facts = facts(input, household, area, family, patient)
       error = Rules.check(input, **facts, today: Time.zone.today, without_family: conversion == :without_family).first
       path = conversion == :family && error&.dig(:path) == "family_id" ? "patient_id" : error&.dig(:path)
+      path = derived_path(path, body_reasons, input["reasons"]) if vector
       refuse!(Result.fail(error[:error], details: { path: path })) if error
       raise "lugar malformado passou nas regras" unless checked
 
       patient ||= new_patient!(input, by, shown)
       day = sheet!(by, team, member, input["occurred_at"].in_time_zone.to_date)
       visit = insert!(input, day, household, area, family, patient, by, origin, device)
+      if vector
+        VectorControl::RecordInspection.call(visit: visit, input: input["vector_inspection"], facts: vector, by: by,
+                                             today: Time.zone.today)
+      end
       DomainEvents.publish(EVENT, home_visit_id: visit.id, home_visit_day_id: day.id, user_id: by.id)
       Result.ok(visit: visit, day: day, replayed: false)
     end
@@ -295,6 +314,31 @@ module HomeVisits
       Rules::PersonFacts.new(sex: typed["sex"], household_id: nil) if input["subject"] == "resident" && typed.is_a?(Hash)
     end
 
+    # Módulo 35a: trava e lê os fatos do boletim e roda as regras dele (o
+    # primeiro erro, Q13). -> InspectionRules::Facts.
+    def inspection!(input, household, member, usable, by)
+      vector = VectorControl::RecordInspection.facts!(input["vector_inspection"], household: household, cbo: member.cbo_code,
+                                                      usable: usable, outcome: input["outcome"],
+                                                      occurred_at: input["occurred_at"], by: by)
+      household_facts = household && { id: household.id, neighborhood_id: household.latest_version.neighborhood_id }
+      profile = household && { city_block_id: vector.profile_block_id }
+      error = VectorControl::InspectionRules.check(input["vector_inspection"], visit: input, household: household_facts,
+                                                                               profile: profile, today: Time.zone.today,
+                                                                               facts: vector).first
+      refuse!(Result.fail(error[:error], details: { path: error[:path] })) if error
+      vector
+    end
+
+    # A-3: o erro do 24b em `reasons[i]` da lista final aponta `subject` quando
+    # o motivo é derivado (o corpo não o trazia); senão, o índice no corpo.
+    def derived_path(path, body_reasons, reasons)
+      index = path&.match(/\Areasons\[(\d+)\]\z/)&.[](1)&.to_i
+      return path if index.nil?
+
+      position = Array(body_reasons).index(reasons[index])
+      position ? "reasons[#{position}]" : "subject"
+    end
+
     # --- escritas (depois de todas as regras) ---------------------------------
 
     def new_patient!(input, by, shown)
@@ -349,6 +393,6 @@ module HomeVisits
     def refuse!(result) = raise(Refused, result)
     private_class_method :write, :shape_error, :location_of, :replayed, :instant, :patients_to_lock, :lock_patients!, :place!, :family!,
                          :family_visit, :well_placed?, :existing_patient!, :facts, :person_facts, :new_patient!, :sheet!, :insert!,
-                         :uuid?, :refuse, :refuse!
+                         :uuid?, :refuse, :refuse!, :inspection!, :derived_path
   end
 end
