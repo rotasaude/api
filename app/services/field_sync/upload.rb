@@ -135,8 +135,10 @@ module FieldSync
       raise ArgumentError, "items: 1 a #{Catalog::MAX_ITEMS}" unless items.is_a?(Array) && (1..Catalog::MAX_ITEMS).cover?(items.size)
 
       context = { device: device, user: user, trail: DeviceTrail.new(device), acs: acs?(user),
+                  endemic: VectorControl::Access.field_agent_somewhere?(user),
                   collective: CollectiveActivities::Gate.usable?(Current.city),
-                  registry: TerritoryRegistry::Gate.usable?(Current.city) }
+                  registry: TerritoryRegistry::Gate.usable?(Current.city),
+                  vector: VectorControl::Gate.usable?(Current.city) }
       items.map { |item| process(item, context) }
     end
 
@@ -266,17 +268,19 @@ module FieldSync
     # e só vale se o usuário cadastra na microárea dele (visible_micro_area_ids;
     # senão not_found). stale_version leva o `current` (2.T20c).
     def household(body, context)
-      refusal = registry_refusal(context)
+      refusal = registry_refusal(context, type: "household")
       return refusal if refusal
 
       user = context[:user]
+      vector = context[:vector] == true
       household = nil
       if body.key?("household_id")
         household = Household.includes(micro_area: :team).find_by(id: body["household_id"])
-        visible = household && TerritoryRegistry::Access.visible_micro_area_ids(user, household.micro_area.team).include?(household.micro_area_id)
+        visible = household && TerritoryRegistry::Access.visible_micro_area_ids(user, household.micro_area.team, vector_control: vector)
+                                                        .include?(household.micro_area_id)
         return rejected("not_found", "household_id") unless visible
       end
-      result = TerritoryRegistry::SaveHousehold.call(params: body.except("household_id"), by: user, household: household)
+      result = TerritoryRegistry::SaveHousehold.call(params: body.except("household_id"), by: user, household: household, vector_control: vector)
       return stale_household(household) if result.failure? && result.reason == :stale_version && household
       return failure(result) if result.failure?
 
@@ -288,7 +292,7 @@ module FieldSync
     # id ou pelo livro (Q26). `version` é a do domicílio: vencida → o
     # stale_version do domicílio (Q4). Aceito → a versão nova do domicílio.
     def family(body, context)
-      refusal = registry_refusal(context)
+      refusal = registry_refusal(context, type: "family")
       return refusal if refusal
 
       user = context[:user]
@@ -325,7 +329,7 @@ module FieldSync
     # lê: reads_registration?, senão not_found); household_client_uuid e
     # patient_client_uuid pelo livro (Q27).
     def registration(body, context, shown)
-      refusal = registry_refusal(context)
+      refusal = registry_refusal(context, type: "individual_registration")
       return refusal if refusal
 
       user = context[:user]
@@ -355,12 +359,16 @@ module FieldSync
 
     # --- apoio -------------------------------------------------------------------
 
-    # household e individual_registration: territory_registry utilizável e só
-    # o ACS (W-9; Q11).
-    def registry_refusal(context)
+    # household, family e individual_registration: territory_registry
+    # utilizável e só o ACS (W-9; Q11). Módulo 35a (Q13(1)): o item household
+    # também do agente de endemias com vector_control utilizável (o
+    # SaveHousehold recusa o residencial e a microárea não atribuída).
+    def registry_refusal(context, type:)
       return rejected("feature_disabled") unless context[:registry]
+      return nil if context[:acs]
+      return nil if type == "household" && context[:endemic] && context[:vector]
 
-      rejected("cbo_not_allowed") unless context[:acs]
+      rejected("cbo_not_allowed")
     end
 
     # Q27: patient_client_uuid → patient_id, household_client_uuid →

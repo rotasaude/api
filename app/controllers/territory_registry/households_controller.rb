@@ -40,7 +40,7 @@ module TerritoryRegistry
     end
 
     def create
-      result = SaveHousehold.call(params: body, by: Current.user)
+      result = SaveHousehold.call(params: body, by: Current.user, vector_control: vector_control_usable?)
       return render_failure(result) if result.failure?
 
       render json: rendered([ result.payload[:household] ], full: true).first, status: :created
@@ -52,9 +52,12 @@ module TerritoryRegistry
       # Q11: a leitura de campo nunca abre a escrita. O SaveHousehold só confere
       # a microárea de DESTINO; a origem é guardada aqui, com a visibilidade de
       # quem cadastra (sem ela, um segundo vínculo moveria o domicílio de equipe).
-      return forbid("cbo_not_allowed") unless registrar_visible?(household.micro_area_id, household.micro_area.team)
+      # Módulo 35a: o agente de endemias, nas microáreas atribuídas a ele, com o
+      # interruptor (o SaveHousehold recusa o tipo residencial).
+      vector = vector_control_usable?
+      return forbid("cbo_not_allowed") unless registrar_visible?(household.micro_area_id, household.micro_area.team, vector_control: vector)
 
-      result = SaveHousehold.call(params: body, by: Current.user, household: household)
+      result = SaveHousehold.call(params: body, by: Current.user, household: household, vector_control: vector)
       return render_failure(result) if result.failure?
 
       render json: rendered([ result.payload[:household] ], full: true).first

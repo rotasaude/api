@@ -42,6 +42,14 @@ module TerritoryRegistry
       @home_visits_usable
     end
 
+    # Módulo 35a (Q13(1), Q14): o agente de endemias grava imóvel não
+    # residencial só com vector_control utilizável; lido uma vez por
+    # requisição, fora de transação, e passado como argumento.
+    def vector_control_usable?
+      @vector_control_usable = VectorControl::Gate.usable?(Current.city) unless defined?(@vector_control_usable)
+      @vector_control_usable
+    end
+
     # LEITURA (index, show e o achado do update, que depois exige
     # registrar_visible?): quem cadastra na microárea, ou o CBO de campo
     # atribuído a ela com home_visits utilizável (Q11, Q48).
@@ -51,7 +59,11 @@ module TerritoryRegistry
     end
 
     # ESCRITA: só quem cadastra na microárea (a visibilidade do 24a de sempre).
-    def registrar_visible?(micro_area_id, team) = Access.visible_micro_area_ids(Current.user, team).include?(micro_area_id)
+    # `vector_control: true` (só o domicílio, módulo 35a) soma as microáreas
+    # atribuídas ao agente de endemias.
+    def registrar_visible?(micro_area_id, team, vector_control: false)
+      Access.visible_micro_area_ids(Current.user, team, vector_control: vector_control).include?(micro_area_id)
+    end
 
     # CPF, CNS, nome, nascimento, condições de saúde, endereço etc. só do corpo
     # JSON, nunca da query string (URL vai para log de proxy e histórico): na

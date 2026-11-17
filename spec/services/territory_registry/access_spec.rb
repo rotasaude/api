@@ -126,3 +126,87 @@ RSpec.describe TerritoryRegistry::Access do
     expect(described_class.field_reader_micro_area_ids(tacs, team, home_visits: true)).to eq([])
   end
 end
+
+# Módulo 35a (ADR 0054; contrato §20 Q13(1), Q14): com vector_control
+# utilizável, o agente de endemias (515140) grava a ficha domiciliar só de
+# imóvel não residencial (2 3 4 5 6 12 13), nas microáreas atribuídas a ele.
+# Residencial, troca para residencial, edição de residencial e cadastro
+# individual → cbo_not_allowed; sem atribuição → out_of_scope. O resto não muda.
+RSpec.describe TerritoryRegistry::Access, "agente de endemias (módulo 35a)", type: :model do
+  before { vector_city! }
+
+  let(:unit) { care_unit! }
+  let(:team) { registry_team!(unit) }
+  let(:agent) { endemic_agent!(team: team) }
+  let(:assigned) { MicroAreaFieldAssignment.active.find_by!(professional_id: agent.professional.id).micro_area }
+  let(:other_area) { registry_micro_area!(code: "02", team: team) }
+
+  def check(user = agent, ficha: :household, micro_area: assigned, vector_control: true, **types)
+    described_class.registrar?(user, team, ficha: ficha, micro_area: micro_area, vector_control: vector_control, **types)
+  end
+
+  it "515140 com gate e microárea atribuída: :household tipo 4 → :ok; tipo 1 → :cbo_not_allowed; :individual → :cbo_not_allowed" do
+    expect(check(property_type: "4")).to eq(:ok)
+    expect(HomeVisits::Catalog::NON_RESIDENTIAL.map { check(property_type: _1) }).to all(eq(:ok))
+    expect(check).to eq(:ok) # o contexto de cadastro (GET /territory/teams), sem tipo
+    expect(check(property_type: "1")).to eq(:cbo_not_allowed)
+    expect(HomeVisits::Catalog::RESIDENTIAL.map { check(property_type: _1) }).to all(eq(:cbo_not_allowed))
+    expect(check(ficha: :individual, property_type: "4")).to eq(:cbo_not_allowed)
+    expect(check(ficha: :individual)).to eq(:cbo_not_allowed)
+  end
+
+  it "sem gate → :cbo_not_allowed" do
+    expect(check(vector_control: false, property_type: "4")).to eq(:cbo_not_allowed)
+    expect(described_class.registrar?(agent, team, ficha: :household, micro_area: assigned)).to eq(:cbo_not_allowed)
+  end
+
+  it "microárea não atribuída → :out_of_scope (outra da equipe, sem microárea, atribuição encerrada, outra equipe)" do
+    assigned
+    expect(check(micro_area: other_area, property_type: "4")).to eq(:out_of_scope)
+    expect(check(micro_area: nil, property_type: "4")).to eq(:out_of_scope)
+    foreign = registry_micro_area!(code: "01", team: registry_team!(care_unit!))
+    expect(check(micro_area: foreign, property_type: "4")).to eq(:out_of_scope)
+    MicroAreaFieldAssignment.active.find_by!(professional_id: agent.professional.id).update!(ended_at: Time.current, ended_by_user: agent)
+    expect(check(property_type: "4")).to eq(:out_of_scope)
+  end
+
+  it "domicílio atual tipo 1 com corpo tipo 2 → :cbo_not_allowed; não residencial atual com corpo não residencial → :ok" do
+    expect(check(property_type: "2", current_property_type: "1")).to eq(:cbo_not_allowed)
+    expect(check(property_type: "1", current_property_type: "2")).to eq(:cbo_not_allowed)
+    expect(check(property_type: "3", current_property_type: "2")).to eq(:ok)
+  end
+
+  it "ACS e enfermeiro como antes; o TACS (515130) atribuído segue :cbo_not_allowed" do
+    acs = registry_acs!(unit, team: team)
+    mine = registry_micro_area!(code: "01", team: team, acs: acs)
+    nurse = registry_nurse!(unit, team: team)
+    [ true, false ].each do |gate|
+      expect(check(acs, micro_area: mine, vector_control: gate, property_type: "1", current_property_type: "1")).to eq(:ok)
+      expect(check(acs, micro_area: other_area, vector_control: gate, property_type: "4")).to eq(:out_of_scope)
+      expect(check(acs, ficha: :individual, micro_area: mine, vector_control: gate)).to eq(:ok)
+      expect(check(nurse, micro_area: other_area, vector_control: gate, property_type: "1")).to eq(:ok)
+      expect(check(nurse, ficha: :individual, micro_area: assigned, vector_control: gate)).to eq(:ok)
+    end
+    tacs = field_agent!(cbo: "515130", team: team)
+    assignment!(assigned, tacs.professional)
+    expect(check(tacs, property_type: "4")).to eq(:cbo_not_allowed)
+  end
+
+  it "visible_micro_area_ids: as atribuídas ao 515140 só com vector_control; ACS e enfermeiro sem mudança" do
+    acs = registry_acs!(unit, team: team)
+    mine = registry_micro_area!(code: "01", team: team, acs: acs)
+    other_area
+    expect(described_class.visible_micro_area_ids(agent, team, vector_control: true)).to eq([ assigned.id ])
+    expect(described_class.visible_micro_area_ids(agent, team)).to eq([])
+    expect(described_class.visible_micro_area_ids(acs, team, vector_control: true)).to eq([ mine.id ])
+    expect(described_class.visible_micro_area_ids(registry_nurse!(unit, team: team), team, vector_control: true))
+      .to contain_exactly(mine.id, other_area.id, assigned.id)
+  end
+
+  it "registration_property_types: a lista não residencial para o 515140 com o gate; nil para o resto" do
+    expect(described_class.registration_property_types(agent, team, vector_control: true)).to eq(%w[2 3 4 5 6 12 13])
+    expect(described_class.registration_property_types(agent, team, vector_control: false)).to be_nil
+    expect(described_class.registration_property_types(registry_acs!(unit, team: team), team, vector_control: true)).to be_nil
+    expect(described_class.registration_property_types(registry_nurse!(unit, team: team), team, vector_control: true)).to be_nil
+  end
+end

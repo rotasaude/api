@@ -100,10 +100,14 @@ module TerritoryRegistry
     end
 
     # Equipe do profissional (L2) com as microáreas ativas; can_register por
-    # microárea (ids do Access.registrar? :ok).
-    def professional_team(team, areas, can_register:, reads_whole_team:)
+    # microárea (ids do Access.registrar? :ok). property_types (módulo 35a,
+    # Q14(1)): microárea → tipos de imóvel que o usuário cadastra nela;
+    # ausente = null (todos os tipos).
+    def professional_team(team, areas, can_register:, reads_whole_team:, property_types: {})
       team_ref(team).merge(unit: { id: team.health_unit.id, name: team.health_unit.name }, reads_whole_team: reads_whole_team,
-                           micro_areas: areas.map { |area| micro_area(area).merge(can_register: can_register.include?(area.id)) })
+                           micro_areas: areas.map { |area|
+                             micro_area(area).merge(can_register: can_register.include?(area.id), property_types: property_types[area.id])
+                           })
     end
 
     def acs_candidate(professional)

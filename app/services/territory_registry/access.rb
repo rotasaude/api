@@ -7,6 +7,14 @@
 # e, além do papel, o CBO do vínculo NA EQUIPE na tabela do LEDI da ficha
 # (config/ledi/registration_cbos.yml: individual = Tabela 1, household =
 # Tabela 2): fora dela a ficha nunca nasceria aceitável → cbo_not_allowed.
+#
+# Módulo 35a (ADR 0054; contrato §20 Q13(1), Q14): com vector_control
+# utilizável (`vector_control:`, lido por quem chama fora de transação), o
+# agente de endemias (VectorControl::Access.field_agent?: 515140, papel de
+# campo da visita) grava a ficha DOMICILIAR só de imóvel não residencial
+# (HomeVisits::Catalog::NON_RESIDENTIAL) nas microáreas atribuídas a ele
+# (micro_area_field_assignments ativas). Ficha individual, família e
+# responsável seguem cbo_not_allowed; o ACS e o enfermeiro não mudam.
 module TerritoryRegistry
   module Access
     REGISTRATION_CBOS = YAML.load_file(Rails.root.join("config/ledi/registration_cbos.yml"))
@@ -29,10 +37,16 @@ module TerritoryRegistry
     # :ok | :out_of_scope | :cbo_not_allowed. micro_area nil = cadastro sem
     # domicílio, pela equipe (fora de área, Desvio 3): qualquer membro com
     # papel de cadastro, inclusive o ACS. `ficha:` escolhe a tabela do LEDI.
-    def registrar?(user, team, ficha:, micro_area: nil)
+    # property_type (o do corpo) e current_property_type (o da versão atual do
+    # domicílio) só contam para o agente de endemias (módulo 35a); nil = sem
+    # tipo (o contexto de cadastro do GET /territory/teams).
+    def registrar?(user, team, ficha:, micro_area: nil, vector_control: false, property_type: nil, current_property_type: nil)
       member = membership(user, team)
       return :out_of_scope unless member
       return :out_of_scope if micro_area && micro_area.team_id != team.id
+      if endemic_registrar?(user, team, ficha: ficha, vector_control: vector_control)
+        return endemic_scope(member, ficha, micro_area, property_type, current_property_type)
+      end
 
       case role(member.cbo_code)
       when :registrar then nil
@@ -50,14 +64,25 @@ module TerritoryRegistry
     end
 
     # Microáreas da equipe que o usuário enxerga para cadastrar: todas para
-    # enfermeiro/médico, as suas para o ACS, nenhuma para os demais.
-    def visible_micro_area_ids(user, team)
+    # enfermeiro/médico, as suas para o ACS, nenhuma para os demais. Com
+    # `vector_control:` utilizável, as atribuídas ao agente de endemias (só o
+    # domicílio não residencial grava; família e cadastro individual seguem
+    # recusados pelo papel).
+    def visible_micro_area_ids(user, team, vector_control: false)
       member = membership(user, team)
       case member && role(member.cbo_code)
       when :registrar then MicroArea.where(team: team).pluck(:id)
       when :acs then MicroArea.where(team: team, acs_professional_id: member.professional_id).pluck(:id)
-      else []
+      else
+        endemic_registrar?(user, team, ficha: :household, vector_control: vector_control) ? assigned_ids(member, team) : []
       end
+    end
+
+    # Módulo 35a (Q14(1)): os tipos de imóvel que o usuário cadastra na equipe
+    # — a lista não residencial para o agente de endemias com vector_control
+    # utilizável; nil (= todos os tipos) para o resto.
+    def registration_property_types(user, team, vector_control:)
+      HomeVisits::Catalog::NON_RESIDENTIAL if endemic_registrar?(user, team, ficha: :household, vector_control: vector_control)
     end
 
     # Módulo 24b (Q11; ruling A5b): microáreas da equipe que o CBO de campo
@@ -113,6 +138,24 @@ module TerritoryRegistry
 
       :registrar if Catalog::REGISTRAR_CBO_PREFIXES.any? { |prefix| cbo.to_s.start_with?(prefix) }
     end
-    private_class_method :role
+
+    # O papel do módulo 35a vale só para a ficha domiciliar, com o interruptor.
+    def endemic_registrar?(user, team, ficha:, vector_control:)
+      vector_control == true && ficha.to_sym == :household && VectorControl::Access.field_agent?(user, team)
+    end
+
+    # Atribuição ativa na microárea → tipo do corpo e o atual não residenciais
+    # (troca para residencial e edição de residencial → cbo_not_allowed).
+    def endemic_scope(member, ficha, micro_area, property_type, current_property_type)
+      return :out_of_scope unless micro_area && assigned_ids(member, micro_area.team).include?(micro_area.id)
+      return :cbo_not_allowed unless [ property_type, current_property_type ].compact.all? { |type| HomeVisits::Catalog::NON_RESIDENTIAL.include?(type) }
+
+      registrar_cbo?(member.cbo_code, ficha: ficha) ? :ok : :cbo_not_allowed
+    end
+
+    def assigned_ids(member, team)
+      MicroArea.where(team: team, id: MicroAreaFieldAssignment.active.where(professional_id: member.professional_id).select(:micro_area_id)).pluck(:id)
+    end
+    private_class_method :role, :endemic_registrar?, :endemic_scope, :assigned_ids
   end
 end

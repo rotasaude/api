@@ -3,6 +3,9 @@
 # da gravação (Access.registrar?, nas fichas individual e domiciliar). Sem
 # trilha (nenhum dado de cidadão); quem não tem vínculo recebe lista vazia.
 # reads_whole_team (§14 L27): a regra do registry_status sem micro_area_id.
+# Módulo 35a (Q14(1)): com vector_control utilizável, o agente de endemias
+# cadastra nas microáreas atribuídas a ele só a ficha domiciliar, e elas saem
+# com property_types não residenciais; para o resto property_types é null.
 module TerritoryRegistry
   class TeamsController < BaseController
     def index
@@ -10,17 +13,20 @@ module TerritoryRegistry
       team_ids = professional ? HealthTeamMember.active.where(professional: professional).pluck(:health_team_id) : []
       teams = HealthTeam.where(id: team_ids, active: true, kind: Catalog::TEAM_KINDS).includes(:health_unit).order(:name, :ine).to_a
       areas = MicroArea.where(team_id: teams.map(&:id), active: true).includes(:team, :acs_professional).order(:code).group_by(&:team_id)
+      vector = vector_control_usable?
       render json: { teams: teams.map { |team|
         rows = areas[team.id] || []
-        allowed = rows.select { |area| registrar?(team, area) }.map(&:id)
-        Json.professional_team(team, rows, can_register: allowed, reads_whole_team: Access.reads_whole_team?(Current.user, team))
+        types = Access.registration_property_types(Current.user, team, vector_control: vector)
+        allowed = rows.select { |area| registrar?(team, area, types ? %i[household] : %i[individual household], vector) }.map(&:id)
+        Json.professional_team(team, rows, can_register: allowed, reads_whole_team: Access.reads_whole_team?(Current.user, team),
+                                           property_types: types ? allowed.index_with(types) : {})
       } }
     end
 
     private
 
-    def registrar?(team, area)
-      %i[individual household].all? { |ficha| Access.registrar?(Current.user, team, ficha: ficha, micro_area: area) == :ok }
+    def registrar?(team, area, fichas, vector)
+      fichas.all? { |ficha| Access.registrar?(Current.user, team, ficha: ficha, micro_area: area, vector_control: vector) == :ok }
     end
   end
 end

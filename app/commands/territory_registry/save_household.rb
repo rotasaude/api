@@ -26,6 +26,10 @@
 #     mantém o ponto da versão anterior; `null` apaga; objeto substitui
 #     (FieldLocation; recusa → invalid_location com o path, sem o valor). Por
 #     isso `params_of` não leva o ponto: quem regrava o domicílio o preserva.
+#   - Agente de endemias (módulo 35a, Q13(1)): `vector_control:` (o
+#     interruptor utilizável, lido por quem chama fora da transação) chega ao
+#     Access.registrar? com o tipo do corpo e o da versão atual; só imóvel não
+#     residencial, nas microáreas atribuídas (a versão grava o CBO 515140).
 #
 # SaveFamily usa `call` com `lock_patient_ids:` (o responsável, travado com
 # os moradores) e `before_version:` (grava a família depois das travas, antes
@@ -49,9 +53,9 @@ module TerritoryRegistry
 
     module_function
 
-    def call(params:, by:, household: nil, lock_patient_ids: [], before_version: nil)
+    def call(params:, by:, household: nil, lock_patient_ids: [], before_version: nil, vector_control: false)
       params = params.to_h.stringify_keys
-      parsed = parse(params, household, by)
+      parsed = parse(params, household, by, vector_control)
       return parsed if parsed.failure?
 
       attempts = 0
@@ -81,14 +85,16 @@ module TerritoryRegistry
 
     # --- validação sem banco aberto em transação ----------------------------
 
-    def parse(params, household, by)
+    def parse(params, household, by, vector_control)
       expected = params["version"]
       return invalid("version") if household && !expected.is_a?(Integer)
 
       area = uuid?(params["micro_area_id"]) && MicroArea.includes(:team).find_by(id: params["micro_area_id"])
       return invalid("micro_area_id") unless area
 
-      scope = Access.registrar?(by, area.team, ficha: :household, micro_area: area)
+      scope = Access.registrar?(by, area.team, ficha: :household, micro_area: area, vector_control: vector_control,
+                                               property_type: params["property_type"],
+                                               current_property_type: household&.latest_version&.property_type)
       return Result.fail(scope) unless scope == :ok
       # Microárea inativa nunca é destino (domicílio novo ou movido).
       return invalid("micro_area_id") if !area.active && (household.nil? || household.micro_area_id != area.id)
