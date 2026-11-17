@@ -205,8 +205,8 @@ RSpec.describe CitySchema do
   # um banco de cidade novo (dump + city_triggers.sql) tem de nascer com as
   # guardas do território (par de vizinhos, só-acréscimo dos parâmetros), da
   # inspeção (produto, amostra, falta de estoque, só-acréscimo do boletim) e da
-  # vigilância (leitura, tarefa, LIRAa, bloqueio, caso), os no-delete e o
-  # truncate das 24 tabelas do módulo.
+  # vigilância (leitura, tarefa, LIRAa, bloqueio, caso), os no-delete (menos o
+  # da cadência) e o truncate das 24 tabelas do módulo.
   it "loads the 35a triggers into a database restored from the dump" do
     names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
     tables = %w[city_blocks city_block_neighbors household_vector_profiles vector_cadences vector_cycles
@@ -222,9 +222,11 @@ RSpec.describe CitySchema do
                                  liraa_draw_items transmission_blocks transmission_block_cases].map { |t| "#{t}_guard" },
                              *%w[vector_parameter_versions vector_inspections vector_inspection_deposits vector_inspection_measures
                                  transmission_block_areas].map { |t| "#{t}_append_only" },
-                             *%w[city_blocks household_vector_profiles vector_cadences vector_cycles vector_control_settings
+                             *%w[city_blocks household_vector_profiles vector_cycles vector_control_settings
                                  transmission_block_cycles].map { |t| "#{t}_no_delete" },
                              *tables.map { |t| "#{t}_append_only_truncate" })
+    # A cadência aceita DELETE (o PUT /cadences troca a lista inteira; Task 8).
+    expect(names).not_to include("vector_cadences_no_delete")
   end
 
   # Módulo 23 (revisão final, I1): o db/city_triggers.sql do HEAD recria a

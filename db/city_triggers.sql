@@ -4216,8 +4216,8 @@ $do$;
 
 -- Módulo 35a — território (ADR 0054; plano, Task 2; contrato §1): quarteirões,
 -- vizinhos, perfil do imóvel, cadência, ciclos, parâmetros e ajustes. Nenhuma
--- das sete aceita DELETE nem TRUNCATE (o quarteirão desativa; o resto muda no
--- lugar). As versões dos parâmetros são só acréscimo (a vigente é a maior). O
+-- das sete aceita TRUNCATE, e só a cadência aceita DELETE (o PUT /cadences
+-- troca a lista inteira; o quarteirão desativa; o resto muda no lugar). As versões dos parâmetros são só acréscimo (a vigente é a maior). O
 -- par de vizinhos só se desfaz: ended_at de NULL a valor, uma vez; refazer é
 -- linha nova (A-6). As colunas são lidas por to_jsonb(NEW)/(OLD): este arquivo
 -- roda de novo em migrações antigas, em bancos ainda sem elas.
@@ -4253,7 +4253,13 @@ BEGIN
     EXECUTE 'CREATE TRIGGER city_block_neighbors_guard BEFORE UPDATE OR DELETE ON city_block_neighbors
       FOR EACH ROW EXECUTE FUNCTION rota_city_block_neighbor_guard()';
   END IF;
-  FOREACH item IN ARRAY ARRAY['household_vector_profiles', 'vector_cadences', 'vector_cycles', 'vector_control_settings'] LOOP
+  -- vector_cadences aceita DELETE: o PUT /cadences troca a lista inteira (§12;
+  -- decisão do coordenador na Task 8). O TRUNCATE segue recusado. O DROP tira o
+  -- trigger de bancos que já o tinham.
+  IF to_regclass('public.vector_cadences') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS vector_cadences_no_delete ON vector_cadences';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['household_vector_profiles', 'vector_cycles', 'vector_control_settings'] LOOP
     IF to_regclass('public.' || item) IS NOT NULL THEN
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',

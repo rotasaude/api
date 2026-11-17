@@ -1046,6 +1046,13 @@ Rails.application.routes.draw do
     post   "households/assign_block",         to: "households#assign_block"
     get    "households/:id",                  to: "households#show", constraints: member_id
     patch  "households/:id/profile",          to: "households#update_profile", constraints: member_id
+    get    "due",                             to: "due#index"
+    get    "cadences",                        to: "cadences#index"
+    put    "cadences",                        to: "cadences#update"
+    get    "cycles",                          to: "cycles#index"
+    post   "cycles",                          to: "cycles#create"
+    get    "cycles/:id",                      to: "cycles#show", constraints: member_id
+    patch  "cycles/:id",                      to: "cycles#update", constraints: member_id
     get    "products",                        to: "products#index"
     post   "products",                        to: "products#create"
     patch  "products/:id",                    to: "products#update", constraints: member_id

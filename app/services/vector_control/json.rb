@@ -18,7 +18,9 @@
 #     vector_control ativos);
 #   - shortfalls → VectorShortfall (o produto, o local, o dia da visita e quem
 #     conciliou; `reconciled_by: null` na conciliação do sistema). A nota
-#     nunca sai.
+#     nunca sai;
+#   - cadences → VectorCadence[] (cidade primeiro); cycle → VectorCycle;
+#     cycle_summary → CycleSummary (VectorControl::CycleStats por bairro).
 module VectorControl
   module Json
     module_function
@@ -152,6 +154,33 @@ module VectorControl
           visit_on: measures.fetch(row.vector_inspection_measure_id).vector_inspection.home_visit.occurred_at.in_time_zone.to_date.iso8601,
           reconciled_at: row.reconciled_at&.utc&.iso8601, reconciled_by: reconciler && { name: reconciler.professional&.professional_name } }
       end
+    end
+
+    # VectorCadence[]: a cidade primeiro, depois os bairros (id); dentro de
+    # cada um, os riscos (qualquer primeiro, na ordem de RISK_CLASSES) e o PE.
+    def cadences(rows)
+      rows.sort_by do |row|
+        [ row.neighborhood_id ? 1 : 0, row.neighborhood_id.to_s, row.strategic_point ? 1 : 0,
+          row.risk_class ? Catalog::RISK_CLASSES.index(row.risk_class) + 1 : 0 ]
+      end.map do |row|
+        { neighborhood_id: row.neighborhood_id, risk_class: row.risk_class, strategic_point: row.strategic_point, days: row.days }
+      end
+    end
+
+    def cycle(cycle)
+      { id: cycle.id, year: cycle.year, number: cycle.number, starts_on: cycle.starts_on.iso8601, ends_on: cycle.ends_on.iso8601 }
+    end
+
+    # CycleSummary: o ciclo e, por bairro (na ordem dada), os números do
+    # CycleStats com o bairro `{ id, name }` no lugar do id.
+    def cycle_summary(cycle, neighborhoods)
+      stats = CycleStats.for(cycle: cycle, neighborhood_ids: neighborhoods.map(&:id))
+      by_id = neighborhoods.index_by(&:id)
+      { cycle: cycle(cycle),
+        neighborhoods: stats.map do |row|
+          neighborhood = by_id.fetch(row[:neighborhood_id])
+          { neighborhood: { id: neighborhood.id, name: neighborhood.name } }.merge(row.except(:neighborhood_id))
+        end }
     end
 
     # { block_id => [ids dos vizinhos vigentes] }, ordenados.

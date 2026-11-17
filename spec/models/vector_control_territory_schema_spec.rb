@@ -111,20 +111,21 @@ RSpec.describe "Esquema do território do módulo 35a", type: :model do
     end
   end
 
-  it "DELETE e TRUNCATE recusados; parâmetros só acréscimo" do
+  it "DELETE recusado (salvo a cadência) e TRUNCATE recusado; parâmetros só acréscimo" do
     a, b = pair!
     rows = [
       a,
       CityBlockNeighbor.create!(city_block: a, neighbor_block: b),
       vector_profile!(registry_household!, block: a),
-      VectorCadence.create!(days: 60),
       VectorCycle.create!(year: 2026, number: 1, starts_on: Date.new(2026, 1, 1), ends_on: Date.new(2026, 1, 31)),
       VectorParameterVersion.create!(version: 1, values: VectorControl::Parameters.defaults, created_by_user: coordinator),
       VectorControlSetting.current
     ]
-    expect(rows.map { |row| row.class.table_name }).to match_array(AddVectorControlTerritory::TABLES)
+    expect(rows.map { |row| row.class.table_name }).to match_array(AddVectorControlTerritory::TABLES - %w[vector_cadences])
     rows.each { |row| refused(/#{row.class.table_name}/) { row.delete } }
-    refused(/vector_parameter_versions is append-only/) { rows[5].update_columns(values: { "default_days" => 30 }) }
+    refused(/vector_parameter_versions is append-only/) { rows[4].update_columns(values: { "default_days" => 30 }) }
+    cadence = VectorCadence.create!(days: 60)
+    expect { cadence.delete }.to change(VectorCadence, :count).by(-1) # o PUT /cadences troca a lista inteira (Task 8)
     AddVectorControlTerritory::TABLES.each do |table|
       refused(/#{table} is append-only/) { CityBlock.connection.execute("TRUNCATE #{table} CASCADE") }
     end
