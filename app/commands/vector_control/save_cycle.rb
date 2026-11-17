@@ -5,7 +5,8 @@
 # chaves, todas opcionais, ao menos uma. Recusas (só a primeira):
 #   - chave desconhecida, year fora de 2000–2100, number fora de 1–12, data
 #     que não é AAAA-MM-DD → invalid_request com o path;
-#   - year diferente do ano de starts_on → cycle_invalid path year;
+#   - year que não é o ano civil nem o ano epidemiológico de starts_on
+#     (Surveillance::EpiWeek; Q22) → cycle_invalid path year;
 #   - ends_on antes de starts_on → cycle_invalid path ends_on;
 #   - (year, number) de outro ciclo → invalid_request path number;
 #   - período que cruza outro ciclo (excl_vector_cycles_overlap) → cycle_overlap
@@ -82,11 +83,15 @@ module VectorControl
       end
       starts_on = values.fetch(:starts_on) { cycle&.starts_on }
       ends_on = values.fetch(:ends_on) { cycle&.ends_on }
-      return fail_with(:cycle_invalid, "year") unless values.fetch(:year) { cycle&.year } == starts_on.year
+      return fail_with(:cycle_invalid, "year") unless year_of?(values.fetch(:year) { cycle&.year }, starts_on)
       return fail_with(:cycle_invalid, "ends_on") if ends_on < starts_on
 
       values
     end
+
+    # O ano civil de starts_on ou o ano epidemiológico dele (Surveillance::EpiWeek:
+    # SE 1 contém 4 de janeiro; semanas de domingo a sábado; Q22).
+    def year_of?(year, starts_on) = [ starts_on.year, Surveillance::EpiWeek.for(starts_on).year ].include?(year)
 
     def next_number(year) = VectorCycle.where(year: year).maximum(:number).to_i + 1
 

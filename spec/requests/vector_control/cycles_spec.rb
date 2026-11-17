@@ -43,16 +43,43 @@ RSpec.describe "Vigilância ambiental — ciclos", type: :request do
     expect(VectorCycle.count).to eq(1)
   end
 
-  it "o ano do ciclo é o de starts_on → senão 422 cycle_invalid path year" do
-    sign_in_as(coordinator)
-    create_cycle(year: year + 1, number: 1, starts_on: "#{year}-12-01", ends_on: "#{year + 1}-01-31")
-    expect([ response.status, json_body ]).to eq([ 422, { "error" => "cycle_invalid", "path" => "year" } ])
-    create_cycle(year: year, number: 12, starts_on: "#{year}-12-01", ends_on: "#{year + 1}-01-31")
-    expect(response).to have_http_status(:created)
+  # Q22: o ano do ciclo é o ano civil de starts_on ou o ano epidemiológico dele
+  # (Surveillance::EpiWeek: SE 1 contém 4 de janeiro). Ciclos de um dia; os dois
+  # anos aceitos para o mesmo starts_on ficam em exemplos separados (sobreposição).
+  def accepted!(starts_on, year, number: 1)
+    create_cycle(year: year, number: number, starts_on: starts_on, ends_on: starts_on)
+    expect([ response.status, json_body.slice("year", "starts_on") ]).to eq([ 201, { "year" => year, "starts_on" => starts_on } ])
+  end
 
-    json_patch "/vector_control/cycles/#{json_body["id"]}", starts_on: "#{year + 1}-01-02"
+  it "ano epidemiológico de starts_on aceito (SE 2025-01, 2029-01, 2025-53, 2026-52)" do
+    sign_in_as(coordinator)
+    accepted!("2024-12-29", 2025)
+    accepted!("2028-12-31", 2029)
+    accepted!("2026-01-02", 2025, number: 2)
+    accepted!("2027-01-02", 2026)
+  end
+
+  it "ano civil de starts_on aceito, também na virada" do
+    sign_in_as(coordinator)
+    accepted!("2024-12-29", 2024)
+    accepted!("2028-12-31", 2028)
+    accepted!("2026-01-02", 2026)
+  end
+
+  it "outro ano → 422 cycle_invalid path year, na criação e na edição (com o ano gravado)" do
+    sign_in_as(coordinator)
+    [ "2026-03-01", "2026-06-01" ].each do |starts_on|
+      create_cycle(year: 2028, number: 1, starts_on: starts_on, ends_on: starts_on)
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "cycle_invalid", "path" => "year" } ])
+    end
+    accepted!("2026-03-01", 2026)
+    id = json_body["id"]
+
+    json_patch "/vector_control/cycles/#{id}", starts_on: "2027-03-01", ends_on: "2027-03-01"
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "cycle_invalid", "path" => "year" } ])
-    expect(VectorCycle.sole).to have_attributes(year: year, starts_on: Date.new(year, 12, 1), version: 1)
+    json_patch "/vector_control/cycles/#{id}", starts_on: "2027-01-02", ends_on: "2027-01-02"
+    expect(json_body).to include("year" => 2026, "starts_on" => "2027-01-02")
+    expect(VectorCycle.sole).to have_attributes(year: 2026, version: 2)
   end
 
   it "GET /cycles/:id traz o resumo por bairro com `pending_percent` e `registered_households`" do
