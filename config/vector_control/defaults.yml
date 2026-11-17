@@ -21,4 +21,7 @@ liraa_standard_max: 12000
 liraa_half_min: 2000
 liraa_base_sample: 450
 liraa_household_fraction: 0.2
+# Q17: fração dos imóveis do quarteirão no modo half (manual 2013, p.13); a do
+# standard é a liraa_household_fraction. O intervalo é round(1 ÷ fração).
+liraa_half_household_fraction: 0.5
 iip_bands: [1.0, 4.0]
