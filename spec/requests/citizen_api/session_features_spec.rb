@@ -80,4 +80,16 @@ RSpec.describe "Sessão do cidadão com os interruptores", type: :request do
     expect(features).to include("home_visits")
     expect(features).not_to include("collective_activities")
   end
+
+  # Módulo 35a (CITIZEN_HIDDEN): a vigilância ambiental nunca vai ao cidadão.
+  it "GET /citizen/session não traz vector_control ligado" do
+    city = home_visit_city!
+    Platform::Features.set!(city: city, key: "vector_control", enabled: true, maintainer: ledi_maintainer!)
+    expect(Platform::Features.usable?(city, "vector_control")).to be(true)
+    sign_in_citizen
+    get "/citizen/session"
+    features = JSON.parse(response.body)["features"]
+    expect(features).to include("home_visits")
+    expect(features).not_to include("vector_control")
+  end
 end

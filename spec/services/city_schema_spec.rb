@@ -201,6 +201,21 @@ RSpec.describe CitySchema do
     expect(sequence).to eq("ombudsman_protocol_seq")
   end
 
+  # Módulo 35a (ADR 0054): o dump não representa trigger; um banco de cidade
+  # novo (dump + city_triggers.sql) tem de nascer com a guarda do par de
+  # vizinhos, o só-acréscimo dos parâmetros, os no-delete e o truncate das sete
+  # tabelas do território.
+  it "loads the 35a territory triggers into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+    tables = %w[city_blocks city_block_neighbors household_vector_profiles vector_cadences vector_cycles
+                vector_parameter_versions vector_control_settings]
+
+    expect(names).to include("city_block_neighbors_guard", "vector_parameter_versions_append_only",
+                             *%w[city_blocks household_vector_profiles vector_cadences vector_cycles vector_control_settings]
+                                .map { |t| "#{t}_no_delete" },
+                             *tables.map { |t| "#{t}_append_only_truncate" })
+  end
+
   # Módulo 23 (revisão final, I1): o db/city_triggers.sql do HEAD recria a
   # guarda dos pedidos do módulo 17 lendo origin_care_line_enrollment_id, que
   # só nasce na 900003. Se a 900002 executasse o arquivo e a 900003 falhasse

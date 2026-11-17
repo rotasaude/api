@@ -4207,3 +4207,65 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 35a — território (ADR 0054; plano, Task 2; contrato §1): quarteirões,
+-- vizinhos, perfil do imóvel, cadência, ciclos, parâmetros e ajustes. Nenhuma
+-- das sete aceita DELETE nem TRUNCATE (o quarteirão desativa; o resto muda no
+-- lugar). As versões dos parâmetros são só acréscimo (a vigente é a maior). O
+-- par de vizinhos só se desfaz: ended_at de NULL a valor, uma vez; refazer é
+-- linha nova (A-6). As colunas são lidas por to_jsonb(NEW)/(OLD): este arquivo
+-- roda de novo em migrações antigas, em bancos ainda sem elas.
+CREATE OR REPLACE FUNCTION rota_city_block_neighbor_guard() RETURNS trigger AS $fn$
+DECLARE
+  old_row jsonb := to_jsonb(OLD);
+  new_row jsonb := to_jsonb(NEW);
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'city_block_neighbors: DELETE refused';
+  END IF;
+  IF (new_row - 'ended_at') IS DISTINCT FROM (old_row - 'ended_at') THEN
+    RAISE EXCEPTION 'city_block_neighbors: only ended_at changes';
+  END IF;
+  IF old_row ->> 'ended_at' IS NOT NULL OR new_row ->> 'ended_at' IS NULL THEN
+    RAISE EXCEPTION 'city_block_neighbors: ended_at goes from NULL to a value, once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.city_blocks') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS city_blocks_no_delete ON city_blocks';
+    EXECUTE 'CREATE TRIGGER city_blocks_no_delete BEFORE DELETE ON city_blocks
+      FOR EACH ROW EXECUTE FUNCTION rota_no_delete()';
+  END IF;
+  IF to_regclass('public.city_block_neighbors') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS city_block_neighbors_guard ON city_block_neighbors';
+    EXECUTE 'CREATE TRIGGER city_block_neighbors_guard BEFORE UPDATE OR DELETE ON city_block_neighbors
+      FOR EACH ROW EXECUTE FUNCTION rota_city_block_neighbor_guard()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['household_vector_profiles', 'vector_cadences', 'vector_cycles', 'vector_control_settings'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+    END IF;
+  END LOOP;
+  IF to_regclass('public.vector_parameter_versions') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS vector_parameter_versions_append_only ON vector_parameter_versions';
+    EXECUTE 'CREATE TRIGGER vector_parameter_versions_append_only BEFORE UPDATE OR DELETE ON vector_parameter_versions
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['city_blocks', 'city_block_neighbors', 'household_vector_profiles', 'vector_cadences',
+                              'vector_cycles', 'vector_parameter_versions', 'vector_control_settings'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END IF;
+  END LOOP;
+END
+$do$;

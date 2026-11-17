@@ -5,6 +5,7 @@ require Rails.root.join("db/city_migrate/20261029900001_add_pharmacy_stock.rb").
 require Rails.root.join("db/city_migrate/20261103900001_add_sanitary_transport.rb").to_s
 require Rails.root.join("db/city_migrate/20261104900002_add_psychosocial_care.rb").to_s
 require Rails.root.join("db/city_migrate/20261111900001_add_ombudsman_roles_and_departments.rb").to_s
+require Rails.root.join("db/city_migrate/20261116900001_add_vector_control_territory.rb").to_s
 
 RSpec.describe Membership do
   it "conhece o papel citizen_verifier e o trata como privilegiado" do
@@ -109,15 +110,33 @@ RSpec.describe Membership do
     end
   end
 
+  # Módulo 35a (contrato §1; W-11): a coordenação de endemias lê o endereço do
+  # caso de arbovirose — privilegiada. O laboratório de entomologia só conta
+  # ovos e dá resultado de amostra — não.
+  it "endemic_coordinator é privilegiado e vector_lab não; o banco aceita os dois" do
+    expect(described_class::ROLES).to include("endemic_coordinator", "vector_lab")
+    expect(described_class::PRIVILEGED_ROLES).to include("endemic_coordinator")
+    expect(described_class::PRIVILEGED_ROLES).not_to include("vector_lab")
+    user = User.create!(email_address: "endemias@cidade.gov.br", password: "senha-segura-123")
+    %w[endemic_coordinator vector_lab].each do |role|
+      expect { described_class.create!(user: user, role: role, granted_at: Time.current) }.not_to raise_error
+    end
+  end
+
   # ROLES espelha ck_memberships_role: a lista da última migração que o
-  # reescreve (33) é a do 31 mais os três papéis da ouvidoria, em ordem.
-  it "ROLES é a lista da migração do 33" do
+  # reescreve (35a) é a do 33 mais os dois papéis de endemias, em ordem.
+  it "ROLES é a lista da migração do 35a" do
+    expect(AddVectorControlTerritory::ROLES)
+      .to eq((AddOmbudsmanRolesAndDepartments::ROLES + %w[endemic_coordinator vector_lab]).sort)
+    expect(described_class::ROLES).to eq(AddVectorControlTerritory::ROLES)
+  end
+
+  it "as migrações anteriores encadeiam ROLES até o 33" do
     expect(AddCareRegulation::ROLES).to eq((AddDiseaseSurveillance::ROLES + %w[care_regulator]).sort)
     expect(AddPharmacyStock::ROLES).to eq((AddCareRegulation::ROLES + %w[pharmacist pharmacy_assistant stock_keeper]).sort)
     expect(AddSanitaryTransport::ROLES).to eq((AddPharmacyStock::ROLES + %w[transport_dispatcher tfd_committee driver]).sort)
     expect(AddPsychosocialCare::ROLES).to eq((AddSanitaryTransport::ROLES + %w[psychosocial_staff psychosocial_lead]).sort)
     expect(AddOmbudsmanRolesAndDepartments::ROLES)
       .to eq((AddPsychosocialCare::ROLES + %w[ombudsman ombudsman_staff ombudsman_responder]).sort)
-    expect(described_class::ROLES).to eq(AddOmbudsmanRolesAndDepartments::ROLES)
   end
 end

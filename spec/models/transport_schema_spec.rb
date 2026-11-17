@@ -139,7 +139,7 @@ RSpec.describe "Esquema do módulo 30", type: :model do
     expect(PerformedProcedure::SOURCES).to include("tfd")
     # O 31 acrescenta o tipo `caps` (e, na 900003, a fonte `psychosocial`).
     expect(AddSanitaryTransport::SOURCES).to eq(PerformedProcedure::SOURCES - %w[psychosocial urgency])
-    expect(AddSanitaryTransport::HEALTH_UNIT_KINDS).to eq(HealthUnit::KINDS - %w[caps])
+    expect(AddSanitaryTransport::HEALTH_UNIT_KINDS).to eq(HealthUnit::KINDS - %w[caps environmental_surveillance])
     expect(AddSanitaryTransport::EXPENSE_KINDS).not_to include("lodging")
   end
 

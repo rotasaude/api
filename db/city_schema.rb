@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -513,6 +513,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
     t.index ["health_unit_id"], name: "index_ceo_profiles_on_health_unit_id", unique: true
     t.check_constraint "ceo_type::text = ANY (ARRAY['I'::text, 'II'::text, 'III'::text]::text[])", name: "ck_ceo_profiles_ceo_type"
     t.check_constraint "cardinality(specialties) >= 1 AND specialties <@ ARRAY['endodontics'::character varying, 'periodontics'::character varying, 'oral_surgery'::character varying, 'stomatology'::character varying, 'special_needs'::character varying, 'prosthesis'::character varying]", name: "ck_ceo_profiles_specialties"
+  end
+
+  create_table "city_block_neighbors", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_block_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "ended_at"
+    t.uuid "neighbor_block_id", null: false
+    t.index ["city_block_id", "neighbor_block_id"], name: "idx_city_block_neighbors_pair", unique: true, where: "(ended_at IS NULL)"
+    t.index ["neighbor_block_id"], name: "idx_city_block_neighbors_neighbor"
+    t.check_constraint "city_block_id < neighbor_block_id", name: "ck_city_block_neighbors_order"
+  end
+
+  create_table "city_blocks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.uuid "neighborhood_id", null: false
+    t.string "number", limit: 10, null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index "neighborhood_id, lower((number)::text)", name: "idx_city_blocks_number", unique: true
+    t.check_constraint "(number)::text ~ '^[0-9A-Za-z-]{1,10}$'::text", name: "ck_city_blocks_number"
+    t.check_constraint "version >= 1", name: "ck_city_blocks_version"
   end
 
   create_table "city_medication_list", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1666,7 +1689,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
     t.check_constraint "(kind::text = 'caps'::text) = (caps_modality IS NOT NULL) AND (caps_modality IS NULL OR caps_modality::text = ANY (ARRAY['caps_i'::text, 'caps_ii'::text, 'caps_iii'::text, 'caps_i_child'::text, 'caps_ad'::text, 'caps_ad_iii'::text, 'caps_ad_iv'::text])) AND (service_classification IS NULL OR (kind::text = 'caps'::text AND service_classification::text ~ '^[0-9]{3}$'::text))", name: "ck_health_units_caps"
     t.check_constraint "address_zip IS NULL OR address_zip::text ~ '^[0-9]{8}$'::text", name: "ck_health_units_address_zip"
     t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_health_units_cnes"
-    t.check_constraint "kind::text = ANY (ARRAY['ubs'::text, 'upa'::text, 'hospital'::text, 'other'::text, 'ceo'::text, 'health_management'::text, 'caps'::text])", name: "ck_health_units_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['ubs'::text, 'upa'::text, 'hospital'::text, 'other'::text, 'ceo'::text, 'health_management'::text, 'caps'::text, 'environmental_surveillance'::text])", name: "ck_health_units_kind"
     t.check_constraint "phone IS NULL OR phone::text ~ '^[0-9]{10,11}$'::text", name: "ck_health_units_phone"
     t.check_constraint "screening_scope::text = ANY (ARRAY['walk_in'::text, 'all'::text])", name: "ck_health_units_screening_scope"
     t.check_constraint "ticket_prefix::text ~ '^[A-Z]{1,3}$'::text", name: "ck_health_units_ticket_prefix"
@@ -1731,6 +1754,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
     t.check_constraint "(property_type)::text <> ALL (ARRAY['2'::character varying::text, '3'::character varying::text, '4'::character varying::text, '5'::character varying::text, '6'::character varying::text, '12'::character varying::text, '13'::character varying::text]) OR patient_id IS NULL AND family_id IS NULL", name: "ck_home_visits_non_residential"
     t.check_constraint "(subject)::text = ANY (ARRAY['resident'::character varying::text, 'family_responsible'::character varying::text, 'none'::character varying::text]) AND ((subject)::text = 'none'::text) = (patient_id IS NULL)", name: "ck_home_visits_subject"
     t.check_constraint "outcome = ANY (ARRAY[1, 2, 3]) AND shift = ANY (ARRAY[1, 2, 3]) AND (property_type)::text = ANY (ARRAY['1'::character varying::text, '2'::character varying::text, '3'::character varying::text, '4'::character varying::text, '5'::character varying::text, '6'::character varying::text, '7'::character varying::text, '8'::character varying::text, '9'::character varying::text, '10'::character varying::text, '11'::character varying::text, '12'::character varying::text, '13'::character varying::text, '99'::character varying::text])", name: "ck_home_visits_values"
+  end
+
+  create_table "household_vector_profiles", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_block_id"
+    t.datetime "created_at", null: false
+    t.uuid "household_id", null: false
+    t.uuid "last_inspection_id"
+    t.string "last_situation"
+    t.date "last_worked_on"
+    t.date "risk_assessed_on"
+    t.string "risk_class"
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id"
+    t.integer "version", default: 1, null: false
+    t.index ["city_block_id"], name: "idx_household_vector_profiles_block"
+    t.index ["household_id"], name: "idx_household_vector_profiles_household", unique: true
+    t.check_constraint "last_situation IS NULL OR (last_situation)::text = ANY (ARRAY['worked'::character varying::text, 'closed'::character varying::text, 'refused'::character varying::text, 'vacant'::character varying::text])", name: "ck_household_vector_profiles_last_situation"
+    t.check_constraint "(risk_assessed_on IS NULL) = (risk_class IS NULL)", name: "ck_household_vector_profiles_risk"
+    t.check_constraint "risk_class IS NULL OR (risk_class)::text = ANY (ARRAY['green'::character varying::text, 'yellow'::character varying::text, 'red'::character varying::text, 'gray'::character varying::text, 'purple'::character varying::text])", name: "ck_household_vector_profiles_risk_class"
+    t.check_constraint "version >= 1", name: "ck_household_vector_profiles_version"
   end
 
   create_table "household_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2505,7 +2548,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'driver'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'ombudsman'::text, 'ombudsman_responder'::text, 'ombudsman_staff'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'psychosocial_lead'::text, 'psychosocial_staff'::text, 'stock_keeper'::text, 'surveillance'::text, 'tfd_committee'::text, 'transport_dispatcher'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'driver'::text, 'endemic_coordinator'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'ombudsman'::text, 'ombudsman_responder'::text, 'ombudsman_staff'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'psychosocial_lead'::text, 'psychosocial_staff'::text, 'stock_keeper'::text, 'surveillance'::text, 'tfd_committee'::text, 'transport_dispatcher'::text, 'vector_lab'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "micro_area_field_assignments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4853,6 +4896,55 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
     t.index ["stock_location_id"], name: "idx_vaccine_rooms_location", unique: true
   end
 
+  create_table "vector_cadences", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "days", null: false
+    t.uuid "neighborhood_id"
+    t.string "risk_class"
+    t.boolean "strategic_point", default: false, null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["neighborhood_id", "risk_class", "strategic_point"], name: "idx_vector_cadences_key", unique: true, nulls_not_distinct: true
+    t.check_constraint "days >= 7 AND days <= 365", name: "ck_vector_cadences_days"
+    t.check_constraint "risk_class IS NULL OR (risk_class)::text = ANY (ARRAY['green'::character varying::text, 'yellow'::character varying::text, 'red'::character varying::text, 'gray'::character varying::text, 'purple'::character varying::text])", name: "ck_vector_cadences_risk_class"
+    t.check_constraint "NOT strategic_point OR risk_class IS NULL", name: "ck_vector_cadences_strategic_point"
+    t.check_constraint "version >= 1", name: "ck_vector_cadences_version"
+  end
+
+  create_table "vector_control_settings", id: :smallint, default: nil, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "stock_location_id"
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.check_constraint "id = 1", name: "ck_vector_control_settings_singleton"
+    t.check_constraint "version >= 1", name: "ck_vector_control_settings_version"
+  end
+
+  create_table "vector_cycles", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "ends_on", null: false
+    t.integer "number", null: false
+    t.date "starts_on", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.integer "year", null: false
+    t.index ["year", "number"], name: "idx_vector_cycles_number", unique: true
+    t.check_constraint "starts_on <= ends_on", name: "ck_vector_cycles_dates"
+    t.check_constraint "number >= 1 AND number <= 12", name: "ck_vector_cycles_number"
+    t.check_constraint "version >= 1", name: "ck_vector_cycles_version"
+    t.exclusion_constraint "daterange(starts_on, ends_on, '[]'::text) WITH &&", using: :gist, name: "excl_vector_cycles_overlap"
+  end
+
+  create_table "vector_parameter_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.jsonb "values", null: false
+    t.integer "version", null: false
+    t.index ["version"], name: "idx_vector_parameter_versions_version", unique: true
+    t.check_constraint "jsonb_typeof(\"values\") = 'object'::text", name: "ck_vector_parameter_versions_values"
+    t.check_constraint "version >= 1", name: "ck_vector_parameter_versions_version"
+  end
+
   create_table "vial_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.text "close_reason"
     t.datetime "closed_at"
@@ -4986,6 +5078,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
   add_foreign_key "citizen_verifications", "users", column: "verified_by_user_id"
   add_foreign_key "citizens", "neighborhoods"
   add_foreign_key "citizens", "patients"
+  add_foreign_key "city_block_neighbors", "city_blocks"
+  add_foreign_key "city_block_neighbors", "city_blocks", column: "neighbor_block_id"
+  add_foreign_key "city_blocks", "neighborhoods"
+  add_foreign_key "city_blocks", "users", column: "created_by_user_id"
   add_foreign_key "city_medication_list", "users", column: "added_by_user_id"
   add_foreign_key "clinical_documents", "attendances"
   add_foreign_key "clinical_documents", "citizens"
@@ -5150,6 +5246,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
   add_foreign_key "home_visits", "patients"
   add_foreign_key "home_visits", "users", column: "recorded_by_user_id"
   add_foreign_key "home_visits", "users", column: "withdrawn_by_user_id"
+  add_foreign_key "household_vector_profiles", "city_blocks"
+  add_foreign_key "household_vector_profiles", "households"
+  add_foreign_key "household_vector_profiles", "users", column: "updated_by_user_id"
   add_foreign_key "household_versions", "health_teams", column: "team_id"
   add_foreign_key "household_versions", "households"
   add_foreign_key "household_versions", "micro_areas"
@@ -5614,6 +5713,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
   add_foreign_key "vaccine_rooms", "health_units"
   add_foreign_key "vaccine_rooms", "stock_locations"
   add_foreign_key "vaccine_rooms", "users", column: "updated_by_user_id"
+  add_foreign_key "vector_cadences", "neighborhoods"
+  add_foreign_key "vector_control_settings", "stock_locations"
+  add_foreign_key "vector_parameter_versions", "users", column: "created_by_user_id"
   add_foreign_key "vial_openings", "stock_lots"
   add_foreign_key "vial_openings", "users", column: "closed_by_user_id"
   add_foreign_key "vial_openings", "users", column: "opened_by_user_id"

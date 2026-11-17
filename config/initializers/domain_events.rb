@@ -527,4 +527,28 @@ Rails.application.config.to_prepare do
   # consumidor.
   DomainEvents.bind "collective_activity.recorded", to: []
   DomainEvents.bind "collective_activity.marked_mistaken", to: []
+  # Módulo 35a (ADR 0054; contrato §17; Task 2): os 19 eventos da vigilância
+  # ambiental de endemias, na ordem da tabela do contrato. Só ids (e
+  # `corrected`/`version`), nunca nota, endereço, caso ou pessoa. Sem
+  # consumidor por ora: a Task 11 liga o transmission_block.* e o consumidor
+  # do 25 (VectorControl::ProposeBlockJob).
+  DomainEvents.bind "city_block.changed", to: []
+  DomainEvents.bind "household_vector_profile.changed", to: []
+  DomainEvents.bind "vector_stock.shortfall_recorded", to: []
+  DomainEvents.bind "vector_stock.shortfall_reconciled", to: []
+  DomainEvents.bind "ovitrap.installed", to: []
+  DomainEvents.bind "ovitrap.collected", to: []
+  DomainEvents.bind "ovitrap_reading.counted", to: []
+  DomainEvents.bind "vector_task.opened", to: []
+  DomainEvents.bind "vector_task.closed", to: []
+  DomainEvents.bind "liraa_survey.drawn", to: []
+  DomainEvents.bind "liraa_survey.closed", to: []
+  DomainEvents.bind "transmission_block.proposed", to: []
+  DomainEvents.bind "transmission_block.confirmed", to: []
+  DomainEvents.bind "transmission_block.dismissed", to: []
+  DomainEvents.bind "transmission_block.closed", to: []
+  DomainEvents.bind "transmission_block_case.address_viewed", to: []
+  DomainEvents.bind "vector_sample.result_recorded", to: []
+  DomainEvents.bind "vector_parameters.changed", to: []
+  DomainEvents.bind "vector_product.changed", to: []
 end

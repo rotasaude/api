@@ -218,14 +218,19 @@ module Platform
                 requires: %w[feature:territory_registry]),
       Entry.new(key: "collective_activities",
                 description: "Atividade coletiva com ficha LEDI, sem PSE",
-                requires: %w[feature:clinical_record])
+                requires: %w[feature:clinical_record]),
+      # ADR 0054: sem cascata; desligar home_visits deixa vector_control ligado
+      # faltando pré-requisito; o que foi gravado fica.
+      Entry.new(key: "vector_control",
+                description: "Boletim do agente na visita, quarteirões, ciclos, ovitrampas, LIRAa e bloqueio de transmissão",
+                requires: %w[feature:home_visits])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
     # Contrato P19: chaves que nunca vão ao cidadão (GET /citizen/session),
     # mesmo ligadas e utilizáveis. Lista de exclusão: todo módulo futuro com
     # interruptor sensível acrescenta a sua chave aqui.
-    CITIZEN_HIDDEN = %w[psychosocial_care collective_activities].freeze
+    CITIZEN_HIDDEN = %w[psychosocial_care collective_activities vector_control].freeze
     class UnknownFeature < StandardError; end
 
     UNREACHABLE = [ "city_unreachable" ].freeze

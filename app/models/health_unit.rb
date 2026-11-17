@@ -8,7 +8,9 @@ class HealthUnit < ApplicationRecord
   # ADR 0049: `caps` (Centro de Atenção Psicossocial), sempre com a modalidade;
   # a classificação do serviço (3 dígitos do CNES) só no CAPS. Só as
   # modalidades III e AD III/IV têm acolhimento noturno (leitos).
-  KINDS = %w[ubs upa hospital other ceo health_management caps].freeze
+  # ADR 0054: `environmental_surveillance` (vigilância ambiental e zoonoses,
+  # UVZ; a coordenação de endemias) — não dispensa, não tem fila nem leito.
+  KINDS = %w[ubs upa hospital other ceo health_management caps environmental_surveillance].freeze
   CAPS_MODALITIES = %w[caps_i caps_ii caps_iii caps_i_child caps_ad caps_ad_iii caps_ad_iv].freeze
   NIGHT_MODALITIES = %w[caps_iii caps_ad_iii caps_ad_iv].freeze
   SERVICE_CLASSIFICATION = /\A\d{3}\z/

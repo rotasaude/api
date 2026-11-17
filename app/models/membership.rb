@@ -4,10 +4,11 @@
 # plataforma — spec banco-por-cidade §5), e com ele a coluna de município e o
 # CHECK de operador global. ROLES espelha ck_memberships_role do db/city_schema.rb.
 class Membership < ApplicationRecord
-  ROLES = %w[analyst billing_clerk campaign_manager care_regulator citizen_verifier driver exam_provider exam_regulator
-             health_professional lab_releaser lab_staff municipal_admin ombudsman ombudsman_responder ombudsman_staff
-             pharmacist pharmacy_assistant protocol_author protocol_publisher protocol_reviewer psychosocial_lead
-             psychosocial_staff stock_keeper surveillance tfd_committee transport_dispatcher viewer].freeze
+  ROLES = %w[analyst billing_clerk campaign_manager care_regulator citizen_verifier driver endemic_coordinator exam_provider
+             exam_regulator health_professional lab_releaser lab_staff municipal_admin ombudsman ombudsman_responder
+             ombudsman_staff pharmacist pharmacy_assistant protocol_author protocol_publisher protocol_reviewer
+             psychosocial_lead psychosocial_staff stock_keeper surveillance tfd_committee transport_dispatcher
+             vector_lab viewer].freeze
 
   # Papéis que o mantenedor da API de manutenção nunca concede nem convida
   # (spec de assinaturas §7): quem aprova protocolo e quem concede aprovação.
@@ -44,10 +45,13 @@ class Membership < ApplicationRecord
   # conceder; o mantenedor não concede. ombudsman_staff (ADR 0051 + §16 U3): lê
   # texto de saúde e identidade no modo identificado — também step-up.
   # ombudsman_responder NÃO entra: só responde ao encaminhamento do seu setor.
+  # endemic_coordinator (ADR 0054; W-11): lê o endereço do caso de arbovirose
+  # no bloqueio de transmissão — step-up; o mantenedor não concede. vector_lab
+  # NÃO entra: só conta ovos e dá resultado de amostra, sem dado pessoal.
   PRIVILEGED_ROLES = %w[municipal_admin protocol_reviewer citizen_verifier health_professional
                         campaign_manager exam_regulator exam_provider lab_staff lab_releaser billing_clerk surveillance
                         care_regulator pharmacist pharmacy_assistant transport_dispatcher tfd_committee
-                        psychosocial_staff psychosocial_lead ombudsman ombudsman_staff].freeze
+                        psychosocial_staff psychosocial_lead ombudsman ombudsman_staff endemic_coordinator].freeze
 
   belongs_to :user
   belongs_to :granted_by, class_name: "User", optional: true
