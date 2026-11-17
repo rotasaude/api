@@ -70,8 +70,14 @@ RSpec.describe "Vigilância ambiental — pontos do mapa", type: :request do
     sign_in_as(coordinator)
     get base, params: { layer: "transmission", transmission_block_id: block.id }
     expect(response).to have_http_status(:ok)
-    expected = [ point(inside.id, spot(1), "area", "10"), point(next_door.id, spot(2), "area", "11") ].sort_by { |item| item["id"] }
+    expected = [ point(inside.id, spot(1), "area", "area"), point(next_door.id, spot(2), "area", "area") ].sort_by { |item| item["id"] }
     expect(json_body).to eq("map" => nil, "points" => expected)
+    # Q28(1): o rótulo é só a categoria; nenhum campo do ponto traz o número do quarteirão.
+    json_body["points"].each do |item|
+      expect(item.values.map(&:to_s)).not_to include("10", "11")
+      expect(item.values_at("label", "category").join("|")).not_to include(center.number, neighbor.number)
+      expect(item.keys).to eq(%w[id latitude longitude category label])
+    end
 
     trails = map_trails
     case_household = IndividualRegistration.find_by!(patient: patient).household_id

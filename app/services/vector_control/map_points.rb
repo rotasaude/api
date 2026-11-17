@@ -11,9 +11,9 @@
 #     (sem leitura contada); label = "<número> · <ovos>" ("—" sem contagem);
 #   - transmission (transmission_block_id): os domicílios dos quarteirões da
 #     área do bloqueio (as linhas da confirmação ou, sem linha, a sugestão de
-#     anéis, como o Json.transmission_blocks); category = "area"; label =
-#     número do quarteirão. NUNCA o caso: nem paciente, nem notificação, nem
-#     qual domicílio tem caso.
+#     anéis, como o Json.transmission_blocks); category e label = "area" (Q28(1):
+#     nem o número do quarteirão). NUNCA o caso: nem paciente, nem notificação,
+#     nem qual domicílio tem caso.
 # Sigilo: nenhum nome, endereço ou pessoa; a coordenada nunca sai junto de
 # caso. `trail` = { micro_area_id => [household_id] } dos domicílios cujo
 # ponto saiu, para a trilha territory_map (quem chama grava).
@@ -83,11 +83,11 @@ module VectorControl
       block = TransmissionBlock.find_by(id: params["transmission_block_id"])
       return Result.fail(:not_found) unless block
 
-      rows = HouseholdVectorProfile.joins(:household, :city_block)
+      rows = HouseholdVectorProfile.joins(:household)
                                    .where(households: { status: "active" }, city_block_id: area_ids(block))
                                    .order(:household_id)
-                                   .pluck(:household_id, "households.micro_area_id", "city_blocks.number")
-      household_points(rows.map { |id, area, number| [ id, area, AREA, number ] })
+                                   .pluck(:household_id, "households.micro_area_id")
+      household_points(rows.map { |id, area| [ id, area, AREA, AREA ] })
     end
 
     # rows = [[household_id, micro_area_id, category, label]]

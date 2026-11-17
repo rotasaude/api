@@ -31,10 +31,10 @@
 #   - ovitraps (epi_weeks[], neighborhood_ids[]): OvitrapIndex por bairro e
 #     semana;
 #   - liraa (survey_id): Liraa::Index por estrato e do município, com
-#     `provisional`;
+#     `provisional` (e a coluna "Provisório" sim/não em toda linha);
 #   - blocks (from, to): bloqueios criados no período por status, casos
 #     (SmallCount 1–4), média de horas da notificação mais antiga do bloqueio
-#     (created_at) até a confirmação e ciclos. Sem linha de total: o total
+#     (created_at) até a confirmação (cada bloqueio com no mínimo 0 h) e ciclos. Sem linha de total: o total
 #     menos as outras linhas revelaria a contagem suprimida.
 module VectorControl
   module Reports
@@ -211,7 +211,7 @@ module VectorControl
       rows = VectorProduct.where(id: ids).order(Arel.sql("lower(code)"), :id).map do |product|
         charges, quantity = measures.fetch(product.id, [ 0, 0 ])
         { "product" => "#{product.code} — #{product.name}", "unit" => product.unit, "charges" => two(charges),
-          "quantity" => two(quantity), "deducted" => two(-deducted.fetch(product.id, 0)) }
+          "quantity" => two(quantity), "deducted" => two((-deducted.fetch(product.id, 0)).nonzero? || 0) }
           .merge(VectorStockShortfall::CAUSES.to_h { |cause| [ "shortfalls_#{cause}", shortfalls.fetch([ product.id, cause ], 0) ] })
       end
       report("consumption",
@@ -242,7 +242,10 @@ module VectorControl
     def liraa_report(survey)
       index = Liraa::Index.for(survey)
       town = index[:municipality]
-      rows = index[:strata].map { |stratum| liraa_row(stratum[:name], stratum) } + [ liraa_row("Município", town) ]
+      # O provisório do levantamento em toda linha: a linha exportada (CSV) não perde o aviso.
+      flag = town[:provisional] ? "sim" : "não"
+      rows = (index[:strata].map { |stratum| liraa_row(stratum[:name], stratum) } + [ liraa_row("Município", town) ])
+             .map { |row| row.merge("provisional" => flag) }
       notes = []
       notes << "Provisório: há amostra sem resultado de laboratório." if town[:provisional]
       notes << "#{town[:missing]} imóvel(is) substituído(s) sem candidato." if town[:missing].positive?
@@ -252,7 +255,8 @@ module VectorControl
                column("missing", "Substituídos sem candidato", "count"), column("positive_households", "Imóveis positivos", "count"),
                column("positive_containers", "Recipientes positivos", "count"), column("iip", "IIP %", "percent"),
                column("iip_class", "Classe do IIP", "text"), column("ib", "IB %", "percent"),
-               *Catalog::DEPOSIT_GROUPS.map { |group| column("itr_#{group}", "ITR #{group} %", "percent") } ],
+               *Catalog::DEPOSIT_GROUPS.map { |group| column("itr_#{group}", "ITR #{group} %", "percent") },
+               column("provisional", "Provisório", "text") ],
              rows, notes: notes, provisional: town[:provisional])
     end
 
@@ -263,7 +267,10 @@ module VectorControl
                                            "min(disease_notifications.created_at) AS first_notified_at")
       cycles = TransmissionBlockCycle.group(:transmission_block_id)
                                      .select("transmission_block_cycles.transmission_block_id AS block_id", "count(*) AS cycles")
-      hours = "extract(epoch FROM (transmission_blocks.confirmed_at - (block_cases.first_notified_at AT TIME ZONE 'UTC'))) / 3600"
+      # Cada bloqueio com no mínimo 0 h: depois de mover casos, a notificação
+      # mais antiga que sobrou pode ser posterior à confirmação.
+      hours = "GREATEST(extract(epoch FROM (transmission_blocks.confirmed_at - " \
+              "(block_cases.first_notified_at AT TIME ZONE 'UTC'))) / 3600, 0)"
       counts = TransmissionBlock.where(created_at: range)
                                 .joins("LEFT JOIN (#{cases.to_sql}) block_cases ON block_cases.block_id = transmission_blocks.id")
                                 .joins("LEFT JOIN (#{cycles.to_sql}) block_cycles ON block_cycles.block_id = transmission_blocks.id")

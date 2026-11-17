@@ -147,6 +147,24 @@ RSpec.describe VectorControl::Reports, type: :model do
     expect(build("consumption", from: (today - 3).iso8601, to: (today - 1).iso8601)[:rows]).to eq([])
   end
 
+  it "consumption: visita retirada zera a baixa sem sinal (0.00, nunca -0.00)" do
+    product = vector_product!(code: "PYR", name: "Pyriproxyfen 0,5% G")
+    location = vector_location!
+    vector_lot!(location, product: product, quantity: "10")
+    vector_stock_location!(location)
+    visit = vector_visit!(product: product, charges: 2, agent: agent)
+    expect(HomeVisits::Withdraw.call(visit, by: agent, expected_state: "recorded", reason: "registrada no imóvel errado")).to be_ok
+    expect(StockMovement.where(vector_product_id: product.id).pluck(:kind))
+      .to include("vector_application", "vector_application_reversal")
+
+    report = build("consumption", from: today.iso8601, to: today.iso8601)
+    expect(report[:rows]).to eq([
+      { "product" => "PYR — Pyriproxyfen 0,5% G", "unit" => "g", "charges" => "0.00", "quantity" => "0.00", "deducted" => "0.00",
+        "shortfalls_no_location" => 0, "shortfalls_insufficient_balance" => 0, "shortfalls_no_lot" => 0 }
+    ])
+    expect(VectorControl::Csv.build(report)).to include(";0,00;0,00;0,00;").and(satisfy { |text| !text.include?("-0") })
+  end
+
   describe "blocks" do
     def cases!(block, count)
       Array.new(count) do
@@ -174,6 +192,19 @@ RSpec.describe VectorControl::Reports, type: :model do
         { "status" => "Descartado", "blocks" => 0, "cases" => 0, "hours_to_confirmation" => nil, "cycles" => 0 }
       ])
       expect(build("blocks", from: (today + 1).iso8601, to: (today + 2).iso8601)[:rows].sum { |line| line["blocks"] }).to eq(0)
+    end
+
+    it "horas de cada bloqueio nunca negativas: confirmação antes da notificação que sobrou conta 0" do
+      coordinator = endemic_coordinator!
+      early = TransmissionBlock.create!(disease_group: "arbovirus")
+      first = cases!(early, 1)
+      early.update!(status: "active", confirmed_by_user: coordinator, confirmed_at: first.sole.created_at - 5.hours)
+      late = TransmissionBlock.create!(disease_group: "arbovirus")
+      second = cases!(late, 1)
+      late.update!(status: "active", confirmed_by_user: coordinator, confirmed_at: second.sole.created_at + 10.hours)
+
+      active = row(build("blocks", from: today.iso8601, to: today.iso8601), "status", "Ativo")
+      expect(active).to include("blocks" => 2, "hours_to_confirmation" => "5.0")
     end
   end
 

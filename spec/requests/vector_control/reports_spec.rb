@@ -45,7 +45,55 @@ RSpec.describe "Vigilância ambiental — relatórios", type: :request do
     expect(lines.first.split(";")).to eq([ "Recorte", "Classe ou bairro", "Cadastrados", "A visitar", "Visitados", "Trabalhados",
                                           "Fechados", "Recusados", "Desocupados", "Recuperados", "Pendência %", "Cobertura %" ])
     expect(lines[1]).to eq("Classe de imóvel;R (residencial);1;1;1;1;0;0;0;0;0,0;100,0")
-    expect(lines.last).to eq("Bairro;#{neighborhood.name};1;1;1;1;0;0;0;0;0,0;100,0")
+    table = lines.take_while(&:present?)
+    expect(table.last).to eq("Bairro;#{neighborhood.name};1;1;1;1;0;0;0;0;0,0;100,0")
+    # A nota tem `;`: sai entre aspas, numa célula só.
+    expect(CSV.parse_line(lines[table.size + 1], col_sep: ";").sole).to start_with("Cobertura do cadastro: contam só os 1 domicílios ativos")
+  end
+
+  # Levantamento sorteado com um item inspecionado e uma amostra; sem
+  # resultado (provisório) ou com resultado.
+  def drawn_survey!(resulted:)
+    block = city_block!(neighborhood: neighborhood, number: SecureRandom.hex(2))
+    home = liraa_households!(block, 1, micro_area: area).first
+    survey = LiraaSurvey.create!(name: "LIRAa #{SecureRandom.hex(2)}", starts_on: today, ends_on: today + 6)
+    stratum = LiraaStratum.create!(liraa_survey: survey, name: "Estrato 1", mode: "standard")
+    item = LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household: home, position: 1)
+    survey.update!(status: "drawn", drawn_at: Time.current, parameters_version: 0)
+    @sheet ||= home_visit_day!(agent: agent, day: today)
+    visit = home_visit!(day: @sheet, micro_area: area, household: home,
+                        occurred_at: [ Time.current - 1.minute, today.in_time_zone ].max)
+    inspection = VectorInspection.create!(home_visit: visit, household: home, activity: "liraa", work_type: "routine",
+                                          situation: "worked", educational_action: false, liraa_draw_item_id: item.id)
+    sample = VectorSample.create!(vector_inspection_id: inspection.id, number: 1, deposit_group: "B", larvae_collected: 4,
+                                  label: "#{SecureRandom.hex(4).upcase}-01")
+    if resulted
+      sample.update!(examined_larvae: 4, aegypti_larvae: 0, albopictus_larvae: 0, result_at: Time.current, result_by_user_id: vector_lab!.id)
+    end
+    survey
+  end
+
+  def csv_lines = response.body.dup.force_encoding("UTF-8").delete_prefix("\uFEFF").split("\r\n", -1)
+
+  it "liraa.csv: provisório em toda linha (sim) e as notas no fim; sem amostra pendente → não" do
+    provisional = drawn_survey!(resulted: false)
+    sign_in_as(coordinator)
+    get "#{base}/liraa.csv", params: { survey_id: provisional.id }
+    expect(response).to have_http_status(:ok)
+    lines = csv_lines
+    expect(lines.first.split(";").last).to eq("Provisório")
+    expect(lines[1..2].map { |line| line.split(";", -1).first }).to eq([ "Estrato 1", "Município" ])
+    expect(lines[1..2].map { |line| line.split(";", -1).last }).to eq(%w[sim sim])
+    expect(lines[3..]).to eq([ "", "Provisório: há amostra sem resultado de laboratório.", "" ])
+
+    final = drawn_survey!(resulted: true)
+    get "#{base}/liraa.csv", params: { survey_id: final.id }
+    lines = csv_lines
+    expect(lines[1..2].map { |line| line.split(";", -1).last }).to eq(%w[não não])
+    expect(lines[3..]).to eq([ "" ])
+    get "#{base}/liraa", params: { survey_id: final.id }
+    expect(json_body).to include("provisional" => false)
+    expect(json_body["rows"].map { |row| row["provisional"] }).to eq(%w[não não])
   end
 
   it "liraa.pdf é `application/pdf` e começa com `%PDF`; situations.pdf → 404" do

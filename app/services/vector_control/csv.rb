@@ -2,8 +2,9 @@
 # §10): o VectorReport (VectorControl::Reports) como tabela, no molde do
 # Surveillance::Csv — UTF-8 com BOM, `;` e `\r\n` (Excel pt-BR), cabeçalho
 # com os rótulos das colunas em português. Contagem suprimida sai "< 5";
-# percentual e decimal com vírgula; nil vazio. Toda célula passa por
-# Exams::Report.safe_cell (injeção de fórmula). As notas não entram no CSV.
+# percentual e decimal com vírgula; nil vazio. As notas do relatório saem no
+# fim, depois de uma linha em branco, uma por linha numa célula só. Toda
+# célula passa por Exams::Report.safe_cell (injeção de fórmula).
 require "csv"
 
 module VectorControl
@@ -20,6 +21,9 @@ module VectorControl
         report.fetch(:rows).each do |row|
           csv << columns.map { |column| Exams::Report.safe_cell(cell(row[column.fetch(:key)], column.fetch(:kind))) }
         end
+        notes = Array(report[:notes])
+        csv << [] if notes.any?
+        notes.each { |note| csv << [ Exams::Report.safe_cell(note) ] }
       end
       Surveillance::Csv::BOM + text
     end
