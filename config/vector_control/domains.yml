@@ -22,7 +22,7 @@ situations:
 deposit_groups:
   - { code: A1, label: "A1 — Depósito de água elevado" }
   - { code: A2, label: "A2 — Depósito de armazenamento ao nível do solo" }
-  - { code: B, label: "B — Pequeno depósito móvel" }
+  - { code: B, label: "B — Depósito móvel" }
   - { code: C, label: "C — Depósito fixo" }
   - { code: D1, label: "D1 — Pneu e outro material rodante" }
   - { code: D2, label: "D2 — Lixo, sucata e entulho" }
