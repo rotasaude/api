@@ -22,6 +22,23 @@ module StockGate
     false
   end
 
+  # Módulo 35a (Q21): as telas de locais do 27a (admin, equipe e "meus
+  # locais") conferem o interruptor do domínio do LOCAL: o vector_control vale
+  # com `vector_control` mesmo sem `pharmacy`. -> tipos de local do 27a (central,
+  # unit, vector_control) cujo domínio está utilizável.
+  def usable_stock_location_kinds
+    Pharmacy::Catalog::STOCK_LOCATION_KINDS.select { |kind| stock_domain_usable?(Stock::Domain.for(StockLocation.new(kind: kind))) }
+  end
+
+  # Nenhum tipo utilizável → 403 feature_disabled com `pharmacy` (o interruptor
+  # da família de rotas). -> true | false (já respondeu)
+  def require_stock_location_kinds!
+    return true if usable_stock_location_kinds.any?
+
+    render json: { error: "feature_disabled", feature: Pharmacy::Gate::KEY }, status: :forbidden
+    false
+  end
+
   # Memoizado por requisição (o interruptor é lido fora da transação da cidade).
   def stock_domain_usable?(domain)
     @stock_domain_usable ||= {}

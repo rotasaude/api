@@ -3,7 +3,9 @@
 # o local com a equipe (201); DELETE → 204. Sem e-mail em resposta nenhuma.
 # Módulo 29: aceita também o local `cold_chain_central` (papel só `stock_keeper`),
 # com `vaccination` utilizável mesmo sem `pharmacy`; a equipe da sala
-# (`vaccine_room`) é pelo /vaccination/admin, aqui é 404.
+# (`vaccine_room`) é pelo /vaccination/admin, aqui é 404. Módulo 35a (Q21): o
+# local `vector_control` (papel só `stock_keeper`) com `vector_control`
+# utilizável, mesmo sem `pharmacy`.
 module Pharmacy
   module Admin
     class StaffController < BaseController
@@ -31,12 +33,16 @@ module Pharmacy
       private
 
       # O interruptor é o do tipo do local: pharmacy para central/unit (e para
-      # id desconhecido), vaccination para a rede de frio; a sala → 404.
+      # id desconhecido), vaccination para a rede de frio, vector_control para
+      # o local da vigilância ambiental; a sala → 404.
       def load_location
         location = StockLocation.find_by(id: params[:id]) if uuid?(params[:id])
         return not_found if location&.vaccine_room?
 
-        location&.cold_chain_central? ? require_vaccination! : require_pharmacy!
+        if location&.cold_chain_central? then require_vaccination!
+        elsif location&.vector_control? then stock_feature_for!(location)
+        else require_pharmacy!
+        end
         return if performed?
 
         @location = location

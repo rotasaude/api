@@ -46,6 +46,51 @@ RSpec.describe "Estoque do insumo de campo pelas rotas do 27a", type: :request d
     expect(json_body["locations"].map { |row| row["id"] }).to include(created.id)
   end
 
+  it "Q21: com `pharmacy` desligado e vector_control utilizável a cadeia inteira anda (local, equipe, nota, baixa sem falta); local de medicamento → 403 feature_disabled" do
+    admin = staff_with("admin-uvz-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin")
+    central = StockLocation.create!(kind: "central", name: "Central de Abastecimento", updated_by_user: admin)
+    expect(Pharmacy::Gate.usable?(city)).to be(false)
+    stepped_up!(admin)
+
+    json_post "/pharmacy/admin/locations", kind: "vector_control", health_unit_id: uvz.id, name: "UVZ — insumos", active: true
+    expect(response).to have_http_status(:created)
+    created = StockLocation.find_by!(kind: "vector_control")
+    get "/pharmacy/admin/locations"
+    expect(json_body["locations"].map { |row| row["id"] }).to eq([ created.id ])
+    json_post "/pharmacy/admin/locations", kind: "unit", health_unit_id: create_unit("UBS Sul").id, name: "Farmácia UBS Sul"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "pharmacy" } ])
+    json_patch "/pharmacy/admin/locations/#{central.id}", name: "Central renomeada"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "pharmacy" } ])
+
+    stock_keeper = staff_with("almoxarife-uvz-#{SecureRandom.hex(3)}@cidade.gov.br", "stock_keeper")
+    json_post "/pharmacy/admin/locations/#{created.id}/staff", user_id: stock_keeper.id, role: "stock_keeper"
+    expect(response).to have_http_status(:created)
+    json_post "/pharmacy/admin/locations/#{central.id}/staff", user_id: stock_keeper.id, role: "stock_keeper"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "pharmacy" } ])
+
+    sign_in_as(stock_keeper)
+    receipt(target: created)
+    expect(response).to have_http_status(:created)
+    get "/pharmacy/locations"
+    expect(json_body["locations"].map { |row| row["id"] }).to eq([ created.id ])
+
+    medicine_keeper = staff_with("almoxarife-central-#{SecureRandom.hex(3)}@cidade.gov.br", "stock_keeper")
+    StockLocationStaff.create!(stock_location: central, user: medicine_keeper, role: "stock_keeper", granted_by_user: admin, granted_at: Time.current)
+    sign_in_as(medicine_keeper)
+    get "/pharmacy/locations"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "pharmacy" } ])
+
+    sign_in_as(endemic_coordinator!)
+    json_put "/vector_control/settings", stock_location_id: created.id
+    expect(response).to have_http_status(:ok)
+    allow(Ledi::DeliverJob).to receive(:perform_later)
+    visit = vector_visit!(product: product)
+    movement = StockMovement.find_by!(kind: "vector_application")
+    expect(movement).to have_attributes(stock_location_id: created.id, quantity: BigDecimal("-2"))
+    expect(VectorInspection.find_by!(home_visit_id: visit.id).measures.sole.id).to eq(movement.vector_inspection_measure_id)
+    expect(VectorStockShortfall.count).to eq(0)
+  end
+
   it "entrada de lote de produto no local vector_control; CATMAT nele → item_not_allowed_here; produto em local de farmácia → item_not_allowed_here" do
     sign_in_as(keeper)
     receipt

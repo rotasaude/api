@@ -67,7 +67,7 @@ RSpec.describe VectorControl::ApplyStock, type: :model do
     expect(StockMovement.where(kind: "vector_application").sole.quantity).to eq(BigDecimal("-0.19"))
   end
 
-  it "sem local → no_location sem local; saldo 1 para 2 → insufficient_balance; sem lote → no_lot; lote vencido ou bloqueado não conta" do
+  it "sem local → no_location sem local; sem lote do produto no local → no_lot; saldo 1 para 2, lote zerado, vencido ou bloqueado → insufficient_balance (Q21)" do
     no_location = record!(at: ago(30))
     expect(measure_of(no_location).shortfall).to have_attributes(cause: "no_location", stock_location_id: nil, quantity: BigDecimal("2"),
                                                                  vector_product_id: product.id, reconciled_at: nil)
@@ -84,20 +84,28 @@ RSpec.describe VectorControl::ApplyStock, type: :model do
     other = vector_product!
     vector_lot!(location, product: other, quantity: "9", expires_on: today - 1)
     expired = record!(report(measured: other), at: ago(15), home: registry_household!(micro_area: area))
-    expect(measure_of(expired).shortfall.cause).to eq("no_lot")
+    expect(measure_of(expired).shortfall.cause).to eq("insufficient_balance")
 
     blocked_product = vector_product!
     lot_block!(location, vector_lot!(location, product: blocked_product, quantity: "9"))
     blocked = record!(report(measured: blocked_product), at: ago(10), home: registry_household!(micro_area: area))
-    expect(measure_of(blocked).shortfall.cause).to eq("no_lot")
+    expect(measure_of(blocked).shortfall.cause).to eq("insufficient_balance")
+
+    # Lote zerado: há lote do produto no local, sem saldo → insufficient_balance.
+    drained_product = vector_product!
+    drained = vector_lot!(location, product: drained_product, quantity: "2")
+    record!(report(measured: drained_product), at: ago(9), home: registry_household!(micro_area: area))
+    expect(balance(drained)).to eq(0)
+    zero = record!(report(measured: drained_product), at: ago(8), home: registry_household!(micro_area: area))
+    expect(measure_of(zero).shortfall.cause).to eq("insufficient_balance")
 
     # Local desativado depois de escolhido: no_location.
     location.update!(active: false)
     inactive = record!(at: ago(5), home: registry_household!(micro_area: area))
     expect(measure_of(inactive).shortfall).to have_attributes(cause: "no_location", stock_location_id: nil)
 
-    expect(HomeVisit.count).to eq(6)
-    expect(StockMovement.where(kind: "vector_application")).to be_empty
+    expect(HomeVisit.count).to eq(8)
+    expect(StockMovement.where(kind: "vector_application").count).to eq(1) # só a do lote que zerou
   end
 
   it "evento shortfall_recorded só com o id" do
@@ -161,13 +169,13 @@ RSpec.describe VectorControl::DeductStock, type: :model do
 
   def measure = Struct.new(:quantity, :vector_product_id).new(BigDecimal("2"), product.id)
 
-  it "lote com saldo fora do conjunto travado não é candidato (no_lot), e nenhum lote é travado aqui" do
+  it "lote com saldo fora do conjunto travado não é candidato (insufficient_balance, há lote no local), e nenhum lote é travado aqui" do
     fresh_lot = vector_lot!(location, product: product, quantity: "5", expires_on: today + 30)
     later_lot = vector_lot!(location, product: product, quantity: "5", expires_on: today + 60)
     expect(Pharmacy::Ledger).not_to receive(:lock_lots!)
 
     none = described_class.call(measure: measure, location_id: location.id, today: today, locked: {})
-    expect(none.payload).to include(shortfall_cause: "no_lot", location: location)
+    expect(none.payload).to include(shortfall_cause: "insufficient_balance", location: location)
 
     only_later = described_class.call(measure: measure, location_id: location.id, today: today, locked: { later_lot.id => later_lot })
     expect(only_later.payload).to include(lot: later_lot, quantity: BigDecimal("2"))
@@ -231,7 +239,7 @@ RSpec.describe VectorControl::ApplyStock, "× duas visitas e a última carga" do
       product = vector_product!(charge_size: "2.00")
       location = vector_location!
       vector_stock_location!(location)
-      lot = vector_lot!(location, product: product, quantity: "3")
+      lot = vector_lot!(location, product: product, quantity: "2")
       { team: team.id, agents: [ first_agent.id, second_agent.id ], households: areas.map { |area| registry_household!(micro_area: area).id },
         product: product.id, location: location.id, lot: lot.id }
     end
@@ -273,7 +281,7 @@ RSpec.describe VectorControl::ApplyStock, "× duas visitas e a última carga" do
     e
   end
 
-  it "duas visitas em threads com saldo para uma → uma vector_application, uma falta insufficient_balance, as duas visitas gravadas, saldo ≥ 0" do
+  it "saldo 2 e duas visitas de 2 em threads → uma vector_application, a segunda falta insufficient_balance (Q21), as duas gravadas, saldo 0" do
     holder = nil
     holding = Queue.new
     original = DomainEvents.method(:publish)
@@ -310,7 +318,7 @@ RSpec.describe VectorControl::ApplyStock, "× duas visitas e a última carga" do
       shortfall = VectorStockShortfall.sole
       expect(shortfall).to have_attributes(cause: "insufficient_balance", stock_location_id: @ids[:location])
       expect(VectorInspection.find_by!(home_visit_id: second.payload[:visit].id).measures.sole.id).to eq(shortfall.vector_inspection_measure_id)
-      expect(Pharmacy::Ledger.balance(location_id: @ids[:location], lot_id: @ids[:lot])).to eq(BigDecimal("1"))
+      expect(Pharmacy::Ledger.balance(location_id: @ids[:location], lot_id: @ids[:lot])).to eq(BigDecimal("0"))
     end
   end
 end
