@@ -3,8 +3,9 @@ require "rails_helper"
 # Módulo 35a, Task 12 (ADR 0054; contrato §9, §12, §17; Q8, Q9): a fila de
 # amostras de larvas da coordenação e do vector_lab (403 missing_role para os
 # outros) e o resultado. GET /vector_control/samples?state=pending|done →
-# `{ items, next_before }` de VectorSample, das visitas válidas, por (dia da
-# visita, etiqueta); POST /vector_control/samples/:id/result → VectorSample.
+# `{ items, next_before }` de VectorSample, das visitas válidas: pending por
+# (dia da visita, etiqueta), done por result_at decrescente (Q27);
+# POST /vector_control/samples/:id/result → VectorSample.
 # Nunca imóvel nem morador; a nota nunca sai. 4xx só com error e path.
 RSpec.describe "Vigilância ambiental — amostras", type: :request do
   let!(:city) { vector_city! }
@@ -145,17 +146,62 @@ RSpec.describe "Vigilância ambiental — amostras", type: :request do
     expect(sample.reload.result_at).to be_nil
   end
 
-  it "página por (dia da visita, etiqueta) com next_before" do
-    stub_const("VectorControl::SamplesController::LIMIT", 1)
+  def ids = json_body["items"].map { |row| row["id"] }
+
+  def result!(sample, aegypti: 1, note: nil)
+    body = { examined_larvae: 4, aegypti_larvae: aegypti, albopictus_larvae: 0 }
+    json_post "/vector_control/samples/#{sample.id}/result", note ? body.merge(result_note: note) : body
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "pending: duas páginas por (dia da visita, etiqueta), sem pular nem repetir" do
+    stub_const("VectorControl::SamplesController::LIMIT", 2)
     later = older_sample!(on: today - 1, label: "AAAAAAAA-01")
+    second = older_sample!(on: today - 4, label: "CCCCCCCC-01")
     first = older_sample!(on: today - 4, label: "BBBBBBBB-01")
     sign_in_as(endemic_coordinator!)
 
     get "/vector_control/samples"
-    expect(json_body["items"].map { |row| row["id"] }).to eq([ first.id ])
+    expect(ids).to eq([ first.id, second.id ])
     expect(json_body["next_before"]).to be_present
     get "/vector_control/samples", params: { before: json_body["next_before"] }
-    expect(json_body["items"].map { |row| row["id"] }).to eq([ later.id ])
+    expect(ids).to eq([ later.id ])
     expect(json_body["next_before"]).to be_nil
+  end
+
+  it "done (Q27): result_at decrescente, a correção sobe ao topo; duas páginas; cursor da outra aba → invalid_cursor" do
+    stub_const("VectorControl::SamplesController::LIMIT", 2)
+    one, two, three = %w[AAAAAAAA-01 BBBBBBBB-01 CCCCCCCC-01].each_with_index.map do |label, i|
+      older_sample!(on: today - 5 + i, label: label)
+    end
+    %w[DDDDDDDD-01 EEEEEEEE-01 FFFFFFFF-01].each { |label| older_sample!(on: today - 1, label: label) }
+    sign_in_as(lab)
+    [ one, two, three ].each { |sample| result!(sample) }
+
+    get "/vector_control/samples", params: { state: "done" }
+    expect(ids).to eq([ three.id, two.id ])
+    result!(one, aegypti: 2, note: "Revisão na lupa: duas larvas eram aegypti")
+    get "/vector_control/samples", params: { state: "done" }
+    expect(ids).to eq([ one.id, three.id ])
+    expect(json_body["items"].first["result"]).to include("aegypti_larvae" => 2, "corrected" => true)
+    done_cursor = json_body["next_before"]
+    get "/vector_control/samples", params: { state: "done", before: done_cursor }
+    expect(ids).to eq([ two.id ])
+    expect(json_body["next_before"]).to be_nil
+
+    get "/vector_control/samples", params: { state: "pending" }
+    expect(ids.size).to eq(2)
+    pending_cursor = json_body["next_before"]
+    get "/vector_control/samples", params: { state: "done", before: pending_cursor }
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_cursor" } ])
+    get "/vector_control/samples", params: { state: "pending", before: done_cursor }
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_cursor" } ])
+  end
+
+  it "papel antes da query: ACE com query no POST → 403 missing_role" do
+    sample = older_sample!(on: today - 1, label: "AAAAAAAA-01")
+    sign_in_as(agent)
+    json_post "/vector_control/samples/#{sample.id}/result?examined_larvae=3", aegypti_larvae: 0, albopictus_larvae: 0
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
   end
 end

@@ -4,10 +4,12 @@ require "base64"
 # as amostras de larvas da coordenação e do vector_lab (403 missing_role para
 # os outros).
 #   - GET /samples?state=pending|done&before= (padrão pending): `{ items,
-#     next_before }` de VectorSample das visitas não retiradas, sem (pending)
-#     ou com (done) resultado, por (dia da visita no fuso da cidade, label),
-#     a mais antiga primeiro. O cursor é a chave de ordem do último item
-#     (base64url de "dia|label"); adulterado → 422 invalid_cursor;
+#     next_before }` de VectorSample das visitas não retiradas. pending = sem
+#     resultado, por (dia da visita no fuso da cidade, label), a mais antiga
+#     primeiro; done = com resultado, por (result_at, id) decrescente, o
+#     lançado ou corrigido por último primeiro (Q27). O cursor é a aba mais a
+#     chave de ordem do último item (base64url de "pending|dia|label" ou
+#     "done|instante|id"); adulterado ou da outra aba → 422 invalid_cursor;
 #   - POST /samples/:id/result `{ examined_larvae, aegypti_larvae,
 #     albopictus_larvae, result_note? }` (VectorControl::RecordSampleResult)
 #     → VectorSample. Amostra inexistente ou de visita retirada → 404.
@@ -18,10 +20,14 @@ module VectorControl
     STATES = %w[pending done].freeze
     BODY_KEYS = %w[examined_larvae aegypti_larvae albopictus_larvae result_note].freeze
     LIMIT = 50
-    CURSOR = /\A(\d{4}-\d{2}-\d{2})\|([0-9A-F]{8}-\d{2})\z/
+    CURSORS = {
+      "pending" => /\Apending\|(\d{4}-\d{2}-\d{2})\|([0-9A-F]{8}-\d{2})\z/,
+      "done" => /\Adone\|(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z)\|(\h{8}-\h{4}-\h{4}-\h{4}-\h{12})\z/
+    }.freeze
 
-    before_action(only: :result) { query_only! }
+    # O papel antes da query: quem não lê recebe 403 missing_role, não 422.
     before_action :reader!
+    before_action(only: :result) { query_only! }
 
     def index
       return unless query_only!(:state, :before)
@@ -29,12 +35,12 @@ module VectorControl
       state = request.query_parameters.fetch("state", "pending")
       return render_refusal("invalid_request", path: "state") unless STATES.include?(state)
 
-      after = sample_cursor(request.query_parameters["before"])
+      after = sample_cursor(state, request.query_parameters["before"])
       return render_refusal("invalid_cursor") if after == :invalid
 
       rows = queue(state, after).limit(LIMIT + 1).to_a
       shown = rows.first(LIMIT)
-      next_before = rows.size > LIMIT ? encode_cursor(shown.last) : nil
+      next_before = rows.size > LIMIT ? encode_cursor(state, shown.last) : nil
       render json: { items: Json.samples(shown), next_before: next_before }
     end
 
@@ -68,23 +74,36 @@ module VectorControl
     end
 
     def queue(state, after)
-      day = visit_day_sql
       scope = VectorSample.joins(vector_inspection: :home_visit).merge(HomeVisit.valid)
-                          .select("vector_samples.*", "#{day} AS visit_day")
-      scope = state == "pending" ? scope.where(result_at: nil) : scope.where.not(result_at: nil)
+      return done_queue(scope, after) if state == "done"
+
+      day = visit_day_sql
+      scope = scope.where(result_at: nil).select("vector_samples.*", "#{day} AS visit_day")
       scope = scope.where("(#{day}, vector_samples.label) > (?, ?)", *after) if after
       scope.order(Arel.sql("#{day}, vector_samples.label"))
     end
 
-    def encode_cursor(sample) = Base64.urlsafe_encode64("#{sample.visit_day.iso8601}|#{sample.label}", padding: false)
+    def done_queue(scope, after)
+      scope = scope.where.not(result_at: nil)
+      scope = scope.where("(vector_samples.result_at, vector_samples.id) < (?, ?)", *after) if after
+      scope.order(result_at: :desc, id: :desc)
+    end
 
-    # [dia, label] do cursor; nil sem cursor; :invalid adulterado.
-    def sample_cursor(raw)
+    def encode_cursor(state, sample)
+      key = state == "done" ? "#{sample.result_at.utc.iso8601(6)}|#{sample.id}" : "#{sample.visit_day.iso8601}|#{sample.label}"
+      Base64.urlsafe_encode64("#{state}|#{key}", padding: false)
+    end
+
+    # A chave de ordem do cursor da aba (pending: [dia, label]; done:
+    # [instante, id]); nil sem cursor; :invalid adulterado ou da outra aba.
+    def sample_cursor(state, raw)
       return nil if raw.nil? || raw == ""
       return :invalid unless raw.is_a?(String)
 
-      match = Base64.urlsafe_decode64(raw).match(CURSOR)
-      match ? [ Date.iso8601(match[1]), match[2] ] : :invalid
+      match = Base64.urlsafe_decode64(raw).match(CURSORS.fetch(state))
+      return :invalid unless match
+
+      state == "done" ? [ Time.iso8601(match[1]), match[2].downcase ] : [ Date.iso8601(match[1]), match[2] ]
     rescue ArgumentError, EncodingError, Date::Error
       :invalid
     end
