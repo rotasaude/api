@@ -30,6 +30,8 @@
 #     endereço curto; quem mostra grava a trilha).
 #   - transmission_blocks → TransmissionBlock[] (Task 11: o caso só como
 #     doença, data e número; nunca paciente nem notificação).
+#   - samples → VectorSample[] (Task 12: dia da visita, quarteirão congelado
+#     e resultado; nunca imóvel nem morador; a nota nunca sai).
 module VectorControl
   module Json
     module_function
@@ -126,6 +128,20 @@ module VectorControl
       }
       { id: sample.id, number: sample.number, deposit_group: sample.deposit_group, larvae_collected: sample.larvae_collected,
         label: sample.label, result: result }
+    end
+
+    # VectorSample[] da fila (Task 12; Q8): o dia da visita e o quarteirão
+    # congelado na inspeção, numa consulta; nunca o imóvel nem a visita. O
+    # resultado na forma do <home_visit> (sample).
+    def samples(samples)
+      inspections = VectorInspection.where(id: samples.map(&:vector_inspection_id).uniq).includes(:home_visit, :city_block).index_by(&:id)
+      samples.map do |sample|
+        inspection = inspections.fetch(sample.vector_inspection_id)
+        block = inspection.city_block
+        { id: sample.id, label: sample.label, visit_on: inspection.home_visit.occurred_at.in_time_zone.to_date.iso8601,
+          deposit_group: sample.deposit_group, larvae_collected: sample.larvae_collected,
+          city_block: block && { id: block.id, number: block.number }, result: sample(sample)[:result] }
+      end
     end
 
     def products(products)

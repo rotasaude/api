@@ -1065,6 +1065,8 @@ Rails.application.routes.draw do
     post   "ovitraps/:id/collect",            to: "ovitraps#collect", constraints: member_id
     get    "ovitrap_readings",                to: "ovitrap_readings#index"
     post   "ovitrap_readings/:id/count",      to: "ovitrap_readings#count", constraints: member_id
+    get    "samples",                         to: "samples#index"
+    post   "samples/:id/result",              to: "samples#result", constraints: member_id
     get    "tasks",                           to: "tasks#index"
     post   "tasks/:id/close",                 to: "tasks#close", constraints: member_id
     get    "liraa_surveys",                   to: "liraa_surveys#index"
