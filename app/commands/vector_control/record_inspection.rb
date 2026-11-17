@@ -25,7 +25,14 @@ module VectorControl
 
     # -> InspectionRules::Facts. `input` é o `vector_inspection` do corpo (pode
     # vir malformado: as regras recusam a forma; aqui só se lê o que é id).
+    # Gate fora de uso ou outro CBO: nenhum fato lido, nenhuma trava nem perfil
+    # criado (a regra 1 recusa com os fatos vazios).
     def facts!(input, household:, cbo:, usable:, outcome:, occurred_at:, by:)
+      unless usable && cbo == TerritoryRegistry::Catalog::ENDEMIC_AGENT_CBO
+        return InspectionRules::Facts.new(usable: usable, cbo: cbo, outcome: outcome, occurred_at: occurred_at, property_type: nil,
+                                          profile_block_id: nil, city_block: nil, liraa_item: nil, transmission_block: nil, products: {})
+      end
+
       input = {} unless input.is_a?(Hash)
       profile = household && SaveProfile.lock_profiles!([ household.id ], by: by).first.fetch(household.id)
       InspectionRules::Facts.new(

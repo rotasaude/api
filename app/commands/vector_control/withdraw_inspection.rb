@@ -7,9 +7,11 @@
 #     e o registro no mesmo imóvel não se travarem;
 #   - call (depois do update! da visita): o perfil volta à inspeção válida
 #     anterior (ou fica sem last_*), com version + 1 e
-#     household_vector_profile.changed; o quarteirão e o risco ficam; o item
-#     volta a pending (Liraa::Items.released!) quando nenhuma outra inspeção
-#     válida o usa (o substituto, inspecionado ou não, fica como está, W-13).
+#     household_vector_profile.changed; o quarteirão e o risco ficam (Q20(2):
+#     a retirada desfaz só o que é da visita); o item volta a pending
+#     (Liraa::Items.released!) quando a inspeção retirada é das que o mudaram
+#     e nenhuma outra válida que o muda o usa (o substituto, inspecionado ou
+#     não, fica como está, W-13).
 # O estorno da baixa de estoque entra na Task 7 (marcado abaixo).
 module VectorControl
   module WithdrawInspection
@@ -33,11 +35,16 @@ module VectorControl
       profile, item = lock!(visit)
       # Task 7: o estorno das baixas das medidas (vector_application_reversal) e
       # a conciliação das faltas pelo sistema entram aqui.
-      if item && !VectorInspection.valid_inspections.exists?(liraa_draw_item_id: item.id)
-        Liraa::Items.released!(item)
-      end
+      Liraa::Items.released!(item) if item && releases?(inspection, item)
       SaveProfile.write!(profile, RecordInspection.last_attributes(inspection.household_id), by, created: false) if profile
       inspection
     end
+
+    def releases?(inspection, item)
+      moving = Liraa::Items::MOVING_SITUATIONS
+      moving.include?(inspection.situation) &&
+        !VectorInspection.valid_inspections.where(liraa_draw_item_id: item.id, situation: moving).exists?
+    end
+    private_class_method :releases?
   end
 end

@@ -115,7 +115,9 @@ module HomeVisits
         refuse!(Result.fail(access)) unless access == :ok
       end
 
-      vector = input.key?("vector_inspection") && inspection!(input, household, member, vector_control, by)
+      # Só com o lugar coerente e o escopo conferido: o boletim nunca fala de
+      # um domicílio fora do alcance de quem registra.
+      vector = checked && input.key?("vector_inspection") && inspection!(input, household, member, vector_control, by)
       body_reasons = input["reasons"]
       input = input.merge("reasons" => VectorControl::InspectionRules.derived_reasons(body_reasons, input["vector_inspection"])) if vector
 

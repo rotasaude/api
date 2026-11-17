@@ -32,11 +32,11 @@ RSpec.describe VectorControl::RecordInspection, type: :model do
     { "activity" => "li", "work_type" => "routine", "situation" => situation, "educational_action" => false }.merge(over.stringify_keys)
   end
 
-  def record(report, at: ago(5), home: household, uuid: SecureRandom.uuid)
+  def record(report, at: ago(5), home: household, uuid: SecureRandom.uuid, by: agent, vector_control: true, **over)
     params = { "client_uuid" => uuid, "team_id" => team.id, "occurred_at" => at.iso8601, "household_id" => home.id,
                "subject" => "none", "outcome" => VectorControl::Catalog::SITUATION_OUTCOME.fetch(report["situation"]), "reasons" => [], "shared" => false,
-               "vector_inspection" => report }
-    HomeVisits::Record.call(params: params, by: agent, vector_control: true)
+               "vector_inspection" => report }.merge(over.stringify_keys)
+    HomeVisits::Record.call(params: params, by: by, vector_control: vector_control)
   end
 
   def record!(report, **opts)
@@ -123,6 +123,63 @@ RSpec.describe VectorControl::RecordInspection, type: :model do
     expect(item.reload).to have_attributes(status: "pending", version: 3)
     expect(withdraw(visit.reload).reason).to eq(:visit_changed)
     expect(item.reload.version).to eq(3)
+  end
+
+  describe "LIRAa: item e retirada" do
+    let(:survey) { LiraaSurvey.create!(name: "LIRAa #{SecureRandom.hex(2)}", starts_on: today, ends_on: today + 6) }
+    let(:stratum) { LiraaStratum.create!(liraa_survey: survey, name: "Estrato 1", mode: "census") }
+    let!(:item) { LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household: household, position: 1) }
+
+    before { survey.update!(status: "drawn", drawn_at: Time.current, parameters_version: 1) }
+
+    it "Q20(1): vacant → substituted, como closed e refused; a retirada do vacant devolve a pending" do
+      visit = record!(empty_report("vacant", activity: "liraa", liraa_draw_item_id: item.id))
+      expect(item.reload).to have_attributes(status: "substituted", version: 2)
+      expect(LiraaDrawItem.where(substitute_of_id: item.id)).to be_empty # o substituto nasce na Task 10
+
+      expect(withdraw(visit)).to be_ok
+      expect(item.reload).to have_attributes(status: "pending", version: 3)
+    end
+
+    it "outra inspeção válida que mudou o item o mantém inspected na retirada" do
+      visit = record!(worked_report(activity: "liraa", liraa_draw_item_id: item.id))
+      expect(item.reload.status).to eq("inspected")
+      VectorInspection.create!(home_visit: home_visit!(household: household, micro_area: area), household_id: household.id,
+                               activity: "liraa", work_type: "routine", situation: "worked", educational_action: false,
+                               liraa_draw_item_id: item.id)
+
+      expect(withdraw(visit)).to be_ok
+      expect(item.reload).to have_attributes(status: "inspected", version: 2)
+    end
+  end
+
+  it "Q20(2): retirar o boletim que pôs quarteirão e risco deixa os dois no perfil e recalcula last_*" do
+    closed = record!(empty_report("closed"), at: ago(30))
+    worked = record!(worked_report(city_block_id: block.id, risk_class: "yellow"), at: ago(10))
+    expect(profile).to have_attributes(city_block_id: block.id, risk_class: "yellow", last_inspection_id: inspection_of(worked).id)
+
+    expect(withdraw(worked)).to be_ok
+    expect(profile).to have_attributes(city_block_id: block.id, risk_class: "yellow", risk_assessed_on: today,
+                                       last_inspection_id: inspection_of(closed).id, last_situation: "closed", last_worked_on: nil)
+  end
+
+  it "lugar e escopo antes do boletim: domicílio de outra microárea com micro_area_id → invalid_home_visit, sem perfil criado" do
+    outside = registry_household!(micro_area: registry_micro_area!(code: "03", team: team), neighborhood_id: neighborhood.id)
+    result = record(worked_report(activity: "liraa", liraa_draw_item_id: SecureRandom.uuid), home: outside, micro_area_id: area.id)
+    expect([ result.reason, result.details ]).to eq([ :invalid_home_visit, { path: "micro_area_id" } ])
+    expect(HouseholdVectorProfile.where(household_id: outside.id)).to be_empty
+  end
+
+  it "gate fora de uso ou outro CBO: recusa sem travar nem criar perfil" do
+    expect(VectorControl::SaveProfile).not_to receive(:lock_profiles!)
+    off = record(worked_report, vector_control: false)
+    expect([ off.reason, off.details ]).to eq([ :feature_disabled, { path: "vector_inspection" } ])
+
+    tacs = field_agent!(cbo: "322255", team: team)
+    assignment!(area, tacs.professional)
+    other = record(worked_report, by: tacs)
+    expect([ other.reason, other.details ]).to eq([ :cbo_not_allowed, { path: "vector_inspection" } ])
+    expect(HouseholdVectorProfile.count).to eq(0)
   end
 end
 
