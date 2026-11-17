@@ -43,6 +43,19 @@ RSpec.describe "Vigilância ambiental — cadências", type: :request do
     expect(VectorCadence.count).to eq(0)
   end
 
+  it "bairros em ordem de nome, não de id" do
+    ids = Array.new(2) { SecureRandom.uuid }.sort
+    zulu = Neighborhood.create!(id: ids.first, name: "Zumbi #{SecureRandom.hex(3)}", source: "manual")
+    alpha = Neighborhood.create!(id: ids.last, name: "Água Verde #{SecureRandom.hex(3)}", source: "manual")
+    VectorCadence.create!(neighborhood: zulu, days: 30)
+    VectorCadence.create!(neighborhood: alpha, days: 40)
+    VectorCadence.create!(days: 50)
+    sign_in_as(coordinator)
+
+    get "/vector_control/cadences"
+    expect(json_body["items"].map { |row| row["neighborhood_id"] }).to eq([ nil, alpha.id, zulu.id ])
+  end
+
   it "recusas: dias fora de 7–365, linha repetida, PE com risco, bairro desconhecido; nada muda" do
     VectorCadence.create!(days: 50)
     stepped_up!(coordinator)

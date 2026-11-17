@@ -46,6 +46,35 @@ RSpec.describe VectorControl::CycleStats, type: :model do
     ])
   end
 
+  # Consultas do CycleStats (sem SCHEMA/TRANSACTION/cache) e o maior número
+  # de linhas devolvido por uma delas (row_count do sql.active_record).
+  def measure
+    queries = []
+    counter = lambda do |*, payload|
+      queries << payload[:row_count].to_i unless %w[SCHEMA TRANSACTION].include?(payload[:name]) || payload[:cached]
+    end
+    ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { stats }
+    queries
+  end
+
+  it "consultas constantes e agregadas no banco: 1 ou 12 inspeções, o mesmo número de consultas, nenhuma linha por inspeção" do
+    first = household!
+    inspect!(first, "worked", at: at(0))
+    cycle && empty
+    one = measure
+
+    11.times do |index|
+      household = household!
+      inspect!(household, index < 4 ? "closed" : "worked", at: at(index + 1))
+      inspect!(household, "worked", at: at(-index - 1))
+    end
+    many = measure
+
+    expect(many.size).to eq(one.size)
+    expect(many.max).to eq(2) # (bairro, situação): worked e closed, não as 23 inspeções
+    expect(stats.first).to include(visited: 12, worked: 8, closed: 4)
+  end
+
   it "visita retirada não conta" do
     first = household!
     second = household!

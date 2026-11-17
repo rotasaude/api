@@ -156,11 +156,13 @@ module VectorControl
       end
     end
 
-    # VectorCadence[]: a cidade primeiro, depois os bairros (id); dentro de
-    # cada um, os riscos (qualquer primeiro, na ordem de RISK_CLASSES) e o PE.
+    # VectorCadence[]: a cidade primeiro, depois os bairros (pelo nome, sem
+    # acento nem caixa, e id); dentro de cada um, os riscos (qualquer primeiro, na ordem
+    # de RISK_CLASSES) e o PE. Os nomes numa consulta.
     def cadences(rows)
+      names = Neighborhood.where(id: rows.filter_map(&:neighborhood_id).uniq).pluck(:id, :name).to_h
       rows.sort_by do |row|
-        [ row.neighborhood_id ? 1 : 0, row.neighborhood_id.to_s, row.strategic_point ? 1 : 0,
+        [ row.neighborhood_id ? 1 : 0, I18n.transliterate(names[row.neighborhood_id].to_s).downcase, row.neighborhood_id.to_s, row.strategic_point ? 1 : 0,
           row.risk_class ? Catalog::RISK_CLASSES.index(row.risk_class) + 1 : 0 ]
       end.map do |row|
         { neighborhood_id: row.neighborhood_id, risk_class: row.risk_class, strategic_point: row.strategic_point, days: row.days }

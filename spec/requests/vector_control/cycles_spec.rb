@@ -43,6 +43,18 @@ RSpec.describe "Vigilância ambiental — ciclos", type: :request do
     expect(VectorCycle.count).to eq(1)
   end
 
+  it "o ano do ciclo é o de starts_on → senão 422 cycle_invalid path year" do
+    sign_in_as(coordinator)
+    create_cycle(year: year + 1, number: 1, starts_on: "#{year}-12-01", ends_on: "#{year + 1}-01-31")
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "cycle_invalid", "path" => "year" } ])
+    create_cycle(year: year, number: 12, starts_on: "#{year}-12-01", ends_on: "#{year + 1}-01-31")
+    expect(response).to have_http_status(:created)
+
+    json_patch "/vector_control/cycles/#{json_body["id"]}", starts_on: "#{year + 1}-01-02"
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "cycle_invalid", "path" => "year" } ])
+    expect(VectorCycle.sole).to have_attributes(year: year, starts_on: Date.new(year, 12, 1), version: 1)
+  end
+
   it "GET /cycles/:id traz o resumo por bairro com `pending_percent` e `registered_households`" do
     agent = endemic_agent!
     area = MicroAreaFieldAssignment.active.find_by!(professional: agent.professional).micro_area

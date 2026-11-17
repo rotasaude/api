@@ -5,6 +5,7 @@
 # chaves, todas opcionais, ao menos uma. Recusas (só a primeira):
 #   - chave desconhecida, year fora de 2000–2100, number fora de 1–12, data
 #     que não é AAAA-MM-DD → invalid_request com o path;
+#   - year diferente do ano de starts_on → cycle_invalid path year;
 #   - ends_on antes de starts_on → cycle_invalid path ends_on;
 #   - (year, number) de outro ciclo → invalid_request path number;
 #   - período que cruza outro ciclo (excl_vector_cycles_overlap) → cycle_overlap
@@ -81,6 +82,7 @@ module VectorControl
       end
       starts_on = values.fetch(:starts_on) { cycle&.starts_on }
       ends_on = values.fetch(:ends_on) { cycle&.ends_on }
+      return fail_with(:cycle_invalid, "year") unless values.fetch(:year) { cycle&.year } == starts_on.year
       return fail_with(:cycle_invalid, "ends_on") if ends_on < starts_on
 
       values

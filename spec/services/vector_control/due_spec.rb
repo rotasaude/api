@@ -150,6 +150,30 @@ RSpec.describe VectorControl::Due, type: :model do
     expect(page(user: endemic_agent!).reason).to eq(:out_of_scope)
   end
 
+  def count_queries(&block)
+    count = 0
+    counter = ->(*, payload) { count += 1 unless %w[SCHEMA TRANSACTION].include?(payload[:name]) || payload[:cached] }
+    ActiveSupport::Notifications.subscribed(counter, "sql.active_record", &block)
+    count
+  end
+
+  it "consultas constantes: 1 ou 8 imóveis na microárea, o mesmo número de consultas" do
+    VectorCadence.create!(neighborhood: neighborhood, risk_class: "red", days: 30)
+    active_block!(block)
+    household!.tap { |row| worked!(row, days_ago: 90, block: block) }
+    agent && area
+    one = count_queries { page }
+
+    other_block = city_block!(neighborhood: neighborhood, number: "9")
+    7.times do |index|
+      household = household!
+      worked!(household, days_ago: 40 + index, block: other_block, risk: "red", situation: index.even? ? "worked" : "closed")
+      pending_item!(household, block: other_block) if index < 3
+    end
+    expect(count_queries { page }).to eq(one)
+    expect(items.size).to eq(8)
+  end
+
   it "nenhum campo de morador nas chaves" do
     household = household!.tap { |row| worked!(row, days_ago: 70, block: block, risk: "red") }
     pending_item!(household)
