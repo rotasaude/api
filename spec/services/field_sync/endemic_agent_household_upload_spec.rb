@@ -66,6 +66,21 @@ RSpec.describe "FieldSync::Upload — imóvel não residencial do agente de ende
     expect(Family.count + IndividualRegistration.count + FieldSyncReceipt.count).to eq(0)
   end
 
+  it "imóvel não residencial com morador ativo (cadastrado pelo enfermeiro) → rejected cbo_not_allowed, endereço do morador intacto" do
+    household = commerce!
+    patient = registry_patient!
+    registered = TerritoryRegistry::SaveRegistration.call(params: registry_registration_params(household, patient: patient),
+                                                          by: registry_nurse!(team.health_unit, team: team))
+    expect(registered).to be_ok
+    before = patient.reload.attributes.slice("address_zip", "address_street", "address_number", "updated_at")
+    address = registry_address.merge("street" => "das Palmeiras", "number" => "77")
+    result = upload(item("household", household_body(household_id: household.id, version: household.reload.version, address: address))).sole
+    valid_response!([ result ])
+    expect(failure(result)).to eq(cbo_refusal)
+    expect(patient.reload.attributes.slice("address_zip", "address_street", "address_number", "updated_at")).to eq(before)
+    expect(FieldSyncReceipt.count).to eq(0)
+  end
+
   it "gate desligado → rejected cbo_not_allowed" do
     household = commerce!
     Platform::Features.set!(city: city, key: VectorControl::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)

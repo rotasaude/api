@@ -78,11 +78,18 @@ module TerritoryRegistry
       end
     end
 
-    # Módulo 35a (Q14(1)): os tipos de imóvel que o usuário cadastra na equipe
-    # — a lista não residencial para o agente de endemias com vector_control
-    # utilizável; nil (= todos os tipos) para o resto.
-    def registration_property_types(user, team, vector_control:)
-      HomeVisits::Catalog::NON_RESIDENTIAL if endemic_registrar?(user, team, ficha: :household, vector_control: vector_control)
+    # Módulo 35a (Q14(1)): o contexto de cadastro do agente de endemias na
+    # equipe, numa ida só (o GET /territory/teams, sem consulta por
+    # microárea): { micro_area_ids: as atribuídas, property_types: a lista não
+    # residencial } — o mesmo que registrar?(ficha: :household) sem tipo dá
+    # :ok. nil fora do papel (ou sem vector_control): vale a regra do 24a.
+    def endemic_registration(user, team, vector_control:)
+      return nil unless endemic_registrar?(user, team, ficha: :household, vector_control: vector_control)
+
+      member = membership(user, team)
+      return nil unless registrar_cbo?(member.cbo_code, ficha: :household)
+
+      { micro_area_ids: assigned_ids(member, team), property_types: HomeVisits::Catalog::NON_RESIDENTIAL }
     end
 
     # Módulo 24b (Q11; ruling A5b): microáreas da equipe que o CBO de campo

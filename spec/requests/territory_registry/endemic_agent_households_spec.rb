@@ -88,6 +88,39 @@ RSpec.describe "Território — imóvel não residencial do agente de endemias",
     expect(household.reload.version).to eq(1)
   end
 
+  it "comércio com morador ativo (cadastrado pelo enfermeiro): o PATCH do ACE → 403 cbo_not_allowed, endereço do morador intacto" do
+    household = commerce!
+    patient = registry_patient!
+    registered = TerritoryRegistry::SaveRegistration.call(params: registry_registration_params(household, patient: patient),
+                                                          by: registry_nurse!(unit, team: team))
+    expect(registered).to be_ok
+    before = patient.reload.attributes.slice("address_zip", "address_street", "address_number", "updated_at")
+    sign_in_as(agent)
+    json_patch "/territory/households/#{household.id}",
+               body(version: household.reload.version, address: registry_address.merge("street" => "das Palmeiras", "number" => "77"))
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "cbo_not_allowed" } ])
+    expect(patient.reload.attributes.slice("address_zip", "address_street", "address_number", "updated_at")).to eq(before)
+    expect(household.reload.latest_version.address["street"]).to eq("das Flores")
+  end
+
+  it "família com o gate ligado: o TACS atribuído segue 404; o 515140 fora das microáreas dele, 404" do
+    mine = commerce!
+    nurse = registry_nurse!(unit, team: team)
+    foreign = TerritoryRegistry::SaveHousehold.call(params: body(micro_area_id: other_area.id).deep_stringify_keys, by: nurse).payload[:household]
+    family_body = { responsible: { patient_id: registry_patient!.id }, members_count: 1, version: 1 }
+    tacs = field_agent!(cbo: "515130", team: team)
+    assignment!(area, tacs.professional)
+    sign_in_as(tacs)
+    json_post "/territory/households/#{mine.id}/families", family_body
+    expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
+    sign_in_as(agent)
+    json_post "/territory/households/#{foreign.id}/families", family_body
+    expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
+    json_post "/territory/households/#{mine.id}/families", family_body
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "cbo_not_allowed" } ])
+    expect(Family.count).to eq(0)
+  end
+
   it "gate desligado → 403 cbo_not_allowed" do
     household = commerce!
     Platform::Features.set!(city: city, key: VectorControl::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)

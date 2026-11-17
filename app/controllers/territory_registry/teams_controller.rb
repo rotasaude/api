@@ -16,17 +16,17 @@ module TerritoryRegistry
       vector = vector_control_usable?
       render json: { teams: teams.map { |team|
         rows = areas[team.id] || []
-        types = Access.registration_property_types(Current.user, team, vector_control: vector)
-        allowed = rows.select { |area| registrar?(team, area, types ? %i[household] : %i[individual household], vector) }.map(&:id)
+        endemic = Access.endemic_registration(Current.user, team, vector_control: vector)
+        allowed = endemic ? rows.map(&:id) & endemic[:micro_area_ids] : rows.select { |area| registrar?(team, area) }.map(&:id)
         Json.professional_team(team, rows, can_register: allowed, reads_whole_team: Access.reads_whole_team?(Current.user, team),
-                                           property_types: types ? allowed.index_with(types) : {})
+                                           property_types: endemic ? allowed.index_with(endemic[:property_types]) : {})
       } }
     end
 
     private
 
-    def registrar?(team, area, fichas, vector)
-      fichas.all? { |ficha| Access.registrar?(Current.user, team, ficha: ficha, micro_area: area, vector_control: vector) == :ok }
+    def registrar?(team, area)
+      %i[individual household].all? { |ficha| Access.registrar?(Current.user, team, ficha: ficha, micro_area: area) == :ok }
     end
   end
 end

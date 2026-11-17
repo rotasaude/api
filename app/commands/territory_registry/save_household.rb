@@ -29,7 +29,8 @@
 #   - Agente de endemias (módulo 35a, Q13(1)): `vector_control:` (o
 #     interruptor utilizável, lido por quem chama fora da transação) chega ao
 #     Access.registrar? com o tipo do corpo e o da versão atual; só imóvel não
-#     residencial, nas microáreas atribuídas (a versão grava o CBO 515140).
+#     residencial, nas microáreas atribuídas (a versão grava o CBO 515140),
+#     e sem morador ativo, conferido sob a trava (senão cbo_not_allowed).
 #
 # SaveFamily usa `call` com `lock_patient_ids:` (o responsável, travado com
 # os moradores) e `before_version:` (grava a família depois das travas, antes
@@ -103,7 +104,10 @@ module TerritoryRegistry
       fields = parse_fields(params, household)
       return fields if fields.failure?
 
-      Result.ok(fields.payload.merge(area: area, cbo: member.cbo_code, expected: expected))
+      # :ok com o 515140 só sai pelo caminho do agente de endemias (o papel do
+      # 24a não o aceita): sem morador, conferido sob a trava (write).
+      endemic = member.cbo_code == Catalog::ENDEMIC_AGENT_CBO
+      Result.ok(fields.payload.merge(area: area, cbo: member.cbo_code, expected: expected, endemic: endemic))
     end
 
     def parse_fields(params, household)
@@ -148,6 +152,9 @@ module TerritoryRegistry
     def write(attrs, household, by, lock_patient_ids, before_version)
       residents = lock!(household, lock_patient_ids)
       refuse!(Result.fail(:stale_version)) if household && household.version != attrs[:expected]
+      # Módulo 35a (Q13(1)): o agente de endemias nunca grava dado de pessoa —
+      # imóvel com morador ativo (o copy_address! o regravaria) → cbo_not_allowed.
+      refuse!(Result.fail(:cbo_not_allowed)) if attrs[:endemic] && residents.any?
 
       if before_version
         outcome = before_version.call(household)

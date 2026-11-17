@@ -203,10 +203,12 @@ RSpec.describe TerritoryRegistry::Access, "agente de endemias (módulo 35a)", ty
       .to contain_exactly(mine.id, other_area.id, assigned.id)
   end
 
-  it "registration_property_types: a lista não residencial para o 515140 com o gate; nil para o resto" do
-    expect(described_class.registration_property_types(agent, team, vector_control: true)).to eq(%w[2 3 4 5 6 12 13])
-    expect(described_class.registration_property_types(agent, team, vector_control: false)).to be_nil
-    expect(described_class.registration_property_types(registry_acs!(unit, team: team), team, vector_control: true)).to be_nil
-    expect(described_class.registration_property_types(registry_nurse!(unit, team: team), team, vector_control: true)).to be_nil
+  it "endemic_registration: as microáreas atribuídas e a lista não residencial para o 515140 com o gate; nil para o resto" do
+    other_area
+    expect(described_class.endemic_registration(agent, team, vector_control: true))
+      .to eq(micro_area_ids: [ assigned.id ], property_types: %w[2 3 4 5 6 12 13])
+    expect(described_class.endemic_registration(agent, team, vector_control: false)).to be_nil
+    expect(described_class.endemic_registration(registry_acs!(unit, team: team), team, vector_control: true)).to be_nil
+    expect(described_class.endemic_registration(registry_nurse!(unit, team: team), team, vector_control: true)).to be_nil
   end
 end
