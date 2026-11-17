@@ -89,7 +89,7 @@ RSpec.describe VectorControl::Liraa::Draw, type: :model do
 
     expect([ result.reason, result.details ]).to eq([ :stratum_out_of_range, { path: "strata[1]" } ])
     expect(survey.reload).to have_attributes(status: "draft", parameters_version: nil, version: 1)
-    expect(survey.strata.pluck(:households_count)).to eq([ nil, nil ])
+    expect(survey.strata.order(:created_at).pluck(:households_count, :sample_target)).to eq([ [ 3, nil ], [ 3, nil ] ]) # N do rascunho (Q24)
     expect(LiraaStratumBlock.where(liraa_survey_id: survey.id, drawn: true)).to be_empty
     expect(items_of(survey)).to be_empty
   end
@@ -117,5 +117,38 @@ RSpec.describe VectorControl::Liraa::Draw, type: :model do
 
     expect(draw(survey)).to be_ok
     expect(items_of(survey).pluck(:household_id)).to eq([ homes.first.id ])
+  end
+
+  it "Q24: estrato de 2.010 imóveis com 20 PE → N 1.990 no rascunho, e o sorteio recusa (half exige N ≥ 2.000)" do
+    block = city_block!(neighborhood: neighborhood!("Centro"), number: "1")
+    ids = liraa_bulk_households!(block, 1990, micro_area: area)
+    strategic = liraa_bulk_households!(block, 20, micro_area: area, property_type: "4")
+    expect(HouseholdVersion.find_by!(household_id: ids.last).address).to eq(HouseholdVersion.find_by!(household_id: ids.first).address)
+    expect(VectorControl::Json.blocks([ block.reload ]).sole[:households_count]).to eq(2010) # CityBlock.households_count conta PE
+    survey = liraa_survey!([ { mode: "half", blocks: [ block ] } ])
+
+    expect(survey.strata.sole.households_count).to eq(1990)
+    expect(VectorControl::Json.liraa_survey(survey)[:strata].sole[:households_count]).to eq(1990)
+    expect(described_class.base([ block.id ]).fetch(block.id).size).to eq(1990)
+    expect(described_class.base([ block.id ]).fetch(block.id) & strategic).to be_empty
+
+    result = draw(survey)
+    expect([ result.reason, result.details ]).to eq([ :stratum_out_of_range, { path: "strata[0]" } ])
+    expect(survey.reload.status).to eq("draft")
+    expect(survey.strata.sole.households_count).to eq(1990)
+  end
+
+  it "quarteirão desativado depois da gravação → invalid_request path strata[i], nada gravado" do
+    block = city_block!(neighborhood: neighborhood!("Centro"), number: "1")
+    other = city_block!(neighborhood: block.neighborhood, number: "2")
+    liraa_households!(block, 2, micro_area: area)
+    survey = liraa_survey!([ { mode: "census", blocks: [ block ] }, { mode: "census", blocks: [ other ] } ])
+    other.update!(active: false, version: other.version + 1)
+
+    result = draw(survey)
+
+    expect([ result.reason, result.details ]).to eq([ :invalid_request, { path: "strata[1]" } ])
+    expect(survey.reload).to have_attributes(status: "draft", version: 1)
+    expect(items_of(survey)).to be_empty
   end
 end

@@ -6,6 +6,8 @@
 #     estratégico (tipo 4, Q16(d)), por (registered_at, id); N = o total;
 #   - os quarteirões por (nome do bairro, bairro, número natural:
 #     CityBlock.natural_number_order, Q18); B = quantos;
+#   - quarteirão desativado depois da gravação (relido FOR SHARE) →
+#     invalid_request path strata[i] (o código do SaveSurvey), nada gravado;
 #   - Liraa::Sample.plan (standard e half com quarteirões sistemáticos, Q17;
 #     census, todos); fora da faixa → stratum_out_of_range path strata[i], nada
 #     gravado;
@@ -67,11 +69,18 @@ module VectorControl
         return Result.fail(:invalid_request, details: { path: "strata" }) if strata.empty?
 
         rows = LiraaStratumBlock.where(liraa_stratum_id: strata.map(&:id)).to_a
+        # Sob a trava do levantamento, os quarteirões FOR SHARE: desativado
+        # depois do SaveSurvey (o SaveBlock trava o quarteirão) → o estrato
+        # recusado, com o código do SaveSurvey para quarteirão inativo.
+        inactive = CityBlock.where(id: rows.map(&:city_block_id)).order(:id).lock("FOR SHARE")
+                            .pluck(:id, :active).reject(&:last).map(&:first).to_set
         order = block_order(rows.map(&:city_block_id)).each_with_index.to_h
         base = base(rows.map(&:city_block_id))
         by_stratum = rows.group_by(&:liraa_stratum_id)
         strata.each_with_index.map do |stratum, index|
           blocks = by_stratum.fetch(stratum.id, []).sort_by { |row| order.fetch(row.city_block_id) }
+          return Result.fail(:invalid_request, details: { path: "strata[#{index}]" }) if blocks.any? { |row| inactive.include?(row.city_block_id) }
+
           count = blocks.sum { |row| base.fetch(row.city_block_id, []).size }
           plan = Sample.plan(mode: stratum.mode, households_count: count, blocks_count: blocks.size, parameters: parameters.values)
           return Result.fail(:stratum_out_of_range, details: { path: "strata[#{index}]" }) if plan == :out_of_range

@@ -141,6 +141,29 @@ module VectorControlHelpers
     end
   end
 
+  # Muitos domicílios de uma vez (Q24: estrato de milhares): um pelo caminho
+  # do liraa_households! e os outros copiados dele em lote (insert_all cifra as
+  # colunas cifradas, como o create!), sem ficha LEDI. -> [household_id]
+  def liraa_bulk_households!(block, count, micro_area:, property_type: "1")
+    template = liraa_households!(block, 1, micro_area: micro_area, property_type: property_type).first
+    version = template.versions.sole
+    profile = HouseholdVectorProfile.find_by!(household_id: template.id)
+    now = Time.current
+    ids = Array.new(count - 1) { SecureRandom.uuid }
+    return [ template.id ] if ids.empty?
+
+    Household.insert_all!(ids.each_with_index.map do |id, i|
+      { id: id, micro_area_id: micro_area.id, status: "active", version: 1, registered_at: now + Rational(i + 1, 1_000_000),
+        registered_by_user_id: template.registered_by_user_id, created_at: now, updated_at: now }
+    end)
+    values = version.attributes.except("id", "household_id", "created_at")
+    HouseholdVersion.insert_all!(ids.map { |id| values.merge("household_id" => id, "created_at" => now) })
+    HouseholdVectorProfile.insert_all!(ids.map do |id|
+      { household_id: id, city_block_id: block.id, updated_by_user_id: profile.updated_by_user_id, created_at: now, updated_at: now }
+    end)
+    [ template.id ] + ids
+  end
+
   # Levantamento em rascunho pelo caminho real (Liraa::SaveSurvey):
   # `strata` = [{ name?, mode, blocks: [CityBlock] }]. -> LiraaSurvey
   def liraa_survey!(strata)

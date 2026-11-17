@@ -32,7 +32,7 @@ RSpec.describe "Vigilância ambiental — LIRAa", type: :request do
     json_patch "/vector_control/liraa_surveys/#{survey['id']}", strata: [ stratum ]
     expect(response).to have_http_status(:ok)
     expect(json_body["strata"].sole.except("id")).to eq("name" => "Estrato 1", "mode" => "census", "block_ids" => [ block.id ],
-                                                       "households_count" => nil, "sample_target" => nil, "block_interval" => nil,
+                                                       "households_count" => 3, "sample_target" => nil, "block_interval" => nil,
                                                        "random_start" => nil)
 
     json_post "/vector_control/liraa_surveys/#{survey['id']}/draw", {}

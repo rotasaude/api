@@ -24,8 +24,9 @@
 #   - ovitraps → Ovitrap[]; ovitrap_readings → OvitrapReading[]; tasks →
 #     VectorTask[] (Task 9; semana em "YYYY-WW", A-9; notas nunca saem).
 #   - liraa_surveys → LiraaSurvey[] (Task 10: estratos na ordem do
-#     levantamento, block_ids na ordem gravada; N, n, intervalo e início nulos
-#     antes do sorteio); liraa_items → LiraaItem[] (o domicílio só com o
+#     levantamento, block_ids na ordem gravada; no rascunho, N sem ponto
+#     estratégico pela base do sorteio (Q24) e n, intervalo e início nulos);
+#     liraa_items → LiraaItem[] (o domicílio só com o
 #     endereço curto; quem mostra grava a trilha).
 module VectorControl
   module Json

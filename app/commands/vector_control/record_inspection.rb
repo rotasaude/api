@@ -3,7 +3,8 @@
 # chama, na transação da visita:
 #   - facts! (logo depois do domicílio, antes das regras): trava o perfil do
 #     imóvel FOR UPDATE (criado se faltar; SaveProfile.lock_profiles!), lê o
-#     quarteirão citado FOR SHARE, trava o item do LIRAa FOR UPDATE, lê o
+#     quarteirão citado FOR SHARE, trava o item do LIRAa FOR UPDATE (e o
+#     levantamento dele FOR SHARE: o fechamento espera a visita), lê o
 #     bloqueio FOR SHARE e os produtos das medidas FOR SHARE (Task 7: a troca
 #     de unidade ou carga do VectorControl::SaveProduct, FOR UPDATE, espera a
 #     visita, e a quantidade da medida usa a carga relida sob a trava) — a ordem
@@ -89,11 +90,17 @@ module VectorControl
       block && { id: block.id, neighborhood_id: block.neighborhood_id, active: block.active }
     end
 
-    # Item travado FOR UPDATE; o levantamento lido sem trava (o fechamento o
-    # trava antes dos itens; o trigger recusa mudar item de levantamento fechado).
+    # Item travado FOR UPDATE e, logo depois, o levantamento FOR SHARE: o
+    # fechamento (Liraa::Close, FOR UPDATE no levantamento) espera a visita do
+    # LIRAa em curso, e a visita que chega depois dele lê closed →
+    # liraa_item_not_found. Close e Draw não travam itens: sem ciclo.
     def liraa_item(id)
       item = uuid?(id) && LiraaDrawItem.lock.find_by(id: id)
-      item && { id: item.id, household_id: item.household_id, status: item.status, survey_status: Liraa::Items.survey_status(item) }
+      return nil unless item
+
+      survey_status = LiraaSurvey.joins(:strata).where(liraa_strata: { id: item.liraa_stratum_id })
+                                 .lock("FOR SHARE OF liraa_surveys").pick(:status)
+      { id: item.id, household_id: item.household_id, status: item.status, survey_status: survey_status }
     end
 
     def transmission_block(id)

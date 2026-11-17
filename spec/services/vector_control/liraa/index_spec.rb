@@ -106,6 +106,22 @@ RSpec.describe VectorControl::Liraa::Index, type: :model do
       expect(described_class.for(survey)[:strata].first[:provisional]).to be(false)
     end
 
+    it "Q24: fechado com amostras sem resultado → provisório; o resultado tardio muda os positivos; o último o torna final" do
+      a, b, = item_list
+      first = sample!(inspect!(a), "A2")
+      last = sample!(inspect!(b), "B")
+      survey.update!(status: "closed", closed_at: Time.current)
+      expect(described_class.for(survey)[:strata].first).to include(inspected: 2, positive_households: 0, provisional: true)
+
+      result!(first, 3)
+      expect(described_class.for(survey)[:strata].first).to include(positive_households: 1, iip: "50.0", provisional: true)
+
+      result!(last, 0)
+      row = described_class.for(survey)[:strata].first
+      expect(row).to include(inspected: 2, positive_households: 1, positive_containers: 1, iip: "50.0", provisional: false)
+      expect(described_class.for(survey)[:municipality][:provisional]).to be(false)
+    end
+
     it "levantamento fechado congela as inspeções: a retirada e a inspeção depois do fechamento não mudam o índice" do
       a, b, = item_list
       positive = inspect!(a)

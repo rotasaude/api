@@ -119,8 +119,10 @@ end
 # Review Focus 1 com threads reais (o molde do record_inspection_spec): duas
 # recusas do mesmo item → um substituto só; duas recusas de itens vizinhos ao
 # mesmo tempo → a segunda espera a trava do estrato e não escolhe o mesmo
-# imóvel. Contra TEST_CITY_A, sem fixture transacional.
-RSpec.describe VectorControl::Liraa::Items, "× substituições ao mesmo tempo" do
+# imóvel; o fechamento espera a visita do LIRAa em curso (o levantamento FOR
+# SHARE na visita), e a visita depois dele é recusada. Contra TEST_CITY_A, sem
+# fixture transacional.
+RSpec.describe VectorControl::Liraa::Items, "× substituições e fechamento ao mesmo tempo" do
   self.use_transactional_tests = false
 
   let(:release) { Queue.new }
@@ -152,7 +154,8 @@ RSpec.describe VectorControl::Liraa::Items, "× substituições ao mesmo tempo" 
       first = LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household_id: order[0], position: 1)
       third = LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household_id: order[2], position: 3)
       survey.update!(status: "drawn", drawn_at: Time.current, parameters_version: 0)
-      { agents: [ agent.id, other.id ], team: team.id, order: order, first: first.id, third: third.id }
+      { agents: [ agent.id, other.id ], team: team.id, order: order, first: first.id, third: third.id, survey: survey.id,
+        coordinator: endemic_coordinator!.id }
     end
     allow(Ledi::DeliverJob).to receive(:perform_later)
   end
@@ -178,24 +181,30 @@ RSpec.describe VectorControl::Liraa::Items, "× substituições ao mesmo tempo" 
     end
   end
 
-  def refuse_now(go, item_id, agent_id)
+  def visit_in_city(item_id, agent_id, situation = "refused")
+    item = LiraaDrawItem.find(item_id)
+    report = { "activity" => "liraa", "work_type" => "routine", "situation" => situation, "educational_action" => false,
+               "liraa_draw_item_id" => item.id }
+    HomeVisits::Record.call(params: { "client_uuid" => SecureRandom.uuid, "team_id" => @ids[:team],
+                                      "occurred_at" => Time.current.change(usec: 0).iso8601, "household_id" => item.household_id,
+                                      "subject" => "none", "outcome" => VectorControl::Catalog::SITUATION_OUTCOME.fetch(situation),
+                                      "reasons" => [], "vector_inspection" => report },
+                            by: User.find(agent_id), vector_control: true)
+  end
+
+  def run_now(go, action)
     go.pop(timeout: 5) or raise "timeout esperando go"
-    in_city do
-      item = LiraaDrawItem.find(item_id)
-      report = { "activity" => "liraa", "work_type" => "routine", "situation" => "refused", "educational_action" => false,
-                 "liraa_draw_item_id" => item.id }
-      HomeVisits::Record.call(params: { "client_uuid" => SecureRandom.uuid, "team_id" => @ids[:team],
-                                        "occurred_at" => Time.current.change(usec: 0).iso8601, "household_id" => item.household_id,
-                                        "subject" => "none", "outcome" => 2, "reasons" => [], "vector_inspection" => report },
-                              by: User.find(agent_id), vector_control: true)
-    end
+    in_city { action.call }
   rescue StandardError => e
     e
   end
 
-  # A primeira grava e fica parada antes do commit (no home_visit.recorded,
-  # depois do substituto); a segunda começa e espera numa trava.
-  def race(first_args, second_args)
+  def refusal(item_id, agent_id) = -> { visit_in_city(item_id, agent_id) }
+
+  # A primeira (uma visita) grava e fica parada antes do commit (no
+  # home_visit.recorded, depois do substituto); a segunda começa e espera numa
+  # trava. Com `before_release`, roda com a segunda ainda parada.
+  def race(first_action, second_action, before_release: nil)
     holder = nil
     holding = Queue.new
     original = DomainEvents.method(:publish)
@@ -210,15 +219,16 @@ RSpec.describe VectorControl::Liraa::Items, "× substituições ao mesmo tempo" 
 
     go_first = Queue.new
     first_result = Queue.new
-    threads << (holder = Thread.new { first_result << refuse_now(go_first, *first_args) })
+    threads << (holder = Thread.new { first_result << run_now(go_first, first_action) })
     go_first << true
     holding.pop(timeout: 5) or raise "a primeira não chegou a gravar"
 
     go_second = Queue.new
     second_result = Queue.new
-    threads << (other = Thread.new { second_result << refuse_now(go_second, *second_args) })
+    threads << (other = Thread.new { second_result << run_now(go_second, second_action) })
     go_second << true
     expect(wait_for_lock_wait).to be(true)
+    before_release&.call(other)
 
     release << true
     expect(holder.join(10)).to be(holder)
@@ -227,7 +237,7 @@ RSpec.describe VectorControl::Liraa::Items, "× substituições ao mesmo tempo" 
   end
 
   it "duas recusas do mesmo item em threads → um substituto só; a segunda liraa_item_not_found" do
-    first, second = race([ @ids[:third], @ids[:agents][0] ], [ @ids[:third], @ids[:agents][1] ])
+    first, second = race(refusal(@ids[:third], @ids[:agents][0]), refusal(@ids[:third], @ids[:agents][1]))
 
     expect([ first, second ]).to all(be_a(Result)) # nenhuma exceção (deadlock, trigger, único)
     expect(first).to be_ok
@@ -238,13 +248,36 @@ RSpec.describe VectorControl::Liraa::Items, "× substituições ao mesmo tempo" 
   end
 
   it "recusas de dois itens com o mesmo vizinho em threads → a segunda espera o estrato e escolhe outro imóvel" do
-    first, second = race([ @ids[:first], @ids[:agents][0] ], [ @ids[:third], @ids[:agents][1] ])
+    first, second = race(refusal(@ids[:first], @ids[:agents][0]), refusal(@ids[:third], @ids[:agents][1]))
 
     expect([ first, second ]).to all(be_a(Result))
     expect([ first, second ]).to all(be_ok)
     in_city do
       expect(LiraaDrawItem.where(substitute_of_id: @ids[:first]).pluck(:household_id)).to eq([ @ids[:order][1] ])
       expect(LiraaDrawItem.where(substitute_of_id: @ids[:third]).pluck(:household_id)).to eq([ @ids[:order][3] ])
+    end
+  end
+
+  it "o fechamento espera a visita do LIRAa em curso; a inspeção conta; a visita depois do fechamento → liraa_item_not_found" do
+    worked = -> { visit_in_city(@ids[:first], @ids[:agents][0], "worked") }
+    close = -> { VectorControl::Liraa::Close.call(survey: LiraaSurvey.find(@ids[:survey]), by: User.find(@ids[:coordinator])) }
+    still_waiting = nil
+    visit, closing = race(worked, close, before_release: ->(closer) { still_waiting = closer.join(0.3).nil? })
+
+    expect(still_waiting).to be(true) # o Close parado na trava do levantamento
+    expect([ visit, closing ]).to all(be_a(Result))
+    expect([ visit, closing ]).to all(be_ok)
+    in_city do
+      survey = LiraaSurvey.find(@ids[:survey])
+      inspection = VectorInspection.find_by!(liraa_draw_item_id: @ids[:first])
+      expect(survey.status).to eq("closed")
+      expect(inspection.created_at).to be <= survey.closed_at
+      expect(LiraaDrawItem.find(@ids[:first]).status).to eq("inspected")
+      expect(VectorControl::Liraa::Index.for(survey)[:strata].sole).to include(inspected: 1)
+
+      late = visit_in_city(@ids[:third], @ids[:agents][1])
+      expect([ late.reason, late.details ]).to eq([ :liraa_item_not_found, { path: "vector_inspection.liraa_draw_item_id" } ])
+      expect(LiraaDrawItem.find(@ids[:third]).status).to eq("pending")
     end
   end
 end

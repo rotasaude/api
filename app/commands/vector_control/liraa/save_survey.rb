@@ -13,6 +13,10 @@
 #     strata[i].block_ids[j] (a segunda ocorrência);
 #   - sob a trava do levantamento (FOR UPDATE), fora de draft →
 #     survey_not_draft (409).
+# Q24: a cada gravação, o households_count de cada estrato do rascunho é
+# recontado pela base do sorteio (Liraa::Draw.base: ativos com o quarteirão no
+# perfil, sem ponto estratégico), a mesma consulta do sorteio: o N que o
+# editor mostra é o N que o sorteio confere (o sorteio reconta na hora).
 # Sem evento (§17).
 module VectorControl
   module Liraa
@@ -51,6 +55,7 @@ module VectorControl
             survey = LiraaSurvey.create!(values)
           end
           replace_strata!(survey, strata) if strata
+          count_strata!(survey)
           Result.ok(survey: survey)
         end
       end
@@ -147,6 +152,18 @@ module VectorControl
         end
       end
 
+      # households_count de cada estrato pela base do sorteio (Q24).
+      def count_strata!(survey)
+        strata = LiraaStratum.where(liraa_survey_id: survey.id).order(:created_at, :id).to_a
+        rows = LiraaStratumBlock.where(liraa_stratum_id: strata.map(&:id)).pluck(:liraa_stratum_id, :city_block_id)
+        base = Draw.base(rows.map(&:last))
+        by_stratum = rows.group_by(&:first)
+        strata.each do |stratum|
+          count = by_stratum.fetch(stratum.id, []).sum { |_, block_id| base.fetch(block_id, []).size }
+          stratum.update!(households_count: count, version: stratum.version + 1) unless stratum.households_count == count
+        end
+      end
+
       def text(raw, range)
         clean = raw.is_a?(String) ? raw.strip : nil
         clean if clean && range.cover?(clean.length)
@@ -159,7 +176,7 @@ module VectorControl
       end
 
       def fail_with(reason, path) = Result.fail(reason, details: path ? { path: path } : {})
-      private_class_method :parse, :strata, :replace_strata!, :text, :date
+      private_class_method :parse, :strata, :replace_strata!, :count_strata!, :text, :date
     end
   end
 end
