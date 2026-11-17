@@ -17,7 +17,7 @@ module VectorControl
     # O resto das recusas é 422 (inclusive sample_label_taken, Q7(1)).
     # client_uuid_conflict só na instalação de ovitrampa com o client_uuid de
     # outro usuário. invalid_transition sempre com path status (Q9).
-    # proposal_changed: confirmação com área que perdeu um caso novo (Q26(4)).
+    # proposal_changed: a proposta tem caso que a tela não viu (Q26(4)).
     FAILURE_STATUS = {
       mfa_required: :unauthorized,
       feature_disabled: :forbidden, cbo_not_allowed: :forbidden, out_of_scope: :forbidden, missing_role: :forbidden,

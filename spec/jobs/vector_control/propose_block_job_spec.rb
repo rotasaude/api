@@ -48,7 +48,8 @@ RSpec.describe VectorControl::ProposeBlockJob, type: :job do
     block = first.transmission_block
     coordinator = endemic_coordinator!
     block_neighbors!(center, side)
-    expect(VectorControl::Blocks::Confirm.call(block: block, center_block_id: center.id, block_ids: [ neighbor.id, far.id ], by: coordinator)).to be_ok
+    expect(VectorControl::Blocks::Confirm.call(block: block, center_block_id: center.id, block_ids: [ neighbor.id, far.id ],
+                                               seen_case_ids: [ first.id, second.id ], by: coordinator)).to be_ok
     third = proposed_case!(patient: block_case_patient!(block: far), on: today)
     expect(third.transmission_block_id).to eq(block.id) # a área do ativo é a confirmada
     outside = proposed_case!(patient: block_case_patient!(block: side), on: today)

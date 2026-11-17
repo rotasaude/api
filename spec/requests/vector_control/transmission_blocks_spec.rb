@@ -17,28 +17,32 @@ RSpec.describe "Vigilância ambiental — bloqueio de transmissão", type: :requ
   after { Current.reset }
 
   def confirm!(block, block_ids: [ center.id, neighbor.id ])
-    expect(VectorControl::Blocks::Confirm.call(block: block, center_block_id: center.id, block_ids: block_ids, by: coordinator)).to be_ok
+    expect(VectorControl::Blocks::Confirm.call(block: block, center_block_id: center.id, block_ids: block_ids, seen_case_ids: seen(block),
+                                               by: coordinator)).to be_ok
     block.reload
   end
+
+  # Os casos que a tela mostrou (Q26(4) revista): os da proposta agora.
+  def seen(block) = block.cases.order(:number).pluck(:id)
 
   it "confirm sem step-up → 401; vector_lab → 403; de active → 409 invalid_transition path status" do
     block = proposed_case!(patient: block_case_patient!(block: center)).transmission_block
     sign_in_as(coordinator)
-    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id ]
+    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id ], seen_case_ids: seen(block)
     expect([ response.status, json_body ]).to eq([ 401, { "error" => "mfa_required" } ])
     sign_in_as(vector_lab!)
-    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id ]
+    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id ], seen_case_ids: seen(block)
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
 
     stepped_up!(coordinator)
-    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: []
+    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [], seen_case_ids: seen(block)
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "block_ids" } ])
-    json_post "#{base}/#{block.id}/confirm", center_block_id: SecureRandom.uuid, block_ids: [ center.id ]
+    json_post "#{base}/#{block.id}/confirm", center_block_id: SecureRandom.uuid, block_ids: [ center.id ], seen_case_ids: seen(block)
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "center_block_id" } ])
-    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ far.id ], note: "x"
+    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ far.id ], seen_case_ids: seen(block), note: "x"
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "note" } ])
 
-    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ far.id ]
+    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ far.id ], seen_case_ids: seen(block)
     expect(response).to have_http_status(:ok)
     expect(json_body).to include("id" => block.id, "status" => "active", "center_block" => { "id" => center.id, "number" => "10" })
     expect(json_body["area"]).to eq([ { "id" => center.id, "number" => "10", "suggested" => true },
@@ -48,7 +52,7 @@ RSpec.describe "Vigilância ambiental — bloqueio de transmissão", type: :requ
     expect(DomainEvent.where(name: "transmission_block.confirmed").sole.payload)
       .to eq("transmission_block_id" => block.id, "user_id" => coordinator.id)
 
-    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id ]
+    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id ], seen_case_ids: seen(block)
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "invalid_transition", "path" => "status" } ])
     json_post "#{base}/#{block.id}/dismiss", reason: "Caso descartado pela vigilância"
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "invalid_transition", "path" => "status" } ])
@@ -227,24 +231,63 @@ RSpec.describe "Vigilância ambiental — bloqueio de transmissão", type: :requ
                       .where("payload->>'user_id' = ?", coordinator.id)).to be_empty
   end
 
-  # Q26(4): o dashboard leu a proposta; um caso novo com lugar entrou pelos
-  # anéis; a confirmação com a área lida → 409 proposal_changed, nada muda.
-  it "confirm com a área lida antes de um caso novo entrar → 409 proposal_changed" do
+  # Q26(4) revista (docs afda0ea): a deriva é medida pelos casos que a tela
+  # viu (seen_case_ids), nunca pela área contra o quarteirão dos casos.
+  it "caso novo entre a leitura e o confirm: a lista velha → 409 proposal_changed, nada muda; a lista nova passa" do
     block = proposed_case!(patient: block_case_patient!(block: center)).transmission_block
     stepped_up!(coordinator)
     get "#{base}/#{block.id}"
-    expect(json_body["cases"].size).to eq(1)
+    shown = json_body["cases"].map { |row| row["id"] }
     late = proposed_case!(patient: block_case_patient!(block: neighbor))
     expect(late.transmission_block_id).to eq(block.id)
 
-    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id ]
+    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id, neighbor.id ], seen_case_ids: shown
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "proposal_changed" } ])
     expect(block.reload).to have_attributes(status: "proposed", confirmed_at: nil, version: 1)
     expect(TransmissionBlockArea.where(transmission_block_id: block.id)).to be_empty
     expect(DomainEvent.where(name: "transmission_block.confirmed")).to be_empty
 
-    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id, neighbor.id ]
+    get "#{base}/#{block.id}"
+    reread = json_body["cases"].map { |row| row["id"] }
+    expect(reread).to eq([ shown.sole, late.id ])
+    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id ], seen_case_ids: reread
     expect(response).to have_http_status(:ok)
     expect(json_body["status"]).to eq("active")
+  end
+
+  it "área sem o quarteirão de um caso, com a lista inteira → passa" do
+    block = proposed_case!(patient: block_case_patient!(block: center)).transmission_block
+    proposed_case!(patient: block_case_patient!(block: neighbor))
+    stepped_up!(coordinator)
+    json_post "#{base}/#{block.id}/confirm", center_block_id: far.id, block_ids: [ far.id ], seen_case_ids: seen(block)
+    expect(response).to have_http_status(:ok)
+    expect(json_body["area"].map { |row| row["id"] }).to eq([ far.id ])
+  end
+
+  it "caso movido para proposta cujos anéis não alcançam o quarteirão dele: confirm com a lista inteira passa" do
+    moved = proposed_case!(patient: block_case_patient!(block: center))
+    target = proposed_case!(patient: block_case_patient!(block: far)).transmission_block
+    expect(VectorControl::Blocks::MoveCase.call(block: moved.transmission_block, block_case: moved, to_transmission_block_id: target.id,
+                                                by: coordinator)).to be_ok
+    expect(VectorControl::Json.transmission_block(target.reload)[:area].map { |row| row[:id] }).not_to include(center.id)
+
+    stepped_up!(coordinator)
+    json_post "#{base}/#{target.id}/confirm", center_block_id: far.id, block_ids: [ far.id ], seen_case_ids: seen(target)
+    expect(response).to have_http_status(:ok)
+    expect(json_body["status"]).to eq("active")
+  end
+
+  it "seen_case_ids ausente, fora de lista, não UUID, repetido ou de outra proposta → 422 invalid_request path seen_case_ids" do
+    row = proposed_case!(patient: block_case_patient!(block: center))
+    block = row.transmission_block
+    other = proposed_case!(patient: block_case_patient!(block: far))
+    stepped_up!(coordinator)
+    [ nil, row.id, [ "caso-1" ], [ row.id, row.id ], [ row.id, other.id ], [ SecureRandom.uuid ] ].each do |value|
+      payload = { center_block_id: center.id, block_ids: [ center.id ] }
+      payload[:seen_case_ids] = value unless value.nil?
+      json_post "#{base}/#{block.id}/confirm", payload
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "seen_case_ids" } ]), value.inspect
+    end
+    expect(block.reload.status).to eq("proposed")
   end
 end

@@ -3,7 +3,8 @@
 # (403 missing_role para os outros).
 #   - GET /transmission_blocks?status[]=&before= → `{ items, next_before }` de
 #     TransmissionBlock, mais recente primeiro; GET /:id → TransmissionBlock;
-#   - POST /:id/confirm `{ center_block_id, block_ids }` (step-up), /dismiss
+#   - POST /:id/confirm `{ center_block_id, block_ids, seen_case_ids }`
+#     (step-up; caso fora de seen_case_ids → 409 proposal_changed), /dismiss
 #     `{ reason }`, /close `{}`, /cycles `{ starts_on, ends_on }` e
 #     /cases/:case_id/move `{ to_transmission_block_id }` → TransmissionBlock
 #     (o do destino no mover); fora do estado → 409 invalid_transition path
@@ -48,10 +49,10 @@ module VectorControl
     end
 
     def confirm
-      return unless known_keys!(%w[center_block_id block_ids])
+      return unless known_keys!(%w[center_block_id block_ids seen_case_ids])
 
       respond(Blocks::Confirm.call(block: @block, center_block_id: body_param("center_block_id"), block_ids: body_param("block_ids"),
-                                   by: Current.user))
+                                   seen_case_ids: body_param("seen_case_ids"), by: Current.user))
     end
 
     def dismiss

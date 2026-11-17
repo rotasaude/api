@@ -13,7 +13,8 @@ RSpec.describe VectorControl::Blocks::AddCycle, type: :model do
 
   def active_block!
     block = TransmissionBlock.create!(disease_group: "arbovirus", center_block: center)
-    expect(VectorControl::Blocks::Confirm.call(block: block, center_block_id: center.id, block_ids: [ center.id ], by: coordinator)).to be_ok
+    expect(VectorControl::Blocks::Confirm.call(block: block, center_block_id: center.id, block_ids: [ center.id ], seen_case_ids: [],
+                                                 by: coordinator)).to be_ok
     block.reload
   end
 
