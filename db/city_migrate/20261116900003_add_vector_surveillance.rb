@@ -72,8 +72,9 @@ class AddVectorSurveillance < ActiveRecord::Migration[8.1]
     create_table :ovitraps, id: :uuid do |t|
       t.string :number, limit: 12, null: false
       t.references :household, type: :uuid, null: false, foreign_key: true, index: false
-      # O quarteirão do imóvel na instalação, congelado (nulo se o imóvel não tinha).
-      t.references :city_block, type: :uuid, foreign_key: true, index: false
+      # O quarteirão do imóvel na instalação, congelado (§6: sem quarteirão,
+      # household_without_block).
+      t.references :city_block, type: :uuid, null: false, foreign_key: true, index: false
       t.timestamptz :consent_at, null: false
       t.date :installed_on, null: false
       t.date :removed_on
@@ -117,6 +118,8 @@ class AddVectorSurveillance < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :ovitrap_readings, :ovitrap_id, unique: true, where: "collected_on IS NULL", name: "idx_ovitrap_readings_open"
+    # Alvo da FK composta de vector_tasks (A-8: a ovitrampa da tarefa é a da leitura).
+    add_index :ovitrap_readings, %i[id ovitrap_id], unique: true, name: "idx_ovitrap_readings_id_ovitrap"
     add_index :ovitrap_readings, %i[ovitrap_id installed_on], name: "idx_ovitrap_readings_ovitrap"
     add_index :ovitrap_readings, :epi_week, name: "idx_ovitrap_readings_epi_week"
     add_index :ovitrap_readings, :collected_on, where: "condition::text = 'ok'::text AND egg_count IS NULL",
@@ -311,12 +314,18 @@ class AddVectorSurveillance < ActiveRecord::Migration[8.1]
     add_index :vector_tasks, :transmission_block_id, name: "idx_vector_tasks_block"
     add_check_constraint :vector_tasks, "kind::text = ANY (ARRAY[#{quoted(TASK_KINDS)}])", name: "ck_vector_tasks_kind"
     add_check_constraint :vector_tasks, "state::text = ANY (ARRAY[#{quoted(TASK_STATES)}])", name: "ck_vector_tasks_state"
-    add_check_constraint :vector_tasks, "num_nonnulls(ovitrap_reading_id, disease_notification_id, transmission_block_id) = 1",
-                         name: "ck_vector_tasks_reference"
+    # Uma referência só, a do tipo (§6, §8): intensificação → leitura; caso de
+    # fora → notificação; caso sem lugar → a proposta própria do bloqueio.
     add_check_constraint :vector_tasks,
+                         "num_nonnulls(ovitrap_reading_id, disease_notification_id, transmission_block_id) = 1 AND " \
                          "(kind::text = 'ovitrap_intensification'::text) = (ovitrap_reading_id IS NOT NULL) AND " \
-                         "(ovitrap_reading_id IS NULL) = (ovitrap_id IS NULL)",
-                         name: "ck_vector_tasks_ovitrap"
+                         "(kind::text = 'case_resident_elsewhere'::text) = (disease_notification_id IS NOT NULL) AND " \
+                         "(kind::text = 'block_case_without_place'::text) = (transmission_block_id IS NOT NULL)",
+                         name: "ck_vector_tasks_reference"
+    add_check_constraint :vector_tasks, "(ovitrap_reading_id IS NULL) = (ovitrap_id IS NULL)", name: "ck_vector_tasks_ovitrap"
+    # A-8: a ovitrampa é a da leitura.
+    add_foreign_key :vector_tasks, :ovitrap_readings, column: %i[ovitrap_reading_id ovitrap_id], primary_key: %i[id ovitrap_id],
+                                                      name: "fk_vector_tasks_reading_ovitrap"
     add_check_constraint :vector_tasks, "(state::text = 'open'::text) = (closed_by_user_id IS NULL) AND " \
                                         "(closed_note IS NULL OR state::text <> 'open'::text)",
                          name: "ck_vector_tasks_closed"

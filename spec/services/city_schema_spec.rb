@@ -218,12 +218,12 @@ RSpec.describe CitySchema do
 
     expect(tables.size).to eq(24)
     expect(names).to include(*%w[city_block_neighbors vector_products vector_samples vector_stock_shortfalls
-                                 ovitrap_readings vector_tasks liraa_surveys liraa_strata liraa_stratum_blocks
-                                 transmission_blocks transmission_block_cases].map { |t| "#{t}_guard" },
+                                 ovitraps ovitrap_readings vector_tasks liraa_surveys liraa_strata liraa_stratum_blocks
+                                 liraa_draw_items transmission_blocks transmission_block_cases].map { |t| "#{t}_guard" },
                              *%w[vector_parameter_versions vector_inspections vector_inspection_deposits vector_inspection_measures
                                  transmission_block_areas].map { |t| "#{t}_append_only" },
                              *%w[city_blocks household_vector_profiles vector_cadences vector_cycles vector_control_settings
-                                 ovitraps liraa_draw_items transmission_block_cycles].map { |t| "#{t}_no_delete" },
+                                 transmission_block_cycles].map { |t| "#{t}_no_delete" },
                              *tables.map { |t| "#{t}_append_only_truncate" })
   end
 

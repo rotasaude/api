@@ -1,6 +1,6 @@
 # Estrato do LIRAa (módulo 35a; contrato §1 e §7): modo, N, n, intervalo e
 # início casual dos quarteirões, gravados no sorteio. Fixo fora do rascunho do
-# levantamento (trigger). Nunca apagado.
+# levantamento (trigger); apagado só no rascunho, depois dos quarteirões dele.
 class LiraaStratum < ApplicationRecord
   self.table_name = "liraa_strata"
 

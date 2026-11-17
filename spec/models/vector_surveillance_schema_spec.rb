@@ -36,7 +36,7 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
 
   def ovitrap!(number: "OV-#{SecureRandom.hex(3)}", validate: true, **over)
     saved!(Ovitrap.new({ number: number, household: household, consent_at: Time.current, installed_on: Time.zone.today,
-                         installed_by_user: coordinator, origin: "dashboard" }.merge(over)), validate)
+                         installed_by_user: coordinator, origin: "dashboard", city_block: block! }.merge(over)), validate)
   end
 
   def reading!(ovitrap, installed_on: Time.zone.today, validate: true, **over)
@@ -115,6 +115,15 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
       ovitrap!(origin: "field_app", field_device: device, client_uuid: uuid)
       not_unique(/idx_ovitraps_client_uuid/) { ovitrap!(origin: "field_app", field_device: device, client_uuid: uuid) }
       refused(error: ActiveRecord::NotNullViolation) { ovitrap!(consent_at: nil) }
+      refused(error: ActiveRecord::NotNullViolation) { ovitrap!(city_block: nil, validate: false) }
+    end
+
+    it "retirada ou perdida nunca volta a ativa; a data de retirada nunca some" do
+      ovitrap = ovitrap!
+      ovitrap.update!(status: "lost", removed_on: Time.zone.today)
+      refused(/ovitraps: a removed or lost ovitrap never becomes active again/) { raw_update(ovitrap, status: "active", removed_on: nil) }
+      refused(/ovitraps: removed_on is never cleared/) { raw_update(ovitrap, removed_on: nil) }
+      expect { ovitrap.update!(status: "removed") }.not_to raise_error
     end
   end
 
@@ -183,6 +192,22 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
       expect { VectorTask.create!(kind: "block_case_without_place", transmission_block_id: transmission_block!.id) }.not_to raise_error
     end
 
+    it "o tipo manda na referência (§6, §8): leitura, notificação, bloqueio" do
+      block_id = transmission_block!.id
+      refused(/ck_vector_tasks_reference/) { VectorTask.create!(kind: "case_resident_elsewhere", transmission_block_id: block_id) }
+      refused(/ck_vector_tasks_reference/) do
+        VectorTask.create!(kind: "block_case_without_place", ovitrap_reading: reading, ovitrap_id: reading.ovitrap_id)
+      end
+      refused(/ck_vector_tasks_reference/) { task!(reading, kind: "block_case_without_place") }
+      expect { VectorTask.create!(kind: "block_case_without_place", transmission_block_id: block_id) }.not_to raise_error
+    end
+
+    it "a ovitrampa da tarefa é a da leitura (A-8, FK composta)" do
+      other = ovitrap!
+      refused(/fk_vector_tasks_reading_ovitrap/, error: ActiveRecord::InvalidForeignKey) { task!(reading, ovitrap_id: other.id) }
+      expect(task!(reading).ovitrap_id).to eq(reading.ovitrap_id)
+    end
+
     it "só open → done | dismissed, uma vez; re-cifra passa" do
       task = task!(reading)
       refused(/vector_tasks: an open task only goes to done or dismissed/) { raw_update(task, suggested_block_ids: [ block!.id ]) }
@@ -242,6 +267,37 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
       refused(/liraa_stratum_blocks: blocks change only while the survey is a draft/) { stratum_block!(stratum, block!) }
     end
 
+    it "no rascunho, quarteirão do estrato e estrato se apagam (nessa ordem); depois do sorteio, não" do
+      survey = survey!
+      stratum = stratum!(survey)
+      row = stratum_block!(stratum, block!)
+      refused(error: ActiveRecord::InvalidForeignKey) { stratum.delete }
+      expect { row.delete }.not_to raise_error
+      expect { stratum.delete }.not_to raise_error
+      expect([ LiraaStratum.exists?(stratum.id), LiraaStratumBlock.exists?(row.id) ]).to eq([ false, false ])
+
+      kept = stratum!(survey)
+      kept_row = stratum_block!(kept, block!)
+      draw!(survey)
+      refused(/liraa_stratum_blocks: DELETE refused outside a draft survey/) { kept_row.delete }
+      refused(/liraa_strata: DELETE refused outside a draft survey/) { LiraaStratum.where(id: kept.id).delete_all }
+    end
+
+    it "item do sorteio só muda status e substituto; volta a pending; nada com o levantamento fechado" do
+      survey = survey!
+      stratum = stratum!(survey)
+      block = block!
+      item = LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household: household, position: 1)
+      draw!(survey)
+      refused(/liraa_draw_items: only status and substitute_of_id change/) { raw_update(item, position: 2) }
+      item.update!(status: "inspected")
+      refused(/liraa_draw_items: status goes pending -> inspected \| substituted and back to pending/) { raw_update(item, status: "substituted") }
+      item.update!(status: "pending")
+      item.update!(status: "substituted")
+      survey.update!(status: "closed", closed_at: Time.current)
+      refused(/liraa_draw_items: a closed survey never changes/) { raw_update(item, status: "pending") }
+    end
+
     it "item do sorteio: domínio de status e um por domicílio no estrato" do
       survey = survey!
       stratum = stratum!(survey)
@@ -250,7 +306,10 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
       not_unique(/idx_liraa_draw_items_household/) do
         LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household: household, position: 2)
       end
-      refused(/ck_liraa_draw_items_status/) { raw_update(item, status: "skipped") }
+      refused(/ck_liraa_draw_items_status/) do
+        LiraaDrawItem.new(liraa_stratum: stratum, city_block: block, household: registry_household!, position: 3, status: "skipped")
+                     .save!(validate: false)
+      end
       item.update!(status: "substituted")
       expect(item.reload).to have_attributes(status: "substituted")
     end
@@ -362,6 +421,7 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
              TransmissionBlockArea.create!(transmission_block: block, city_block: city_block),
              TransmissionBlockCycle.create!(transmission_block: block, number: 1, starts_on: Time.zone.today, ends_on: Time.zone.today) ]
     expect(rows.map { |row| row.class.table_name } + %w[transmission_block_cases]).to match_array(AddVectorSurveillance::TABLES)
+    draw!(survey) # estrato e quarteirão do estrato só se apagam no rascunho
     rows.each { |row| refused(/#{row.class.table_name}/) { row.delete } }
     AddVectorSurveillance::TABLES.each do |table|
       refused(/#{table} is append-only/) { Ovitrap.connection.execute("TRUNCATE #{table} CASCADE") }

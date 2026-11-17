@@ -1,6 +1,8 @@
 # Imóvel sorteado do LIRAa (módulo 35a; contrato §1 e §7): um por domicílio no
 # estrato; pendente, inspecionado ou substituído (o substituto cita o
-# original). Nunca apagado (trigger).
+# original). Só muda o status (pending → inspected | substituted, e de volta a
+# pending quando a visita é retirada) e o substituto, e nada com o levantamento
+# fechado. Nunca apagado (trigger).
 class LiraaDrawItem < ApplicationRecord
   STATUSES = %w[pending inspected substituted].freeze
 

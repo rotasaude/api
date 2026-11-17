@@ -2975,6 +2975,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.integer "version", default: 1, null: false
     t.index ["collected_on"], name: "idx_ovitrap_readings_pending_count", where: "(((condition)::text = 'ok'::text) AND (egg_count IS NULL))"
     t.index ["epi_week"], name: "idx_ovitrap_readings_epi_week"
+    t.index ["id", "ovitrap_id"], name: "idx_ovitrap_readings_id_ovitrap", unique: true
     t.index ["ovitrap_id", "installed_on"], name: "idx_ovitrap_readings_ovitrap"
     t.index ["ovitrap_id"], name: "idx_ovitrap_readings_open", unique: true, where: "(collected_on IS NULL)"
     t.check_constraint "(collected_on IS NULL) = (condition IS NULL) AND (collected_on IS NULL OR collected_on >= installed_on)", name: "ck_ovitrap_readings_collection"
@@ -2987,7 +2988,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
   end
 
   create_table "ovitraps", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "city_block_id"
+    t.uuid "city_block_id", null: false
     t.uuid "client_uuid"
     t.timestamptz "consent_at", null: false
     t.datetime "created_at", null: false
@@ -5275,10 +5276,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.index ["ovitrap_reading_id"], name: "idx_vector_tasks_reading"
     t.index ["state", "created_at"], name: "idx_vector_tasks_state"
     t.index ["transmission_block_id"], name: "idx_vector_tasks_block"
-    t.check_constraint "(kind::text = 'ovitrap_intensification'::text) = (ovitrap_reading_id IS NOT NULL) AND (ovitrap_reading_id IS NULL) = (ovitrap_id IS NULL)", name: "ck_vector_tasks_ovitrap"
+    t.check_constraint "(ovitrap_reading_id IS NULL) = (ovitrap_id IS NULL)", name: "ck_vector_tasks_ovitrap"
     t.check_constraint "(state::text = 'open'::text) = (closed_by_user_id IS NULL) AND (closed_note IS NULL OR state::text <> 'open'::text)", name: "ck_vector_tasks_closed"
     t.check_constraint "kind::text = ANY (ARRAY['ovitrap_intensification'::text, 'case_resident_elsewhere'::text, 'block_case_without_place'::text])", name: "ck_vector_tasks_kind"
-    t.check_constraint "num_nonnulls(ovitrap_reading_id, disease_notification_id, transmission_block_id) = 1", name: "ck_vector_tasks_reference"
+    t.check_constraint "num_nonnulls(ovitrap_reading_id, disease_notification_id, transmission_block_id) = 1 AND (kind::text = 'ovitrap_intensification'::text) = (ovitrap_reading_id IS NOT NULL) AND (kind::text = 'case_resident_elsewhere'::text) = (disease_notification_id IS NOT NULL) AND (kind::text = 'block_case_without_place'::text) = (transmission_block_id IS NOT NULL)", name: "ck_vector_tasks_reference"
     t.check_constraint "state::text = ANY (ARRAY['open'::text, 'done'::text, 'dismissed'::text])", name: "ck_vector_tasks_state"
     t.check_constraint "version >= 1", name: "ck_vector_tasks_version"
   end
@@ -6097,6 +6098,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
   add_foreign_key "vector_stock_shortfalls", "vector_products"
   add_foreign_key "vector_tasks", "disease_notifications"
   add_foreign_key "vector_tasks", "ovitrap_readings"
+  add_foreign_key "vector_tasks", "ovitrap_readings", column: ["ovitrap_reading_id", "ovitrap_id"], primary_key: ["id", "ovitrap_id"], name: "fk_vector_tasks_reading_ovitrap"
   add_foreign_key "vector_tasks", "ovitraps"
   add_foreign_key "vector_tasks", "transmission_blocks"
   add_foreign_key "vector_tasks", "users", column: "closed_by_user_id"
