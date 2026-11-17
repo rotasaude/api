@@ -195,7 +195,8 @@ class AddVectorSurveillance < ActiveRecord::Migration[8.1]
       t.boolean :drawn, null: false, default: false
       t.integer :household_start
       # Q25: a base do sorteio no quarteirão sorteado (domicílios na ordem
-      # registered_at, id): o substituto sai só dela.
+      # registered_at, id): o substituto sai só dela. Sorteado ⇔ base gravada
+      # (quarteirão vazio grava []), sem elemento nulo.
       t.uuid :base_household_ids, array: true
       t.integer :version, null: false, default: 1
       t.timestamps
@@ -204,7 +205,7 @@ class AddVectorSurveillance < ActiveRecord::Migration[8.1]
     add_index :liraa_stratum_blocks, :liraa_stratum_id, name: "idx_liraa_stratum_blocks_stratum"
     add_check_constraint :liraa_stratum_blocks, "household_start BETWEEN 1 AND 5", name: "ck_liraa_stratum_blocks_household_start"
     add_check_constraint :liraa_stratum_blocks, "drawn = (household_start IS NOT NULL)", name: "ck_liraa_stratum_blocks_drawn"
-    add_check_constraint :liraa_stratum_blocks, "(base_household_ids IS NULL) OR drawn", name: "ck_liraa_stratum_blocks_base"
+    add_check_constraint :liraa_stratum_blocks, "drawn = (base_household_ids IS NOT NULL) AND array_position(base_household_ids, NULL::uuid) IS NULL", name: "ck_liraa_stratum_blocks_base"
     add_check_constraint :liraa_stratum_blocks, "version >= 1", name: "ck_liraa_stratum_blocks_version"
 
     create_table :liraa_draw_items, id: :uuid do |t|

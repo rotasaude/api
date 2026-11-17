@@ -262,13 +262,23 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
       refused(/liraa_stratum_blocks: liraa_survey_id differs from the stratum/) do
         stratum_block!(stratum, block!, liraa_survey_id: survey!.id)
       end
-      refused(/ck_liraa_stratum_blocks_household_start/) { stratum_block!(stratum, block!, drawn: true, household_start: 6) }
-      refused(/ck_liraa_stratum_blocks_drawn/) { stratum_block!(stratum, block!, drawn: true) }
+      refused(/ck_liraa_stratum_blocks_household_start/) { stratum_block!(stratum, block!, drawn: true, household_start: 6, base_household_ids: []) }
+      refused(/ck_liraa_stratum_blocks_drawn/) { stratum_block!(stratum, block!, drawn: true, base_household_ids: []) }
       refused(/ck_liraa_stratum_blocks_drawn/) { stratum_block!(stratum, block!, household_start: 1) }
-      expect { stratum_block!(stratum, block!, drawn: true, household_start: 1) }.not_to raise_error
-      refused(/ck_liraa_stratum_blocks_base/) { stratum_block!(stratum, block!, base_household_ids: [ household.id ]) } # Q25
+      expect { stratum_block!(stratum, block!, drawn: true, household_start: 1, base_household_ids: []) }.not_to raise_error
       expect { stratum_block!(stratum, block!, drawn: true, household_start: 1, base_household_ids: [ household.id ]) }.not_to raise_error
       refused(/ck_liraa_strata_mode/) { stratum!(stratum.liraa_survey, mode: "quarter", validate: false) }
+    end
+
+    it "Q25: sorteado ⇔ base gravada ([] no quarteirão vazio), sem elemento nulo" do
+      stratum = stratum!(survey!)
+      refused(/ck_liraa_stratum_blocks_base/) { stratum_block!(stratum, block!, drawn: true, household_start: 1) }
+      refused(/ck_liraa_stratum_blocks_base/) { stratum_block!(stratum, block!, base_household_ids: [ household.id ]) }
+      refused(/ck_liraa_stratum_blocks_base/) { stratum_block!(stratum, block!, base_household_ids: []) }
+      refused(/ck_liraa_stratum_blocks_base/) do
+        stratum_block!(stratum, block!, drawn: true, household_start: 1, base_household_ids: [ household.id, nil ])
+      end
+      expect { stratum_block!(stratum, block!, drawn: true, household_start: 1, base_household_ids: []) }.not_to raise_error
     end
 
     it "estrato muda depois do sorteio → trigger; quarteirões do estrato também" do
@@ -276,7 +286,7 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
       stratum = stratum!(survey)
       row = stratum_block!(stratum, block!)
       stratum.update!(households_count: 2400, sample_target: 360, block_interval: 3, random_start: 2)
-      row.update!(drawn: true, household_start: 1)
+      row.update!(drawn: true, household_start: 1, base_household_ids: [ household.id ])
       draw!(survey)
       refused(/liraa_strata: strata change only while the survey is a draft/) { raw_update(stratum, sample_target: 400) }
       refused(/liraa_strata: strata change only while the survey is a draft/) { stratum!(survey) }

@@ -2570,7 +2570,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.integer "version", default: 1, null: false
     t.index ["liraa_stratum_id"], name: "idx_liraa_stratum_blocks_stratum"
     t.index ["liraa_survey_id", "city_block_id"], name: "idx_liraa_stratum_blocks_block", unique: true
-    t.check_constraint "(base_household_ids IS NULL) OR drawn", name: "ck_liraa_stratum_blocks_base"
+    t.check_constraint "drawn = (base_household_ids IS NOT NULL) AND array_position(base_household_ids, NULL::uuid) IS NULL", name: "ck_liraa_stratum_blocks_base"
     t.check_constraint "drawn = (household_start IS NOT NULL)", name: "ck_liraa_stratum_blocks_drawn"
     t.check_constraint "household_start BETWEEN 1 AND 5", name: "ck_liraa_stratum_blocks_household_start"
     t.check_constraint "version >= 1", name: "ck_liraa_stratum_blocks_version"
