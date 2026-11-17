@@ -129,6 +129,42 @@ module VectorControlHelpers
     reading.reload
   end
 
+  # Task 10 (contrato §7): `count` domicílios da base do sorteio no
+  # quarteirão (ativos, com o quarteirão no perfil), em ordem de cadastro, na
+  # microárea (que ganha um ACS responsável, se não tiver: um autor só).
+  def liraa_households!(block, count, micro_area:, property_type: "1")
+    registry_acs_of(micro_area) unless micro_area.acs_professional
+    Array.new(count) do
+      household = registry_household_rows!(micro_area, neighborhood_id: block.neighborhood_id, property_type: property_type)
+      vector_profile!(household, block: block)
+      household
+    end
+  end
+
+  # Levantamento em rascunho pelo caminho real (Liraa::SaveSurvey):
+  # `strata` = [{ name?, mode, blocks: [CityBlock] }]. -> LiraaSurvey
+  def liraa_survey!(strata)
+    params = { "name" => "LIRAa #{SecureRandom.hex(2)}", "starts_on" => Time.zone.today.iso8601,
+               "ends_on" => (Time.zone.today + 6).iso8601,
+               "strata" => strata.each_with_index.map do |stratum, i|
+                 { "name" => stratum[:name] || "Estrato #{i + 1}", "mode" => stratum.fetch(:mode),
+                   "block_ids" => stratum.fetch(:blocks).map(&:id) }
+               end }
+    result = VectorControl::Liraa::SaveSurvey.call(params: params, by: vector_author)
+    raise ArgumentError, "liraa_survey!: #{result.reason} #{result.details.inspect}" if result.failure?
+
+    result.payload[:survey]
+  end
+
+  # Nova versão dos parâmetros: o padrão de fábrica com `over`. -> VectorParameterVersion
+  def liraa_parameters!(**over)
+    VectorParameterVersion.create!(version: VectorParameterVersion.maximum(:version).to_i + 1, created_by_user: vector_author,
+                                   values: VectorControl::Parameters.defaults.merge(over.stringify_keys))
+  end
+
+  # Início casual fixo (o `random` do Liraa::Draw).
+  def fixed_random(value) = Struct.new(:value) { def rand(_range) = value }.new(value)
+
   private
 
   def vector_author = (@vector_author ||= endemic_coordinator!)

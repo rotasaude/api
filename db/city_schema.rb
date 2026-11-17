@@ -2533,6 +2533,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.index ["household_id"], name: "idx_liraa_draw_items_household_lookup"
     t.index ["liraa_stratum_id", "household_id"], name: "idx_liraa_draw_items_household", unique: true
     t.index ["liraa_stratum_id", "position"], name: "idx_liraa_draw_items_position"
+    t.index ["substitute_of_id"], name: "idx_liraa_draw_items_substitute", unique: true, where: "(substitute_of_id IS NOT NULL)"
     t.check_constraint "position >= 1", name: "ck_liraa_draw_items_position"
     t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'inspected'::text, 'substituted'::text])", name: "ck_liraa_draw_items_status"
     t.check_constraint "substitute_of_id IS NULL OR substitute_of_id <> id", name: "ck_liraa_draw_items_substitute"
@@ -2588,7 +2589,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.check_constraint "(status::text = 'draft'::text) = (drawn_at IS NULL) AND (drawn_at IS NULL) = (parameters_version IS NULL) AND (status::text = 'closed'::text) = (closed_at IS NOT NULL)", name: "ck_liraa_surveys_drawn"
     t.check_constraint "ends_on >= starts_on", name: "ck_liraa_surveys_dates"
     t.check_constraint "length(btrim((name)::text)) >= 1", name: "ck_liraa_surveys_name"
-    t.check_constraint "parameters_version IS NULL OR parameters_version >= 1", name: "ck_liraa_surveys_parameters_version"
+    t.check_constraint "parameters_version IS NULL OR parameters_version >= 0", name: "ck_liraa_surveys_parameters_version"
     t.check_constraint "status::text = ANY (ARRAY['draft'::text, 'drawn'::text, 'closed'::text])", name: "ck_liraa_surveys_status"
     t.check_constraint "version >= 1", name: "ck_liraa_surveys_version"
   end

@@ -234,6 +234,21 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
       refused(/liraa_surveys: a closed survey never changes/) { raw_update(survey, name: "Outro nome") }
     end
 
+    it "A-4: sorteio sem parâmetros gravados guarda a versão 0; negativa não" do
+      expect { survey!.update!(status: "drawn", drawn_at: Time.current, parameters_version: 0) }.not_to raise_error
+      refused(/ck_liraa_surveys_parameters_version/) { survey!.update!(status: "drawn", drawn_at: Time.current, parameters_version: -1) }
+    end
+
+    it "Review Focus 1: um substituto só por item (idx_liraa_draw_items_substitute)" do
+      stratum = stratum!(survey!)
+      block = block!
+      item = LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household: household, position: 1)
+      LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household: registry_household!, position: 2, substitute_of: item)
+      not_unique(/idx_liraa_draw_items_substitute/) do
+        LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household: registry_household!, position: 3, substitute_of: item)
+      end
+    end
+
     it "o mesmo quarteirão em dois estratos do mesmo levantamento → RecordNotUnique; em levantamentos diferentes passa" do
       survey = survey!
       block = block!

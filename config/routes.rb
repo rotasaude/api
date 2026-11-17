@@ -1067,6 +1067,12 @@ Rails.application.routes.draw do
     post   "ovitrap_readings/:id/count",      to: "ovitrap_readings#count", constraints: member_id
     get    "tasks",                           to: "tasks#index"
     post   "tasks/:id/close",                 to: "tasks#close", constraints: member_id
+    get    "liraa_surveys",                   to: "liraa_surveys#index"
+    post   "liraa_surveys",                   to: "liraa_surveys#create"
+    patch  "liraa_surveys/:id",               to: "liraa_surveys#update", constraints: member_id
+    post   "liraa_surveys/:id/draw",          to: "liraa_surveys#draw", constraints: member_id
+    post   "liraa_surveys/:id/close",         to: "liraa_surveys#close", constraints: member_id
+    get    "liraa_surveys/:id/items",         to: "liraa_surveys#items", constraints: member_id
   end
 
   # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard

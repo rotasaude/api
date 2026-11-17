@@ -23,6 +23,10 @@
 #     cycle_summary → CycleSummary (VectorControl::CycleStats por bairro);
 #   - ovitraps → Ovitrap[]; ovitrap_readings → OvitrapReading[]; tasks →
 #     VectorTask[] (Task 9; semana em "YYYY-WW", A-9; notas nunca saem).
+#   - liraa_surveys → LiraaSurvey[] (Task 10: estratos na ordem do
+#     levantamento, block_ids na ordem gravada; N, n, intervalo e início nulos
+#     antes do sorteio); liraa_items → LiraaItem[] (o domicílio só com o
+#     endereço curto; quem mostra grava a trilha).
 module VectorControl
   module Json
     module_function
@@ -245,6 +249,36 @@ module VectorControl
           suggested_blocks: task.suggested_block_ids.map { |id| { id: id, number: numbers.fetch(id) } },
           disease: disease, case_on: case_on&.iso8601, transmission_block_id: task.transmission_block_id,
           closed_at: task.state == "open" ? nil : task.updated_at.utc.iso8601 }
+      end
+    end
+
+    # LiraaSurvey[]: estratos e quarteirões em duas consultas.
+    def liraa_surveys(surveys)
+      strata = LiraaStratum.where(liraa_survey_id: surveys.map(&:id)).order(:created_at, :id).to_a
+      blocks = LiraaStratumBlock.where(liraa_stratum_id: strata.map(&:id)).order(:created_at, :id)
+                                .pluck(:liraa_stratum_id, :city_block_id).group_by(&:first)
+      by_survey = strata.group_by(&:liraa_survey_id)
+      surveys.map do |survey|
+        { id: survey.id, name: survey.name, starts_on: survey.starts_on.iso8601, ends_on: survey.ends_on.iso8601, status: survey.status,
+          parameters_version: survey.parameters_version, drawn_at: survey.drawn_at&.utc&.iso8601, closed_at: survey.closed_at&.utc&.iso8601,
+          strata: by_survey.fetch(survey.id, []).map do |stratum|
+            { id: stratum.id, name: stratum.name, mode: stratum.mode, block_ids: blocks.fetch(stratum.id, []).map(&:last),
+              households_count: stratum.households_count, sample_target: stratum.sample_target, block_interval: stratum.block_interval,
+              random_start: stratum.random_start }
+          end }
+      end
+    end
+
+    def liraa_survey(survey) = liraa_surveys([ survey ]).sole
+
+    # LiraaItem[]: o quarteirão (número) e o endereço curto do 24a. Nunca morador.
+    def liraa_items(items)
+      numbers = CityBlock.where(id: items.map(&:city_block_id).uniq).pluck(:id, :number).to_h
+      addresses = HomeVisits::Json.addresses(items.map(&:household_id))
+      items.map do |item|
+        { id: item.id, stratum_id: item.liraa_stratum_id, city_block: { id: item.city_block_id, number: numbers.fetch(item.city_block_id) },
+          household: { id: item.household_id, address_short: addresses.fetch(item.household_id) }, position: item.position,
+          status: item.status, substitute_of_id: item.substitute_of_id }
       end
     end
 

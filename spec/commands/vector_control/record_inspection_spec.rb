@@ -135,7 +135,7 @@ RSpec.describe VectorControl::RecordInspection, type: :model do
     it "Q20(1): vacant → substituted, como closed e refused; a retirada do vacant devolve a pending" do
       visit = record!(empty_report("vacant", activity: "liraa", liraa_draw_item_id: item.id))
       expect(item.reload).to have_attributes(status: "substituted", version: 2)
-      expect(LiraaDrawItem.where(substitute_of_id: item.id)).to be_empty # o substituto nasce na Task 10
+      expect(LiraaDrawItem.where(substitute_of_id: item.id)).to be_empty # sem vizinho no quarteirão (Task 10, items_spec)
 
       expect(withdraw(visit)).to be_ok
       expect(item.reload).to have_attributes(status: "pending", version: 3)

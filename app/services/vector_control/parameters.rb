@@ -16,6 +16,12 @@ module VectorControl
       row ? Snapshot.new(version: row.version, values: row.values) : Snapshot.new(version: 0, values: defaults)
     end
 
+    # A versão gravada (o LIRAa lê a do sorteio); 0, nil ou sem linha → o padrão de fábrica.
+    def at(version)
+      row = version.to_i.positive? && VectorParameterVersion.find_by(version: version)
+      row ? Snapshot.new(version: row.version, values: row.values) : Snapshot.new(version: 0, values: defaults)
+    end
+
     def defaults = YAML.load_file(DEFAULTS_PATH)
   end
 end

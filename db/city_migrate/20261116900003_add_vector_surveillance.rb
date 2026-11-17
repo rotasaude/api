@@ -161,7 +161,8 @@ class AddVectorSurveillance < ActiveRecord::Migration[8.1]
                          "(status::text = 'draft'::text) = (drawn_at IS NULL) AND (drawn_at IS NULL) = (parameters_version IS NULL) AND " \
                          "(status::text = 'closed'::text) = (closed_at IS NOT NULL)",
                          name: "ck_liraa_surveys_drawn"
-    add_check_constraint :liraa_surveys, "parameters_version IS NULL OR parameters_version >= 1", name: "ck_liraa_surveys_parameters_version"
+    # A-4: o sorteio sem versão gravada dos parâmetros usa o defaults.yml como versão 0.
+    add_check_constraint :liraa_surveys, "parameters_version IS NULL OR parameters_version >= 0", name: "ck_liraa_surveys_parameters_version"
     add_check_constraint :liraa_surveys, "version >= 1", name: "ck_liraa_surveys_version"
 
     create_table :liraa_strata, id: :uuid do |t|
@@ -215,6 +216,8 @@ class AddVectorSurveillance < ActiveRecord::Migration[8.1]
     add_index :liraa_draw_items, %i[liraa_stratum_id household_id], unique: true, name: "idx_liraa_draw_items_household"
     add_index :liraa_draw_items, %i[liraa_stratum_id position], name: "idx_liraa_draw_items_position"
     add_index :liraa_draw_items, :household_id, name: "idx_liraa_draw_items_household_lookup"
+    # Review Focus 1: um substituto só por item, mesmo depois de retirada e nova recusa.
+    add_index :liraa_draw_items, :substitute_of_id, unique: true, where: "substitute_of_id IS NOT NULL", name: "idx_liraa_draw_items_substitute"
     add_check_constraint :liraa_draw_items, "status::text = ANY (ARRAY[#{quoted(DRAW_ITEM_STATUSES)}])", name: "ck_liraa_draw_items_status"
     add_check_constraint :liraa_draw_items, "position >= 1", name: "ck_liraa_draw_items_position"
     add_check_constraint :liraa_draw_items, "substitute_of_id IS NULL OR substitute_of_id <> id", name: "ck_liraa_draw_items_substitute"

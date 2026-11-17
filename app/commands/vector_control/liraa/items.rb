@@ -1,10 +1,20 @@
 # Estado do imóvel sorteado do LIRAa pelo boletim (módulo 35a, ADR 0054;
-# contrato §3.11 e §7; plano, Review Focus 1 e 4, W-13). Quem chama já travou
-# o item FOR UPDATE (depois do domicílio e do perfil; HomeVisits::Record e
-# HomeVisits::Withdraw) e está na transação da visita.
+# contrato §3.11 e §7; plano, Review Focus 1 e 4; Q16(c), Q20(1), W-13).
+# Quem chama já travou o item FOR UPDATE (depois do domicílio e do perfil;
+# HomeVisits::Record e HomeVisits::Withdraw) e está na transação da visita.
 #   - inspected!: `worked` → inspected; `closed`/`refused`/`vacant` →
-#     substituted (Q20(1): o manual conta o imóvel vago como fechado; o
-#     substituto nasce na Task 10, `substitute!`);
+#     substituted (Q20(1): o manual conta o imóvel vago como fechado) e o
+#     substituto (substitute!);
+#   - substitute!: o levantamento FOR SHARE (o fechamento, FOR UPDATE, espera)
+#     e o estrato FOR NO KEY UPDATE (duas substituições no mesmo estrato não
+#     escolhem o mesmo imóvel; o INSERT dos itens, FOR KEY SHARE, não espera).
+#     Só em levantamento sorteado e uma vez por item (Review Focus 1: a
+#     retirada e uma nova recusa não criam outro; idx_liraa_draw_items_substitute
+#     garante no banco). O candidato é o imóvel imediatamente anterior na ordem
+#     do quarteirão (a base do sorteio, Liraa::Draw.base), depois o
+#     posterior, alternando para fora (Q16(c)), só entre os que ainda não são
+#     item do estrato. Nasce pending com substitute_of_id; sem candidato, nada
+#     (o quarteirão fica com um a menos: `missing` no Liraa::Index);
 #   - released!: a visita retirada devolve o item a pending; o substituto,
 #     inspecionado ou não, fica como está (W-13). Levantamento fechado não
 #     muda (trigger): o item fica.
@@ -26,7 +36,28 @@ module VectorControl
         return item if status.nil? || item.status != "pending"
 
         item.update!(status: status, version: item.version + 1)
+        substitute!(item) if status == "substituted"
         item
+      end
+
+      # -> LiraaDrawItem (o substituto) | nil.
+      def substitute!(item)
+        stratum = LiraaStratum.find(item.liraa_stratum_id)
+        return nil unless LiraaSurvey.lock("FOR SHARE").where(id: stratum.liraa_survey_id).pick(:status) == "drawn"
+
+        LiraaStratum.lock("FOR NO KEY UPDATE").where(id: stratum.id).pick(:id)
+        return nil if LiraaDrawItem.exists?(substitute_of_id: item.id)
+
+        order = Draw.base([ item.city_block_id ]).fetch(item.city_block_id, [])
+        order = with_original(order, item.household_id) unless order.include?(item.household_id)
+        taken = LiraaDrawItem.where(liraa_stratum_id: stratum.id).pluck(:household_id).to_set
+        index = order.index(item.household_id)
+        candidate = (1...order.size).lazy.flat_map { |step| [ index - step, index + step ] }
+                                    .find { |at| at.between?(0, order.size - 1) && !taken.include?(order[at]) }
+        return nil unless candidate
+
+        LiraaDrawItem.create!(liraa_stratum_id: stratum.id, city_block_id: item.city_block_id, household_id: order[candidate],
+                              position: candidate + 1, status: "pending", substitute_of_id: item.id)
       end
 
       def released!(item)
@@ -37,6 +68,14 @@ module VectorControl
       end
 
       def survey_status(item) = LiraaStratum.joins(:liraa_survey).where(id: item.liraa_stratum_id).pick("liraa_surveys.status")
+
+      # O imóvel do item saiu da base (inativo, outro quarteirão, virou PE):
+      # volta à ordem (registered_at, id) só para achar os vizinhos.
+      def with_original(order, household_id)
+        keys = Household.where(id: order + [ household_id ]).pluck(:id, :registered_at).to_h
+        (order + [ household_id ]).sort_by { |id| [ keys.fetch(id), id ] }
+      end
+      private_class_method :with_original
     end
   end
 end

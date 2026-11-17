@@ -43,7 +43,8 @@ module VectorControl
     ASSIGN_BATCH = 200
     TASK_KINDS = %w[ovitrap_intensification case_resident_elsewhere block_case_without_place].freeze
     LIRAA_MODES = %w[standard half census].freeze
-    HOUSEHOLD_INTERVAL = 5
+    # Q17: o intervalo dos imóveis do LIRAa é round(1 ÷ fração) do modo
+    # (Liraa::Sample.interval), nunca constante: sem HOUSEHOLD_INTERVAL.
     BLOCK_STATUSES = %w[proposed active closed dismissed].freeze
     UBV_NUMBERS = (1..3)
     # Classe do imóvel no boletim pelo tipo de imóvel do 24a
