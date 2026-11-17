@@ -1036,6 +1036,7 @@ Rails.application.routes.draw do
   # com id UUID; dado de pessoa e texto só no corpo.
   scope "/vector_control", module: :vector_control, as: :vector_control do
     member_id = { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
+    get    "domains",                         to: "domains#show"
     get    "blocks",                          to: "blocks#index"
     post   "blocks",                          to: "blocks#create"
     patch  "blocks/:id",                      to: "blocks#update", constraints: member_id
@@ -1056,6 +1057,8 @@ Rails.application.routes.draw do
     get    "products",                        to: "products#index"
     post   "products",                        to: "products#create"
     patch  "products/:id",                    to: "products#update", constraints: member_id
+    get    "parameters",                      to: "parameters#show"
+    put    "parameters",                      to: "parameters#update"
     get    "settings",                        to: "settings#show"
     put    "settings",                        to: "settings#update"
     get    "stock_shortfalls",                to: "stock_shortfalls#index"

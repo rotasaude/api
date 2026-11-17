@@ -32,8 +32,21 @@
 #     doença, data e número; nunca paciente nem notificação).
 #   - samples → VectorSample[] (Task 12: dia da visita, quarteirão congelado
 #     e resultado; nunca imóvel nem morador; a nota nunca sai).
+#   - parameters → VectorParameterVersion (Task 14; versão 0 com created_at
+#     null, A-4/Q13(8); versão gravada antes de uma chave nova completa com o
+#     padrão de fábrica);
+#   - domains → VectorControlDomains = o `vector_control_domains` da
+#     referência do app (§13; Q7(3), Q8, Q15): os rótulos de
+#     config/vector_control/domains.yml, os produtos ativos (carga em texto),
+#     as cadências, os quatro parâmetros vigentes e Catalog::LIMITS. Um
+#     serializador só: GET /vector_control/domains e a referência do field-sync
+#     (Task 15) chamam este método.
 module VectorControl
   module Json
+    DOMAINS_PATH = Rails.root.join("config/vector_control/domains.yml")
+    DOMAIN_LISTS = %w[activities work_types situations deposit_groups measure_methods risk_classes].freeze
+    DOMAIN_PARAMETERS = %w[default_days strategic_point_days ovitrap_collection_days_min ovitrap_collection_days_max].freeze
+
     module_function
 
     def blocks(blocks)
@@ -192,6 +205,28 @@ module VectorControl
       end.map do |row|
         { neighborhood_id: row.neighborhood_id, risk_class: row.risk_class, strategic_point: row.strategic_point, days: row.days }
       end
+    end
+
+    def parameters(snapshot)
+      { version: snapshot.version, values: Parameters.defaults.merge(snapshot.values),
+        created_at: snapshot.created_at&.utc&.iso8601(6) }
+    end
+
+    def domains
+      labels = YAML.load_file(DOMAINS_PATH)
+      lists = DOMAIN_LISTS.to_h do |list|
+        [ list.to_sym, labels.fetch(list).map { |row| { code: row.fetch("code").to_s, label: row.fetch("label") } } ]
+      end
+      values = Parameters.defaults.merge(Parameters.current.values)
+      lists.merge(
+        products: VectorProduct.active_products.order(:code, :id).map do |product|
+          { id: product.id, code: product.code, name: product.name, unit: product.unit,
+            charge_size: format("%.2f", product.charge_size), uses: product.uses }
+        end,
+        cadences: cadences(VectorCadence.all.to_a),
+        parameters: DOMAIN_PARAMETERS.to_h { |key| [ key.to_sym, values.fetch(key) ] },
+        limits: Catalog::LIMITS
+      )
     end
 
     def cycle(cycle)

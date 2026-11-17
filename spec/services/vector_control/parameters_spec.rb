@@ -21,4 +21,22 @@ RSpec.describe VectorControl::Parameters, type: :model do
     expect(current.version).to eq(2)
     expect(current.values).to eq(factory.merge("default_days" => 45))
   end
+
+  it "RANGES (A-5, Q17) cobre as 20 chaves do defaults.yml, na mesma ordem" do
+    expect(described_class::RANGES.keys).to eq(factory.keys)
+    expect(factory.size).to eq(20)
+  end
+
+  it "validate: o padrão de fábrica passa (com a lista de doenças); sem ela, block_diseases não passa" do
+    expect(described_class.validate(factory)).to eq(path: "block_diseases")
+    surveillance_city!
+    expect(described_class.validate(factory)).to be_nil
+    expect(described_class.validate(factory.merge("liraa_half_household_fraction" => 1.01))).to eq(path: "liraa_half_household_fraction")
+  end
+
+  it "version 0 tem created_at nil; a gravada, o da linha" do
+    expect(described_class.current.created_at).to be_nil
+    row = VectorParameterVersion.create!(version: 1, values: factory, created_by_user: endemic_coordinator!)
+    expect(described_class.current.created_at).to eq(row.created_at)
+  end
 end
