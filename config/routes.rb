@@ -1085,6 +1085,10 @@ Rails.application.routes.draw do
                                                           constraints: member_id.merge(case_id: member_id[:id])
     get    "transmission_blocks/:id/cases/:case_id/address", to: "transmission_blocks#address",
                                                              constraints: member_id.merge(case_id: member_id[:id])
+    # Relatórios (§10): JSON, `.csv` e, só o liraa, `.pdf`; nome e extensão
+    # conferidos no controller (404).
+    get    "reports/:name",                   to: "reports#show"
+    get    "map_points",                      to: "map_points#index"
   end
 
   # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard
