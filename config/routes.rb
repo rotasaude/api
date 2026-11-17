@@ -1031,6 +1031,23 @@ Rails.application.routes.draw do
     post ":id/mark_mistaken",       to: "activities#mark_mistaken", constraints: member_id
   end
 
+  # Módulo 35a (ADR 0054; contrato §12; Q8): vigilância ambiental de
+  # endemias, sessão do dashboard, gate `vector_control`. Rotas de membro só
+  # com id UUID; dado de pessoa e texto só no corpo.
+  scope "/vector_control", module: :vector_control, as: :vector_control do
+    member_id = { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
+    get    "blocks",                          to: "blocks#index"
+    post   "blocks",                          to: "blocks#create"
+    patch  "blocks/:id",                      to: "blocks#update", constraints: member_id
+    post   "blocks/:id/neighbors",            to: "blocks#add_neighbor", constraints: member_id
+    delete "blocks/:id/neighbors/:neighbor_id", to: "blocks#remove_neighbor",
+                                                constraints: member_id.merge(neighbor_id: member_id[:id])
+    get    "households",                      to: "households#index"
+    post   "households/assign_block",         to: "households#assign_block"
+    get    "households/:id",                  to: "households#show", constraints: member_id
+    patch  "households/:id/profile",          to: "households#update_profile", constraints: member_id
+  end
+
   # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard
   # (sessão; cadastro com step-up). `admin` antes de qualquer `:id`; ids só UUID.
   scope "/field_devices", as: :field_devices do
