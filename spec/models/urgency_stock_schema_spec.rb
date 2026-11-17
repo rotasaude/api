@@ -45,12 +45,14 @@ RSpec.describe "Esquema do estoque da observação da UPA", type: :model do
   end
 
   describe "movimento administration" do
+    # Módulo 35a (A-1): os dois tipos do boletim vêm depois, da migração dele.
     it "a migração espelha as listas de Pharmacy::Catalog" do
       catalog = Pharmacy::Catalog
+      vector = %w[vector_application vector_application_reversal]
       expect([ AddUrgencyStockDeduction::MOVEMENT_KINDS, AddUrgencyStockDeduction::POSITIVE_KINDS, AddUrgencyStockDeduction::NEGATIVE_KINDS ])
-        .to eq([ catalog::MOVEMENT_KINDS, catalog::POSITIVE_KINDS, catalog::NEGATIVE_KINDS ])
-      expect(catalog::MOVEMENT_KINDS).to end_with("administration")
-      expect(catalog::NEGATIVE_KINDS).to end_with("administration")
+        .to eq([ catalog::MOVEMENT_KINDS - vector, catalog::POSITIVE_KINDS - vector, catalog::NEGATIVE_KINDS - vector ])
+      expect(catalog::MOVEMENT_KINDS - vector).to end_with("administration")
+      expect(catalog::NEGATIVE_KINDS - vector).to end_with("administration")
       expect(catalog::POSITIVE_KINDS).not_to include("administration")
     end
 

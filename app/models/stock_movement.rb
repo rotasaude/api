@@ -5,6 +5,8 @@
 # em inspect, to_s, pretty_print nem as_json. Módulo 29 (ADR 0047, Desvio 7):
 # abertura de frasco e dose de unidose (e a devolução dela) têm o frasco ou a
 # dose por documento; o código do imunobiológico é cópia do lote (trigger).
+# Módulo 35a (ADR 0054; A-1): a baixa do boletim e o estorno dela têm a medida
+# por documento; o produto é cópia do lote (trigger).
 class StockMovement < ApplicationRecord
   encrypts :reason
 
@@ -17,6 +19,7 @@ class StockMovement < ApplicationRecord
   belongs_to :vial_opening, optional: true
   belongs_to :immunization, optional: true
   belongs_to :urgency_administration, optional: true
+  belongs_to :vector_inspection_measure, optional: true, inverse_of: :movements
   belongs_to :recorded_by_user, class_name: "User"
 
   def inspect = "#<StockMovement id=#{id} kind=#{kind}>"

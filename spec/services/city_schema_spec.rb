@@ -216,6 +216,19 @@ RSpec.describe CitySchema do
                              *tables.map { |t| "#{t}_append_only_truncate" })
   end
 
+  # Módulo 35a (ADR 0054; plano, Task 3): e com as guardas da inspeção — o
+  # só-acréscimo do boletim, depósitos e medidas, as guardas do produto, da
+  # amostra e da falta de estoque, e o truncate das seis.
+  it "loads the 35a inspection triggers into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+    tables = %w[vector_products vector_inspections vector_inspection_deposits vector_inspection_measures vector_samples
+                vector_stock_shortfalls]
+
+    expect(names).to include("vector_products_guard", "vector_samples_guard", "vector_stock_shortfalls_guard",
+                             *%w[vector_inspections vector_inspection_deposits vector_inspection_measures].map { |t| "#{t}_append_only" },
+                             *tables.map { |t| "#{t}_append_only_truncate" })
+  end
+
   # Módulo 23 (revisão final, I1): o db/city_triggers.sql do HEAD recria a
   # guarda dos pedidos do módulo 17 lendo origin_care_line_enrollment_id, que
   # só nasce na 900003. Se a 900002 executasse o arquivo e a 900003 falhasse

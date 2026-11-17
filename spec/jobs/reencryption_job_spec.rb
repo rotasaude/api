@@ -84,7 +84,8 @@ RSpec.describe ReencryptionJob do
                                          UrgencyAdministration UrgencyStockShortfall
                                          OmbudsmanManifestation OmbudsmanEvent OmbudsmanForwarding OmbudsmanIdentityAccess
                                          OmbudsmanAttachment OmbudsmanReopenRequest
-                                         HomeVisit CollectiveActivity CollectiveActivityParticipant])
+                                         HomeVisit CollectiveActivity CollectiveActivityParticipant
+                                         VectorSample VectorStockShortfall])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end

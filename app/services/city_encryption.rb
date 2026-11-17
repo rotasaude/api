@@ -226,7 +226,10 @@ module CityEncryption
     [ CollectiveActivity, :health_topics ], [ CollectiveActivity, :health_practices ],
     [ CollectiveActivity, :procedure_code ], [ CollectiveActivity, :mistaken_reason ],
     [ CollectiveActivityParticipant, :altered_evaluation ], [ CollectiveActivityParticipant, :measurements ],
-    [ CollectiveActivityParticipant, :smoking ]
+    [ CollectiveActivityParticipant, :smoking ],
+    # ADR 0054 (módulo 35a): a nota de correção do resultado da amostra e a
+    # nota da conciliação da falta de estoque do boletim.
+    [ VectorSample, :result_note ], [ VectorStockShortfall, :reconciliation_note ]
   ].freeze
 
   module_function

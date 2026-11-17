@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -4124,8 +4124,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
     t.index ["health_unit_id", "kind"], name: "idx_stock_locations_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
     t.index ["kind"], name: "idx_stock_locations_one_central", unique: true, where: "((kind)::text = 'central'::text)"
     t.index ["kind"], name: "idx_stock_locations_one_cold_chain_central", unique: true, where: "((kind)::text = 'cold_chain_central'::text)"
-    t.check_constraint "(kind::text = ANY (ARRAY['unit'::text, 'vaccine_room'::text])) = (health_unit_id IS NOT NULL)", name: "ck_stock_locations_unit"
-    t.check_constraint "kind::text = ANY (ARRAY['central'::text, 'unit'::text, 'cold_chain_central'::text, 'vaccine_room'::text])", name: "ck_stock_locations_kind"
+    t.check_constraint "(kind::text = ANY (ARRAY['unit'::text, 'vaccine_room'::text, 'vector_control'::text])) = (health_unit_id IS NOT NULL)", name: "ck_stock_locations_unit"
+    t.check_constraint "kind::text = ANY (ARRAY['central'::text, 'unit'::text, 'cold_chain_central'::text, 'vaccine_room'::text, 'vector_control'::text])", name: "ck_stock_locations_kind"
   end
 
   create_table "stock_lot_blocks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4156,10 +4156,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
     t.string "lot_number", limit: 40, null: false
     t.string "manufacturer", limit: 120
     t.string "manufacturer_key", limit: 40
+    t.uuid "vector_product_id"
     t.index ["catalog_item_id", "lot_number"], name: "idx_stock_lots_number", unique: true
     t.index ["expires_on"], name: "idx_stock_lots_expires_on"
     t.index ["immunobiological_code", "lot_number"], name: "idx_stock_lots_immunobiological_number", unique: true, where: "(immunobiological_code IS NOT NULL)"
-    t.check_constraint "item_kind::text = ANY (ARRAY['medication'::text, 'immunobiological'::text]) AND (item_kind::text = 'immunobiological'::text) = (immunobiological_code IS NOT NULL) AND (item_kind::text = 'immunobiological'::text) = (catalog_item_id IS NULL) AND (catalog_item_id IS NULL) = (catmat_code IS NULL) AND (item_kind::text = 'immunobiological'::text OR manufacturer_key IS NULL) AND (item_kind::text <> 'immunobiological'::text OR dispensing_unit::text = 'dose'::text)", name: "ck_stock_lots_item"
+    t.index ["vector_product_id", "lot_number"], name: "idx_stock_lots_vector_product_number", unique: true, where: "(vector_product_id IS NOT NULL)"
+    t.check_constraint "item_kind::text = ANY (ARRAY['medication'::text, 'immunobiological'::text, 'vector_control'::text]) AND (item_kind::text = 'immunobiological'::text) = (immunobiological_code IS NOT NULL) AND (item_kind::text = 'vector_control'::text) = (vector_product_id IS NOT NULL) AND (item_kind::text = 'medication'::text) = (catalog_item_id IS NOT NULL) AND (catalog_item_id IS NULL) = (catmat_code IS NULL) AND (item_kind::text = 'immunobiological'::text OR manufacturer_key IS NULL) AND (item_kind::text <> 'immunobiological'::text OR dispensing_unit::text = 'dose'::text)", name: "ck_stock_lots_item"
   end
 
   create_table "stock_minimums", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4170,10 +4172,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
     t.uuid "stock_location_id", null: false
     t.datetime "updated_at", null: false
     t.uuid "updated_by_user_id", null: false
+    t.uuid "vector_product_id"
     t.index ["stock_location_id", "catalog_item_id"], name: "idx_stock_minimums_item", unique: true
     t.index ["stock_location_id", "immunobiological_code"], name: "idx_stock_minimums_immunobiological", unique: true, where: "(immunobiological_code IS NOT NULL)"
+    t.index ["stock_location_id", "vector_product_id"], name: "idx_stock_minimums_vector_product", unique: true, where: "(vector_product_id IS NOT NULL)"
     t.check_constraint "minimum >= 0::numeric AND minimum <= 99999.99", name: "ck_stock_minimums_minimum"
-    t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code) = 1", name: "ck_stock_minimums_item"
+    t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code, vector_product_id) = 1", name: "ck_stock_minimums_item"
   end
 
   create_table "stock_movements", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4195,19 +4199,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
     t.uuid "stock_lot_id", null: false
     t.uuid "stock_transfer_id"
     t.uuid "urgency_administration_id"
+    t.uuid "vector_inspection_measure_id"
+    t.uuid "vector_product_id"
     t.uuid "vial_opening_id"
     t.index ["dispensation_item_id"], name: "idx_stock_movements_dispensation_item"
     t.index ["immunization_id"], name: "idx_stock_movements_immunization"
     t.index ["stock_location_id", "stock_lot_id"], name: "idx_stock_movements_balance"
     t.index ["stock_lot_id", "recorded_at", "id"], name: "idx_stock_movements_lot_time"
     t.index ["urgency_administration_id"], name: "idx_stock_movements_urgency_administration"
+    t.index ["vector_inspection_measure_id"], name: "idx_stock_movements_vector_inspection_measure"
     t.index ["vial_opening_id"], name: "idx_stock_movements_vial_opening"
-    t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code) = 1", name: "ck_stock_movements_item"
+    t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code, vector_product_id) = 1", name: "ck_stock_movements_item"
     t.check_constraint "(package_units IS NULL) = (packages IS NULL) AND (package_units IS NULL OR package_units >= 1 AND package_units <= 10000 AND packages >= 1 AND packages <= 10000)", name: "ck_stock_movements_package"
     t.check_constraint "kind::text <> ALL (ARRAY['loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text]) OR reason IS NOT NULL", name: "ck_stock_movements_reason"
-    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text, 'vial_opening'::text, 'immunization'::text, 'immunization_reversal'::text, 'administration'::text])", name: "ck_stock_movements_kind"
-    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id, vial_opening_id, immunization_id, urgency_administration_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL) AND (vial_opening_id IS NOT NULL) = (kind::text = 'vial_opening'::text) AND (immunization_id IS NOT NULL) = (kind::text = ANY (ARRAY['immunization'::text, 'immunization_reversal'::text])) AND (urgency_administration_id IS NOT NULL) = (kind::text = 'administration'::text)", name: "ck_stock_movements_document"
-    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text, 'immunization_reversal'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'vial_opening'::text, 'immunization'::text, 'administration'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
+    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text, 'vial_opening'::text, 'immunization'::text, 'immunization_reversal'::text, 'administration'::text, 'vector_application'::text, 'vector_application_reversal'::text])", name: "ck_stock_movements_kind"
+    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id, vial_opening_id, immunization_id, urgency_administration_id, vector_inspection_measure_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL) AND (vial_opening_id IS NOT NULL) = (kind::text = 'vial_opening'::text) AND (immunization_id IS NOT NULL) = (kind::text = ANY (ARRAY['immunization'::text, 'immunization_reversal'::text])) AND (urgency_administration_id IS NOT NULL) = (kind::text = 'administration'::text) AND (vector_inspection_measure_id IS NOT NULL) = (kind::text = ANY (ARRAY['vector_application'::text, 'vector_application_reversal'::text]))", name: "ck_stock_movements_document"
+    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text, 'immunization_reversal'::text, 'vector_application_reversal'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'vial_opening'::text, 'immunization'::text, 'administration'::text, 'vector_application'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
   end
 
   create_table "stock_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4216,9 +4223,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
     t.string "immunobiological_code", limit: 10
     t.uuid "stock_entry_id", null: false
     t.uuid "stock_location_id", null: false
+    t.uuid "vector_product_id"
     t.index ["stock_location_id", "catalog_item_id"], name: "idx_stock_openings_once", unique: true
     t.index ["stock_location_id", "immunobiological_code"], name: "idx_stock_openings_immunobiological_once", unique: true, where: "(immunobiological_code IS NOT NULL)"
-    t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code) = 1", name: "ck_stock_openings_item"
+    t.index ["stock_location_id", "vector_product_id"], name: "idx_stock_openings_vector_product_once", unique: true, where: "(vector_product_id IS NOT NULL)"
+    t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code, vector_product_id) = 1", name: "ck_stock_openings_item"
   end
 
   create_table "stock_transfer_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4935,6 +4944,58 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
     t.exclusion_constraint "daterange(starts_on, ends_on, '[]'::text) WITH &&", using: :gist, name: "excl_vector_cycles_overlap"
   end
 
+  create_table "vector_inspection_deposits", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "eliminated", null: false
+    t.integer "existing", null: false
+    t.string "group", null: false
+    t.integer "treated", null: false
+    t.uuid "vector_inspection_id", null: false
+    t.integer "with_larvae", null: false
+    t.integer "with_water", null: false
+    t.index ["vector_inspection_id", "group"], name: "idx_vector_inspection_deposits_group", unique: true
+    t.check_constraint "\"group\"::text = ANY (ARRAY['A1'::text, 'A2'::text, 'B'::text, 'C'::text, 'D1'::text, 'D2'::text, 'E'::text])", name: "ck_vector_inspection_deposits_group"
+    t.check_constraint "existing >= 0 AND existing <= 999 AND with_water >= 0 AND with_water <= 999 AND with_larvae >= 0 AND with_larvae <= 999 AND eliminated >= 0 AND eliminated <= 999 AND treated >= 0 AND treated <= 999", name: "ck_vector_inspection_deposits_range"
+    t.check_constraint "with_water <= existing AND with_larvae <= with_water AND eliminated <= existing AND treated <= with_water", name: "ck_vector_inspection_deposits_counts"
+  end
+
+  create_table "vector_inspection_measures", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.decimal "charges", precision: 8, scale: 2
+    t.datetime "created_at", null: false
+    t.string "method", null: false
+    t.decimal "quantity", precision: 12, scale: 2
+    t.uuid "vector_inspection_id", null: false
+    t.uuid "vector_product_id"
+    t.index ["vector_inspection_id", "method", "vector_product_id"], name: "idx_vector_inspection_measures_key", unique: true, nulls_not_distinct: true
+    t.index ["vector_product_id"], name: "idx_vector_inspection_measures_product"
+    t.check_constraint "(method::text = 'mechanical'::text) = (vector_product_id IS NULL) AND (vector_product_id IS NULL) = (charges IS NULL) AND (charges IS NULL) = (quantity IS NULL)", name: "ck_vector_inspection_measures_product"
+    t.check_constraint "charges IS NULL OR (charges > 0::numeric AND charges <= 999::numeric)", name: "ck_vector_inspection_measures_charges"
+    t.check_constraint "method::text = ANY (ARRAY['mechanical'::text, 'focal'::text, 'perifocal'::text, 'spatial'::text])", name: "ck_vector_inspection_measures_method"
+    t.check_constraint "quantity IS NULL OR quantity > 0::numeric", name: "ck_vector_inspection_measures_quantity"
+  end
+
+  create_table "vector_inspections", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "activity", null: false
+    t.uuid "city_block_id"
+    t.datetime "created_at", null: false
+    t.boolean "educational_action", null: false
+    t.timestamptz "entered_at"
+    t.uuid "home_visit_id", null: false
+    t.uuid "household_id", null: false
+    t.timestamptz "left_at"
+    t.uuid "liraa_draw_item_id"
+    t.boolean "recovered", default: false, null: false
+    t.string "situation", null: false
+    t.uuid "transmission_block_id"
+    t.string "work_type", null: false
+    t.index ["home_visit_id"], name: "idx_vector_inspections_visit", unique: true
+    t.index ["household_id"], name: "idx_vector_inspections_household"
+    t.check_constraint "(entered_at IS NULL) = (left_at IS NULL)", name: "ck_vector_inspections_times"
+    t.check_constraint "activity::text = ANY (ARRAY['li'::text, 'li_t'::text, 'pe'::text, 'ie'::text, 'transmission_block'::text, 'liraa'::text])", name: "ck_vector_inspections_activity"
+    t.check_constraint "situation::text = ANY (ARRAY['worked'::text, 'closed'::text, 'refused'::text, 'vacant'::text])", name: "ck_vector_inspections_situation"
+    t.check_constraint "work_type::text = ANY (ARRAY['routine'::text, 'pending'::text])", name: "ck_vector_inspections_work_type"
+  end
+
   create_table "vector_parameter_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.uuid "created_by_user_id", null: false
@@ -4943,6 +5004,71 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
     t.index ["version"], name: "idx_vector_parameter_versions_version", unique: true
     t.check_constraint "jsonb_typeof(\"values\") = 'object'::text", name: "ck_vector_parameter_versions_values"
     t.check_constraint "version >= 1", name: "ck_vector_parameter_versions_version"
+  end
+
+  create_table "vector_products", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.decimal "charge_size", precision: 10, scale: 2, null: false
+    t.string "code", limit: 10, null: false
+    t.datetime "created_at", null: false
+    t.string "name", limit: 80, null: false
+    t.string "unit", null: false
+    t.datetime "updated_at", null: false
+    t.text "uses", null: false, array: true
+    t.integer "version", default: 1, null: false
+    t.index "lower((code)::text)", name: "idx_vector_products_code", unique: true
+    t.check_constraint "cardinality(uses) >= 1 AND uses <@ ARRAY['focal'::text, 'perifocal'::text, 'spatial'::text]", name: "ck_vector_products_uses"
+    t.check_constraint "charge_size > 0::numeric", name: "ck_vector_products_charge_size"
+    t.check_constraint "unit::text = ANY (ARRAY['g'::text, 'ml'::text, 'un'::text])", name: "ck_vector_products_unit"
+    t.check_constraint "version >= 1", name: "ck_vector_products_version"
+  end
+
+  create_table "vector_samples", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "aegypti_larvae"
+    t.integer "albopictus_larvae"
+    t.datetime "created_at", null: false
+    t.string "deposit_group", null: false
+    t.integer "examined_larvae"
+    t.string "label", null: false
+    t.integer "larvae_collected", null: false
+    t.integer "number", null: false
+    t.timestamptz "result_at"
+    t.uuid "result_by_user_id"
+    t.text "result_note"
+    t.datetime "updated_at", null: false
+    t.uuid "vector_inspection_id", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["created_at"], name: "idx_vector_samples_pending", where: "(result_at IS NULL)"
+    t.index ["label"], name: "idx_vector_samples_label", unique: true
+    t.index ["vector_inspection_id", "number"], name: "idx_vector_samples_number", unique: true
+    t.check_constraint "aegypti_larvae IS NULL OR (aegypti_larvae >= 0 AND albopictus_larvae >= 0 AND aegypti_larvae + albopictus_larvae <= examined_larvae)", name: "ck_vector_samples_species"
+    t.check_constraint "deposit_group::text = ANY (ARRAY['A1'::text, 'A2'::text, 'B'::text, 'C'::text, 'D1'::text, 'D2'::text, 'E'::text])", name: "ck_vector_samples_deposit_group"
+    t.check_constraint "examined_larvae IS NULL OR (examined_larvae >= 0 AND examined_larvae <= larvae_collected)", name: "ck_vector_samples_examined"
+    t.check_constraint "larvae_collected >= 1 AND larvae_collected <= 10", name: "ck_vector_samples_larvae"
+    t.check_constraint "num_nonnulls(examined_larvae, aegypti_larvae, albopictus_larvae, result_at, result_by_user_id) = ANY (ARRAY[0, 5]) AND (result_note IS NULL OR result_at IS NOT NULL)", name: "ck_vector_samples_result"
+    t.check_constraint "number >= 1 AND number <= 99", name: "ck_vector_samples_number"
+    t.check_constraint "version >= 1", name: "ck_vector_samples_version"
+  end
+
+  create_table "vector_stock_shortfalls", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cause", null: false
+    t.datetime "created_at", null: false
+    t.decimal "quantity", precision: 12, scale: 2, null: false
+    t.datetime "reconciled_at"
+    t.uuid "reconciled_by_user_id"
+    t.text "reconciliation_note"
+    t.uuid "stock_location_id"
+    t.datetime "updated_at", null: false
+    t.uuid "vector_inspection_measure_id", null: false
+    t.uuid "vector_product_id", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["stock_location_id", "reconciled_at", "created_at"], name: "idx_vector_stock_shortfalls_location"
+    t.index ["vector_inspection_measure_id"], name: "idx_vector_stock_shortfalls_measure", unique: true
+    t.check_constraint "(cause::text = 'no_location'::text) = (stock_location_id IS NULL)", name: "ck_vector_stock_shortfalls_location"
+    t.check_constraint "(reconciled_by_user_id IS NULL) = (reconciliation_note IS NULL) AND (reconciled_by_user_id IS NULL OR reconciled_at IS NOT NULL)", name: "ck_vector_stock_shortfalls_reconciliation"
+    t.check_constraint "cause::text = ANY (ARRAY['no_location'::text, 'insufficient_balance'::text, 'no_lot'::text])", name: "ck_vector_stock_shortfalls_cause"
+    t.check_constraint "quantity > 0::numeric", name: "ck_vector_stock_shortfalls_quantity"
+    t.check_constraint "version >= 1", name: "ck_vector_stock_shortfalls_version"
   end
 
   create_table "vial_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -5249,6 +5375,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
   add_foreign_key "household_vector_profiles", "city_blocks"
   add_foreign_key "household_vector_profiles", "households"
   add_foreign_key "household_vector_profiles", "users", column: "updated_by_user_id"
+  add_foreign_key "household_vector_profiles", "vector_inspections", column: "last_inspection_id"
   add_foreign_key "household_versions", "health_teams", column: "team_id"
   add_foreign_key "household_versions", "households"
   add_foreign_key "household_versions", "micro_areas"
@@ -5591,8 +5718,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
   add_foreign_key "stock_lot_blocks", "stock_lots"
   add_foreign_key "stock_lot_blocks", "users", column: "decided_by_user_id"
   add_foreign_key "stock_lots", "users", column: "created_by_user_id"
+  add_foreign_key "stock_lots", "vector_products"
   add_foreign_key "stock_minimums", "stock_locations"
   add_foreign_key "stock_minimums", "users", column: "updated_by_user_id"
+  add_foreign_key "stock_minimums", "vector_products"
   add_foreign_key "stock_movements", "dispensation_items"
   add_foreign_key "stock_movements", "immunizations"
   add_foreign_key "stock_movements", "stock_adjustments"
@@ -5602,9 +5731,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
   add_foreign_key "stock_movements", "stock_transfers"
   add_foreign_key "stock_movements", "urgency_administrations"
   add_foreign_key "stock_movements", "users", column: "recorded_by_user_id"
+  add_foreign_key "stock_movements", "vector_inspection_measures"
+  add_foreign_key "stock_movements", "vector_products"
   add_foreign_key "stock_movements", "vial_openings"
   add_foreign_key "stock_openings", "stock_entries"
   add_foreign_key "stock_openings", "stock_locations"
+  add_foreign_key "stock_openings", "vector_products"
   add_foreign_key "stock_transfer_items", "stock_lots"
   add_foreign_key "stock_transfer_items", "stock_transfers"
   add_foreign_key "stock_transfers", "stock_locations", column: "from_location_id"
@@ -5715,7 +5847,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900001) do
   add_foreign_key "vaccine_rooms", "users", column: "updated_by_user_id"
   add_foreign_key "vector_cadences", "neighborhoods"
   add_foreign_key "vector_control_settings", "stock_locations"
+  add_foreign_key "vector_inspection_deposits", "vector_inspections"
+  add_foreign_key "vector_inspection_measures", "vector_inspections"
+  add_foreign_key "vector_inspection_measures", "vector_products"
+  add_foreign_key "vector_inspections", "city_blocks"
+  add_foreign_key "vector_inspections", "home_visits"
+  add_foreign_key "vector_inspections", "households"
   add_foreign_key "vector_parameter_versions", "users", column: "created_by_user_id"
+  add_foreign_key "vector_samples", "users", column: "result_by_user_id"
+  add_foreign_key "vector_samples", "vector_inspections"
+  add_foreign_key "vector_stock_shortfalls", "stock_locations"
+  add_foreign_key "vector_stock_shortfalls", "users", column: "reconciled_by_user_id"
+  add_foreign_key "vector_stock_shortfalls", "vector_inspection_measures"
+  add_foreign_key "vector_stock_shortfalls", "vector_products"
   add_foreign_key "vial_openings", "stock_lots"
   add_foreign_key "vial_openings", "users", column: "closed_by_user_id"
   add_foreign_key "vial_openings", "users", column: "opened_by_user_id"

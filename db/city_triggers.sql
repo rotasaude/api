@@ -2516,6 +2516,12 @@ BEGIN
      (SELECT to_jsonb(l) ->> 'immunobiological_code' FROM stock_lots l WHERE l.id = NEW.stock_lot_id) THEN
     RAISE EXCEPTION 'stock_movements: immunobiological_code differs from the lot';
   END IF;
+  -- Módulo 35a: o produto da vigilância ambiental também é cópia do lote
+  -- (to_jsonb: a coluna só nasce na 20261116900002).
+  IF (to_jsonb(NEW) ->> 'vector_product_id') IS DISTINCT FROM
+     (SELECT to_jsonb(l) ->> 'vector_product_id' FROM stock_lots l WHERE l.id = NEW.stock_lot_id) THEN
+    RAISE EXCEPTION 'stock_movements: vector_product_id differs from the lot';
+  END IF;
   IF (SELECT COALESCE(SUM(quantity), 0) FROM stock_movements
       WHERE stock_location_id = NEW.stock_location_id AND stock_lot_id = NEW.stock_lot_id) < 0 THEN
     RAISE EXCEPTION 'stock_movements: negative balance refused';
@@ -4261,6 +4267,116 @@ BEGIN
   END IF;
   FOREACH item IN ARRAY ARRAY['city_blocks', 'city_block_neighbors', 'household_vector_profiles', 'vector_cadences',
                               'vector_cycles', 'vector_parameter_versions', 'vector_control_settings'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END IF;
+  END LOOP;
+END
+$do$;
+
+-- Módulo 35a — inspeção (ADR 0054; plano, Task 3; contrato §1, §3, §4 e §9):
+-- o boletim, os depósitos e as medidas são só acréscimo (a retirada da visita
+-- não os muda: a visita retirada sai das leituras). O produto nunca some, e
+-- unidade e carga ficam fixas depois do primeiro lote ou medida (o 409
+-- product_in_use é do comando; aqui é o cinto). A amostra só recebe o
+-- resultado: de NULL a valor sem nota; de valor a valor só com nota nova não
+-- nula; nunca volta a NULL. A falta de estoque só recebe a conciliação, uma
+-- vez. A re-cifra das notas passa antes de tudo. Nenhuma das seis aceita
+-- DELETE nem TRUNCATE. As seis nascem juntas na 20261116900002 (com as colunas
+-- lidas aqui); as funções só rodam com as tabelas já criadas.
+CREATE OR REPLACE FUNCTION rota_vector_product_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'vector_products: DELETE refused';
+  END IF;
+  IF (NEW.unit, NEW.charge_size) IS DISTINCT FROM (OLD.unit, OLD.charge_size)
+     AND (EXISTS (SELECT 1 FROM stock_lots WHERE vector_product_id = OLD.id)
+          OR EXISTS (SELECT 1 FROM vector_inspection_measures WHERE vector_product_id = OLD.id)) THEN
+    RAISE EXCEPTION 'vector_products: unit and charge_size are fixed once the product is in use';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_vector_sample_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['examined_larvae', 'aegypti_larvae', 'albopictus_larvae', 'result_at', 'result_by_user_id',
+                         'result_note', 'updated_at', 'version'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'vector_samples: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'result_note') = (to_jsonb(OLD) - 'result_note') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'vector_samples: only the result changes';
+  END IF;
+  IF OLD.result_at IS NULL THEN
+    IF NEW.result_note IS NOT NULL THEN
+      RAISE EXCEPTION 'vector_samples: the first result has no note';
+    END IF;
+  ELSIF NEW.result_at IS NULL THEN
+    RAISE EXCEPTION 'vector_samples: the result is never cleared';
+  ELSIF NEW.result_note IS NULL OR NEW.result_note IS NOT DISTINCT FROM OLD.result_note THEN
+    RAISE EXCEPTION 'vector_samples: correcting a result needs a new note';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_vector_stock_shortfall_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['reconciled_at', 'reconciled_by_user_id', 'reconciliation_note', 'updated_at', 'version'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'vector_stock_shortfalls: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'reconciliation_note') = (to_jsonb(OLD) - 'reconciliation_note') THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.reconciled_at IS NOT NULL THEN
+    RAISE EXCEPTION 'vector_stock_shortfalls: reconciled once';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) OR NEW.reconciled_at IS NULL THEN
+    RAISE EXCEPTION 'vector_stock_shortfalls: an open shortfall only receives the reconciliation';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.vector_products') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS vector_products_guard ON vector_products';
+    EXECUTE 'CREATE TRIGGER vector_products_guard BEFORE UPDATE OR DELETE ON vector_products
+      FOR EACH ROW EXECUTE FUNCTION rota_vector_product_guard()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['vector_inspections', 'vector_inspection_deposits', 'vector_inspection_measures'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only', item);
+    END IF;
+  END LOOP;
+  IF to_regclass('public.vector_samples') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS vector_samples_guard ON vector_samples';
+    EXECUTE 'CREATE TRIGGER vector_samples_guard BEFORE UPDATE OR DELETE ON vector_samples
+      FOR EACH ROW EXECUTE FUNCTION rota_vector_sample_guard()';
+  END IF;
+  IF to_regclass('public.vector_stock_shortfalls') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS vector_stock_shortfalls_guard ON vector_stock_shortfalls';
+    EXECUTE 'CREATE TRIGGER vector_stock_shortfalls_guard BEFORE UPDATE OR DELETE ON vector_stock_shortfalls
+      FOR EACH ROW EXECUTE FUNCTION rota_vector_stock_shortfall_guard()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['vector_products', 'vector_inspections', 'vector_inspection_deposits', 'vector_inspection_measures',
+                              'vector_samples', 'vector_stock_shortfalls'] LOOP
     IF to_regclass('public.' || item) IS NOT NULL THEN
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
