@@ -4385,3 +4385,229 @@ BEGIN
   END LOOP;
 END
 $do$;
+
+-- Módulo 35a — vigilância (ADR 0054; plano, Task 4; contrato §1, §6, §7 e §8):
+-- ovitrampas, tarefas, LIRAa e bloqueio de transmissão. Nenhuma das onze aceita
+-- DELETE nem TRUNCATE. A leitura só recebe a coleta (de NULL a valor, uma vez)
+-- e a contagem (de NULL a valor sem nota; corrigida só com nota nova não nula;
+-- nunca volta a NULL). A tarefa só fecha, uma vez: open → done | dismissed. O
+-- levantamento só anda draft → drawn → closed; os estratos e os quarteirões dos
+-- estratos só mudam (ou nascem) com o levantamento em draft, e o quarteirão do
+-- estrato leva o levantamento do estrato (A-7). O bloqueio só anda proposed →
+-- active | dismissed e active → closed; o ativo só se encerra. O caso só muda
+-- de bloqueio (o número é fixo, Q8). A área do bloqueio é só acréscimo. A
+-- re-cifra das notas passa antes de tudo. As onze nascem juntas na
+-- 20261116900003 (com as colunas lidas aqui); as funções só rodam com as
+-- tabelas já criadas.
+CREATE OR REPLACE FUNCTION rota_ovitrap_reading_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['collected_on', 'condition', 'egg_count', 'counted_at', 'counted_by_user_id', 'count_note',
+                         'updated_at', 'version'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'ovitrap_readings: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'count_note') = (to_jsonb(OLD) - 'count_note') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'ovitrap_readings: only the collection and the count change';
+  END IF;
+  IF OLD.collected_on IS NOT NULL
+     AND (NEW.collected_on, NEW.condition) IS DISTINCT FROM (OLD.collected_on, OLD.condition) THEN
+    RAISE EXCEPTION 'ovitrap_readings: a reading is collected once';
+  END IF;
+  IF (NEW.egg_count, NEW.counted_at, NEW.counted_by_user_id, NEW.count_note)
+     IS NOT DISTINCT FROM (OLD.egg_count, OLD.counted_at, OLD.counted_by_user_id, OLD.count_note) THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.egg_count IS NULL THEN
+    IF NEW.count_note IS NOT NULL THEN
+      RAISE EXCEPTION 'ovitrap_readings: the first count has no note';
+    END IF;
+  ELSIF NEW.egg_count IS NULL THEN
+    RAISE EXCEPTION 'ovitrap_readings: the count is never cleared';
+  ELSIF NEW.count_note IS NULL OR NEW.count_note IS NOT DISTINCT FROM OLD.count_note THEN
+    RAISE EXCEPTION 'ovitrap_readings: correcting a count needs a new note';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_vector_task_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['state', 'closed_by_user_id', 'closed_note', 'updated_at', 'version'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'vector_tasks: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'closed_note') = (to_jsonb(OLD) - 'closed_note') THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.state <> 'open' THEN
+    RAISE EXCEPTION 'vector_tasks: a task is closed once';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) OR NEW.state = 'open' THEN
+    RAISE EXCEPTION 'vector_tasks: an open task only goes to done or dismissed';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_liraa_survey_guard() RETURNS trigger AS $fn$
+DECLARE
+  closing text[] := ARRAY['status', 'closed_at', 'updated_at', 'version'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'liraa_surveys: DELETE refused';
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status
+     AND NOT ((OLD.status = 'draft' AND NEW.status = 'drawn') OR (OLD.status = 'drawn' AND NEW.status = 'closed')) THEN
+    RAISE EXCEPTION 'liraa_surveys: status goes draft -> drawn -> closed';
+  END IF;
+  IF OLD.status = 'closed' THEN
+    RAISE EXCEPTION 'liraa_surveys: a closed survey never changes';
+  END IF;
+  IF OLD.status = 'drawn' AND (to_jsonb(NEW) - closing) IS DISTINCT FROM (to_jsonb(OLD) - closing) THEN
+    RAISE EXCEPTION 'liraa_surveys: a drawn survey only closes';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_liraa_stratum_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'liraa_strata: DELETE refused';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.liraa_survey_id IS DISTINCT FROM OLD.liraa_survey_id THEN
+    RAISE EXCEPTION 'liraa_strata: the survey is fixed';
+  END IF;
+  IF (SELECT status FROM liraa_surveys WHERE id = NEW.liraa_survey_id) IS DISTINCT FROM 'draft' THEN
+    RAISE EXCEPTION 'liraa_strata: strata change only while the survey is a draft';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_liraa_stratum_block_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'liraa_stratum_blocks: DELETE refused';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.liraa_survey_id IS DISTINCT FROM OLD.liraa_survey_id THEN
+    RAISE EXCEPTION 'liraa_stratum_blocks: the survey is fixed';
+  END IF;
+  IF NEW.liraa_survey_id IS DISTINCT FROM (SELECT liraa_survey_id FROM liraa_strata WHERE id = NEW.liraa_stratum_id) THEN
+    RAISE EXCEPTION 'liraa_stratum_blocks: liraa_survey_id differs from the stratum';
+  END IF;
+  IF (SELECT status FROM liraa_surveys WHERE id = NEW.liraa_survey_id) IS DISTINCT FROM 'draft' THEN
+    RAISE EXCEPTION 'liraa_stratum_blocks: blocks change only while the survey is a draft';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_transmission_block_guard() RETURNS trigger AS $fn$
+DECLARE
+  closing text[] := ARRAY['status', 'closed_at', 'updated_at', 'version'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'transmission_blocks: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'dismissed_reason') = (to_jsonb(OLD) - 'dismissed_reason') THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status
+     AND NOT ((OLD.status = 'proposed' AND NEW.status IN ('active', 'dismissed')) OR (OLD.status = 'active' AND NEW.status = 'closed')) THEN
+    RAISE EXCEPTION 'transmission_blocks: status goes proposed -> active | dismissed and active -> closed';
+  END IF;
+  IF OLD.status IN ('closed', 'dismissed') THEN
+    RAISE EXCEPTION 'transmission_blocks: a closed or dismissed block never changes';
+  END IF;
+  IF OLD.status = 'active' AND (to_jsonb(NEW) - closing) IS DISTINCT FROM (to_jsonb(OLD) - closing) THEN
+    RAISE EXCEPTION 'transmission_blocks: an active block only closes';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_transmission_block_case_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['transmission_block_id', 'updated_at', 'version'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'transmission_block_cases: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'transmission_block_cases: a case only moves to another block';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.ovitrap_readings') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS ovitrap_readings_guard ON ovitrap_readings';
+    EXECUTE 'CREATE TRIGGER ovitrap_readings_guard BEFORE UPDATE OR DELETE ON ovitrap_readings
+      FOR EACH ROW EXECUTE FUNCTION rota_ovitrap_reading_guard()';
+  END IF;
+  IF to_regclass('public.vector_tasks') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS vector_tasks_guard ON vector_tasks';
+    EXECUTE 'CREATE TRIGGER vector_tasks_guard BEFORE UPDATE OR DELETE ON vector_tasks
+      FOR EACH ROW EXECUTE FUNCTION rota_vector_task_guard()';
+  END IF;
+  IF to_regclass('public.liraa_surveys') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS liraa_surveys_guard ON liraa_surveys';
+    EXECUTE 'CREATE TRIGGER liraa_surveys_guard BEFORE UPDATE OR DELETE ON liraa_surveys
+      FOR EACH ROW EXECUTE FUNCTION rota_liraa_survey_guard()';
+  END IF;
+  IF to_regclass('public.liraa_strata') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS liraa_strata_guard ON liraa_strata';
+    EXECUTE 'CREATE TRIGGER liraa_strata_guard BEFORE INSERT OR UPDATE OR DELETE ON liraa_strata
+      FOR EACH ROW EXECUTE FUNCTION rota_liraa_stratum_guard()';
+  END IF;
+  IF to_regclass('public.liraa_stratum_blocks') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS liraa_stratum_blocks_guard ON liraa_stratum_blocks';
+    EXECUTE 'CREATE TRIGGER liraa_stratum_blocks_guard BEFORE INSERT OR UPDATE OR DELETE ON liraa_stratum_blocks
+      FOR EACH ROW EXECUTE FUNCTION rota_liraa_stratum_block_guard()';
+  END IF;
+  IF to_regclass('public.transmission_blocks') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS transmission_blocks_guard ON transmission_blocks';
+    EXECUTE 'CREATE TRIGGER transmission_blocks_guard BEFORE UPDATE OR DELETE ON transmission_blocks
+      FOR EACH ROW EXECUTE FUNCTION rota_transmission_block_guard()';
+  END IF;
+  IF to_regclass('public.transmission_block_cases') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS transmission_block_cases_guard ON transmission_block_cases';
+    EXECUTE 'CREATE TRIGGER transmission_block_cases_guard BEFORE UPDATE OR DELETE ON transmission_block_cases
+      FOR EACH ROW EXECUTE FUNCTION rota_transmission_block_case_guard()';
+  END IF;
+  IF to_regclass('public.transmission_block_areas') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS transmission_block_areas_append_only ON transmission_block_areas';
+    EXECUTE 'CREATE TRIGGER transmission_block_areas_append_only BEFORE UPDATE OR DELETE ON transmission_block_areas
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['ovitraps', 'liraa_draw_items', 'transmission_block_cycles'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+    END IF;
+  END LOOP;
+  FOREACH item IN ARRAY ARRAY['ovitraps', 'ovitrap_readings', 'vector_tasks', 'liraa_surveys', 'liraa_strata',
+                              'liraa_stratum_blocks', 'liraa_draw_items', 'transmission_blocks', 'transmission_block_areas',
+                              'transmission_block_cases', 'transmission_block_cycles'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END IF;
+  END LOOP;
+END
+$do$;

@@ -201,31 +201,29 @@ RSpec.describe CitySchema do
     expect(sequence).to eq("ombudsman_protocol_seq")
   end
 
-  # Módulo 35a (ADR 0054): o dump não representa trigger; um banco de cidade
-  # novo (dump + city_triggers.sql) tem de nascer com a guarda do par de
-  # vizinhos, o só-acréscimo dos parâmetros, os no-delete e o truncate das sete
-  # tabelas do território.
-  it "loads the 35a territory triggers into a database restored from the dump" do
+  # Módulo 35a (ADR 0054; plano, Tasks 2–4): o dump não representa trigger;
+  # um banco de cidade novo (dump + city_triggers.sql) tem de nascer com as
+  # guardas do território (par de vizinhos, só-acréscimo dos parâmetros), da
+  # inspeção (produto, amostra, falta de estoque, só-acréscimo do boletim) e da
+  # vigilância (leitura, tarefa, LIRAa, bloqueio, caso), os no-delete e o
+  # truncate das 24 tabelas do módulo.
+  it "loads the 35a triggers into a database restored from the dump" do
     names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
     tables = %w[city_blocks city_block_neighbors household_vector_profiles vector_cadences vector_cycles
-                vector_parameter_versions vector_control_settings]
+                vector_parameter_versions vector_control_settings
+                vector_products vector_inspections vector_inspection_deposits vector_inspection_measures vector_samples
+                vector_stock_shortfalls
+                ovitraps ovitrap_readings vector_tasks liraa_surveys liraa_strata liraa_stratum_blocks liraa_draw_items
+                transmission_blocks transmission_block_areas transmission_block_cases transmission_block_cycles]
 
-    expect(names).to include("city_block_neighbors_guard", "vector_parameter_versions_append_only",
-                             *%w[city_blocks household_vector_profiles vector_cadences vector_cycles vector_control_settings]
-                                .map { |t| "#{t}_no_delete" },
-                             *tables.map { |t| "#{t}_append_only_truncate" })
-  end
-
-  # Módulo 35a (ADR 0054; plano, Task 3): e com as guardas da inspeção — o
-  # só-acréscimo do boletim, depósitos e medidas, as guardas do produto, da
-  # amostra e da falta de estoque, e o truncate das seis.
-  it "loads the 35a inspection triggers into a database restored from the dump" do
-    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
-    tables = %w[vector_products vector_inspections vector_inspection_deposits vector_inspection_measures vector_samples
-                vector_stock_shortfalls]
-
-    expect(names).to include("vector_products_guard", "vector_samples_guard", "vector_stock_shortfalls_guard",
-                             *%w[vector_inspections vector_inspection_deposits vector_inspection_measures].map { |t| "#{t}_append_only" },
+    expect(tables.size).to eq(24)
+    expect(names).to include(*%w[city_block_neighbors vector_products vector_samples vector_stock_shortfalls
+                                 ovitrap_readings vector_tasks liraa_surveys liraa_strata liraa_stratum_blocks
+                                 transmission_blocks transmission_block_cases].map { |t| "#{t}_guard" },
+                             *%w[vector_parameter_versions vector_inspections vector_inspection_deposits vector_inspection_measures
+                                 transmission_block_areas].map { |t| "#{t}_append_only" },
+                             *%w[city_blocks household_vector_profiles vector_cadences vector_cycles vector_control_settings
+                                 ovitraps liraa_draw_items transmission_block_cycles].map { |t| "#{t}_no_delete" },
                              *tables.map { |t| "#{t}_append_only_truncate" })
   end
 

@@ -229,7 +229,10 @@ module CityEncryption
     [ CollectiveActivityParticipant, :smoking ],
     # ADR 0054 (módulo 35a): a nota de correção do resultado da amostra e a
     # nota da conciliação da falta de estoque do boletim.
-    [ VectorSample, :result_note ], [ VectorStockShortfall, :reconciliation_note ]
+    [ VectorSample, :result_note ], [ VectorStockShortfall, :reconciliation_note ],
+    # A nota de correção da contagem de ovos, a nota de fechamento da tarefa e
+    # o motivo do descarte do bloqueio de transmissão.
+    [ OvitrapReading, :count_note ], [ VectorTask, :closed_note ], [ TransmissionBlock, :dismissed_reason ]
   ].freeze
 
   module_function

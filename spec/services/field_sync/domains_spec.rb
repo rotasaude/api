@@ -153,7 +153,8 @@ RSpec.describe "FieldSync domains-v1.json × api (Ruling A5)" do
     end
 
     it "o item family entra no catálogo e no livro de idempotência" do
-      expect(FieldSync::Catalog::ITEM_TYPES.last).to eq("family")
+      # O 35a (W-4) acrescenta os itens de ovitrampa depois de family.
+      expect(FieldSync::Catalog::ITEM_TYPES.index("family")).to eq(6)
       receipt = FieldSyncReceipt.new(item_type: "family")
       receipt.valid?
       expect(receipt.errors[:item_type]).to be_empty

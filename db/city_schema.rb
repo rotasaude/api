@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -1602,7 +1602,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
     t.uuid "user_id", null: false
     t.index ["client_uuid"], name: "idx_field_sync_receipts_client_uuid", unique: true
     t.check_constraint "(result_version IS NULL) OR (result_version >= 1)", name: "ck_field_sync_receipts_result_version"
-    t.check_constraint "(item_type)::text = ANY (ARRAY['home_visit'::character varying::text, 'home_visit_withdrawal'::character varying::text, 'collective_activity'::character varying::text, 'patient'::character varying::text, 'household'::character varying::text, 'individual_registration'::character varying::text, 'family'::character varying::text])", name: "ck_field_sync_receipts_item_type"
+    t.check_constraint "(item_type)::text = ANY (ARRAY['home_visit'::character varying::text, 'home_visit_withdrawal'::character varying::text, 'collective_activity'::character varying::text, 'patient'::character varying::text, 'household'::character varying::text, 'individual_registration'::character varying::text, 'family'::character varying::text, 'ovitrap_installation'::character varying::text, 'ovitrap_collection'::character varying::text])", name: "ck_field_sync_receipts_item_type"
   end
 
   create_table "field_sync_tombstones", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2520,6 +2520,79 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
     t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'sending'::text, 'accepted'::text, 'rejected'::text, 'failed'::text, 'correction_pending'::text])", name: "ck_ledi_outbox_status"
   end
 
+  create_table "liraa_draw_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_block_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "household_id", null: false
+    t.uuid "liraa_stratum_id", null: false
+    t.integer "position", null: false
+    t.string "status", default: "pending", null: false
+    t.uuid "substitute_of_id"
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["household_id"], name: "idx_liraa_draw_items_household_lookup"
+    t.index ["liraa_stratum_id", "household_id"], name: "idx_liraa_draw_items_household", unique: true
+    t.index ["liraa_stratum_id", "position"], name: "idx_liraa_draw_items_position"
+    t.check_constraint "position >= 1", name: "ck_liraa_draw_items_position"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'inspected'::text, 'substituted'::text])", name: "ck_liraa_draw_items_status"
+    t.check_constraint "substitute_of_id IS NULL OR substitute_of_id <> id", name: "ck_liraa_draw_items_substitute"
+    t.check_constraint "version >= 1", name: "ck_liraa_draw_items_version"
+  end
+
+  create_table "liraa_strata", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "block_interval"
+    t.datetime "created_at", null: false
+    t.integer "households_count"
+    t.uuid "liraa_survey_id", null: false
+    t.string "mode", null: false
+    t.string "name", limit: 60, null: false
+    t.integer "random_start"
+    t.integer "sample_target"
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["liraa_survey_id"], name: "idx_liraa_strata_survey"
+    t.check_constraint "(households_count IS NULL OR households_count >= 0) AND (sample_target IS NULL OR sample_target >= 0) AND (block_interval IS NULL OR block_interval >= 1) AND (random_start IS NULL OR (random_start >= 1 AND (block_interval IS NULL OR random_start <= block_interval)))", name: "ck_liraa_strata_draw"
+    t.check_constraint "length(btrim((name)::text)) >= 1", name: "ck_liraa_strata_name"
+    t.check_constraint "mode::text = ANY (ARRAY['standard'::text, 'half'::text, 'census'::text])", name: "ck_liraa_strata_mode"
+    t.check_constraint "version >= 1", name: "ck_liraa_strata_version"
+  end
+
+  create_table "liraa_stratum_blocks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_block_id", null: false
+    t.datetime "created_at", null: false
+    t.boolean "drawn", default: false, null: false
+    t.integer "household_start"
+    t.uuid "liraa_stratum_id", null: false
+    t.uuid "liraa_survey_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["liraa_stratum_id"], name: "idx_liraa_stratum_blocks_stratum"
+    t.index ["liraa_survey_id", "city_block_id"], name: "idx_liraa_stratum_blocks_block", unique: true
+    t.check_constraint "drawn = (household_start IS NOT NULL)", name: "ck_liraa_stratum_blocks_drawn"
+    t.check_constraint "household_start BETWEEN 1 AND 5", name: "ck_liraa_stratum_blocks_household_start"
+    t.check_constraint "version >= 1", name: "ck_liraa_stratum_blocks_version"
+  end
+
+  create_table "liraa_surveys", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.timestamptz "closed_at"
+    t.datetime "created_at", null: false
+    t.timestamptz "drawn_at"
+    t.date "ends_on", null: false
+    t.string "name", limit: 80, null: false
+    t.integer "parameters_version"
+    t.date "starts_on", null: false
+    t.string "status", default: "draft", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["status", "starts_on"], name: "idx_liraa_surveys_status"
+    t.check_constraint "(status::text = 'draft'::text) = (drawn_at IS NULL) AND (drawn_at IS NULL) = (parameters_version IS NULL) AND (status::text = 'closed'::text) = (closed_at IS NOT NULL)", name: "ck_liraa_surveys_drawn"
+    t.check_constraint "ends_on >= starts_on", name: "ck_liraa_surveys_dates"
+    t.check_constraint "length(btrim((name)::text)) >= 1", name: "ck_liraa_surveys_name"
+    t.check_constraint "parameters_version IS NULL OR parameters_version >= 1", name: "ck_liraa_surveys_parameters_version"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::text, 'drawn'::text, 'closed'::text])", name: "ck_liraa_surveys_status"
+    t.check_constraint "version >= 1", name: "ck_liraa_surveys_version"
+  end
+
   create_table "local_notifiable_diseases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.jsonb "ciap2", default: [], null: false
@@ -2885,6 +2958,58 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
     t.index ["idempotency_key"], name: "index_outbound_messages_on_idempotency_key", unique: true
     t.index ["status", "created_at"], name: "index_outbound_messages_on_status_and_created_at"
     t.index ["to"], name: "index_outbound_messages_on_to"
+  end
+
+  create_table "ovitrap_readings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.date "collected_on"
+    t.string "condition"
+    t.text "count_note"
+    t.timestamptz "counted_at"
+    t.uuid "counted_by_user_id"
+    t.datetime "created_at", null: false
+    t.integer "egg_count"
+    t.integer "epi_week", null: false
+    t.date "installed_on", null: false
+    t.uuid "ovitrap_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["collected_on"], name: "idx_ovitrap_readings_pending_count", where: "(((condition)::text = 'ok'::text) AND (egg_count IS NULL))"
+    t.index ["epi_week"], name: "idx_ovitrap_readings_epi_week"
+    t.index ["ovitrap_id", "installed_on"], name: "idx_ovitrap_readings_ovitrap"
+    t.index ["ovitrap_id"], name: "idx_ovitrap_readings_open", unique: true, where: "(collected_on IS NULL)"
+    t.check_constraint "(collected_on IS NULL) = (condition IS NULL) AND (collected_on IS NULL OR collected_on >= installed_on)", name: "ck_ovitrap_readings_collection"
+    t.check_constraint "(egg_count IS NULL) = (counted_at IS NULL) AND (counted_at IS NULL) = (counted_by_user_id IS NULL) AND (count_note IS NULL OR counted_at IS NOT NULL)", name: "ck_ovitrap_readings_counted"
+    t.check_constraint "condition IS NULL OR condition::text = ANY (ARRAY['ok'::text, 'damaged'::text, 'lost'::text, 'dry'::text])", name: "ck_ovitrap_readings_condition"
+    t.check_constraint "egg_count BETWEEN 0 AND 9999", name: "ck_ovitrap_readings_eggs"
+    t.check_constraint "egg_count IS NULL OR (condition IS NOT NULL AND condition::text = 'ok'::text)", name: "ck_ovitrap_readings_count"
+    t.check_constraint "epi_week % 100 BETWEEN 1 AND 53", name: "ck_ovitrap_readings_epi_week"
+    t.check_constraint "version >= 1", name: "ck_ovitrap_readings_version"
+  end
+
+  create_table "ovitraps", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_block_id"
+    t.uuid "client_uuid"
+    t.timestamptz "consent_at", null: false
+    t.datetime "created_at", null: false
+    t.uuid "field_device_id"
+    t.uuid "household_id", null: false
+    t.uuid "installed_by_user_id", null: false
+    t.date "installed_on", null: false
+    t.string "number", limit: 12, null: false
+    t.string "origin", null: false
+    t.date "removed_on"
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index "lower((number)::text)", name: "idx_ovitraps_number", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["city_block_id"], name: "idx_ovitraps_city_block"
+    t.index ["client_uuid"], name: "idx_ovitraps_client_uuid", unique: true, where: "(client_uuid IS NOT NULL)"
+    t.index ["household_id"], name: "idx_ovitraps_household"
+    t.check_constraint "(number)::text ~ '^[0-9A-Za-z-]{1,12}$'::text", name: "ck_ovitraps_number"
+    t.check_constraint "(status::text = 'active'::text) = (removed_on IS NULL) AND (removed_on IS NULL OR removed_on >= installed_on)", name: "ck_ovitraps_removed"
+    t.check_constraint "origin::text = ANY (ARRAY['dashboard'::text, 'field_app'::text]) AND (origin::text = 'field_app'::text) = (field_device_id IS NOT NULL)", name: "ck_ovitraps_origin"
+    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'removed'::text, 'lost'::text])", name: "ck_ovitraps_status"
+    t.check_constraint "version >= 1", name: "ck_ovitraps_version"
   end
 
   create_table "patient_medication_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4359,6 +4484,65 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
     t.check_constraint "amount_cents >= 1 AND amount_cents <= 10000000 AND payment_method::text = ANY (ARRAY['cash'::text, 'transfer'::text, 'pix'::text, 'check'::text]::text[]) AND char_length(btrim(receipt_number::text)) >= 1", name: "ck_tfd_payments_domains"
   end
 
+  create_table "transmission_block_areas", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_block_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "transmission_block_id", null: false
+    t.index ["city_block_id"], name: "idx_transmission_block_areas_city_block"
+    t.index ["transmission_block_id", "city_block_id"], name: "idx_transmission_block_areas_pair", unique: true
+  end
+
+  create_table "transmission_block_cases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "added_by", null: false
+    t.date "case_on", null: false
+    t.datetime "created_at", null: false
+    t.uuid "disease_notification_id", null: false
+    t.integer "number", null: false
+    t.uuid "transmission_block_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["disease_notification_id"], name: "idx_transmission_block_cases_notification", unique: true
+    t.index ["number"], name: "idx_transmission_block_cases_number", unique: true
+    t.index ["transmission_block_id", "case_on"], name: "idx_transmission_block_cases_block"
+    t.check_constraint "added_by::text = ANY (ARRAY['job'::text, 'user'::text])", name: "ck_transmission_block_cases_added_by"
+    t.check_constraint "number >= 1", name: "ck_transmission_block_cases_number"
+    t.check_constraint "version >= 1", name: "ck_transmission_block_cases_version"
+  end
+
+  create_table "transmission_block_cycles", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "ends_on", null: false
+    t.integer "number", null: false
+    t.date "starts_on", null: false
+    t.uuid "transmission_block_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["transmission_block_id", "number"], name: "idx_transmission_block_cycles_number", unique: true
+    t.check_constraint "ends_on >= starts_on", name: "ck_transmission_block_cycles_dates"
+    t.check_constraint "number BETWEEN 1 AND 3", name: "ck_transmission_block_cycles_number"
+    t.check_constraint "version >= 1", name: "ck_transmission_block_cycles_version"
+  end
+
+  create_table "transmission_blocks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "center_block_id"
+    t.timestamptz "closed_at"
+    t.timestamptz "confirmed_at"
+    t.uuid "confirmed_by_user_id"
+    t.datetime "created_at", null: false
+    t.string "disease_group", null: false
+    t.text "dismissed_reason"
+    t.string "status", default: "proposed", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["status", "created_at"], name: "idx_transmission_blocks_status"
+    t.check_constraint "(status::text = 'closed'::text) = (closed_at IS NOT NULL)", name: "ck_transmission_blocks_closed"
+    t.check_constraint "(status::text = 'dismissed'::text) = (dismissed_reason IS NOT NULL)", name: "ck_transmission_blocks_dismissed"
+    t.check_constraint "(status::text = ANY (ARRAY['active'::text, 'closed'::text])) = (confirmed_at IS NOT NULL) AND (confirmed_at IS NULL) = (confirmed_by_user_id IS NULL)", name: "ck_transmission_blocks_confirmed"
+    t.check_constraint "disease_group::text = ANY (ARRAY['arbovirus'::text])", name: "ck_transmission_blocks_disease_group"
+    t.check_constraint "status::text = ANY (ARRAY['proposed'::text, 'active'::text, 'closed'::text, 'dismissed'::text])", name: "ck_transmission_blocks_status"
+    t.check_constraint "version >= 1", name: "ck_transmission_blocks_version"
+  end
+
   create_table "transport_attendance_corrections", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "by_user_id", null: false
     t.datetime "created_at", null: false
@@ -4990,6 +5174,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
     t.string "work_type", null: false
     t.index ["home_visit_id"], name: "idx_vector_inspections_visit", unique: true
     t.index ["household_id"], name: "idx_vector_inspections_household"
+    t.index ["liraa_draw_item_id"], name: "idx_vector_inspections_draw_item", where: "(liraa_draw_item_id IS NOT NULL)"
+    t.index ["transmission_block_id"], name: "idx_vector_inspections_block", where: "(transmission_block_id IS NOT NULL)"
     t.check_constraint "(entered_at IS NULL) = (left_at IS NULL)", name: "ck_vector_inspections_times"
     t.check_constraint "activity::text = ANY (ARRAY['li'::text, 'li_t'::text, 'pe'::text, 'ie'::text, 'transmission_block'::text, 'liraa'::text])", name: "ck_vector_inspections_activity"
     t.check_constraint "situation::text = ANY (ARRAY['worked'::text, 'closed'::text, 'refused'::text, 'vacant'::text])", name: "ck_vector_inspections_situation"
@@ -5069,6 +5255,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
     t.check_constraint "cause::text = ANY (ARRAY['no_location'::text, 'insufficient_balance'::text, 'no_lot'::text])", name: "ck_vector_stock_shortfalls_cause"
     t.check_constraint "quantity > 0::numeric", name: "ck_vector_stock_shortfalls_quantity"
     t.check_constraint "version >= 1", name: "ck_vector_stock_shortfalls_version"
+  end
+
+  create_table "vector_tasks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "closed_note"
+    t.uuid "closed_by_user_id"
+    t.datetime "created_at", null: false
+    t.uuid "disease_notification_id"
+    t.string "kind", null: false
+    t.uuid "ovitrap_id"
+    t.uuid "ovitrap_reading_id"
+    t.string "state", default: "open", null: false
+    t.uuid "suggested_block_ids", default: [], null: false, array: true
+    t.uuid "transmission_block_id"
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["disease_notification_id"], name: "idx_vector_tasks_notification"
+    t.index ["ovitrap_id"], name: "idx_vector_tasks_open_ovitrap", unique: true, where: "(((state)::text = 'open'::text) AND ((kind)::text = 'ovitrap_intensification'::text))"
+    t.index ["ovitrap_reading_id"], name: "idx_vector_tasks_reading"
+    t.index ["state", "created_at"], name: "idx_vector_tasks_state"
+    t.index ["transmission_block_id"], name: "idx_vector_tasks_block"
+    t.check_constraint "(kind::text = 'ovitrap_intensification'::text) = (ovitrap_reading_id IS NOT NULL) AND (ovitrap_reading_id IS NULL) = (ovitrap_id IS NULL)", name: "ck_vector_tasks_ovitrap"
+    t.check_constraint "(state::text = 'open'::text) = (closed_by_user_id IS NULL) AND (closed_note IS NULL OR state::text <> 'open'::text)", name: "ck_vector_tasks_closed"
+    t.check_constraint "kind::text = ANY (ARRAY['ovitrap_intensification'::text, 'case_resident_elsewhere'::text, 'block_case_without_place'::text])", name: "ck_vector_tasks_kind"
+    t.check_constraint "num_nonnulls(ovitrap_reading_id, disease_notification_id, transmission_block_id) = 1", name: "ck_vector_tasks_reference"
+    t.check_constraint "state::text = ANY (ARRAY['open'::text, 'done'::text, 'dismissed'::text])", name: "ck_vector_tasks_state"
+    t.check_constraint "version >= 1", name: "ck_vector_tasks_version"
   end
 
   create_table "vial_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -5503,6 +5715,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
   add_foreign_key "lab_supply_movements", "lab_supply_lots"
   add_foreign_key "lab_supply_movements", "users", column: "recorded_by_user_id"
   add_foreign_key "ledi_outbox", "ledi_outbox", column: "replaces_outbox_id"
+  add_foreign_key "liraa_draw_items", "city_blocks"
+  add_foreign_key "liraa_draw_items", "households"
+  add_foreign_key "liraa_draw_items", "liraa_draw_items", column: "substitute_of_id"
+  add_foreign_key "liraa_draw_items", "liraa_strata"
+  add_foreign_key "liraa_strata", "liraa_surveys"
+  add_foreign_key "liraa_stratum_blocks", "city_blocks"
+  add_foreign_key "liraa_stratum_blocks", "liraa_strata"
+  add_foreign_key "liraa_stratum_blocks", "liraa_surveys"
   add_foreign_key "local_notifiable_diseases", "users", column: "updated_by_user_id"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"
@@ -5551,6 +5771,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
   add_foreign_key "ombudsman_satisfaction_responses", "ombudsman_manifestations"
   add_foreign_key "ombudsman_settings", "users", column: "updated_by_user_id"
   add_foreign_key "ombudsman_subjects", "ombudsman_subjects", column: "parent_id"
+  add_foreign_key "ovitrap_readings", "ovitraps"
+  add_foreign_key "ovitrap_readings", "users", column: "counted_by_user_id"
+  add_foreign_key "ovitraps", "city_blocks"
+  add_foreign_key "ovitraps", "field_devices"
+  add_foreign_key "ovitraps", "households"
+  add_foreign_key "ovitraps", "users", column: "installed_by_user_id"
   add_foreign_key "patient_medication_events", "clinical_documents", deferrable: :deferred
   add_foreign_key "patient_medication_events", "consultation_addenda", column: "addendum_id", deferrable: :deferred
   add_foreign_key "patient_medication_events", "consultations", deferrable: :deferred
@@ -5761,6 +5987,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
   add_foreign_key "tfd_legs", "users", column: "created_by_user_id"
   add_foreign_key "tfd_payments", "tfd_cases"
   add_foreign_key "tfd_payments", "users", column: "by_user_id"
+  add_foreign_key "transmission_block_areas", "city_blocks"
+  add_foreign_key "transmission_block_areas", "transmission_blocks"
+  add_foreign_key "transmission_block_cases", "disease_notifications"
+  add_foreign_key "transmission_block_cases", "transmission_blocks"
+  add_foreign_key "transmission_block_cycles", "transmission_blocks"
+  add_foreign_key "transmission_blocks", "city_blocks", column: "center_block_id"
+  add_foreign_key "transmission_blocks", "users", column: "confirmed_by_user_id"
   add_foreign_key "transport_attendance_corrections", "transport_trip_passengers"
   add_foreign_key "transport_attendance_corrections", "users", column: "by_user_id"
   add_foreign_key "transport_destinations", "users", column: "updated_by_user_id"
@@ -5853,6 +6086,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
   add_foreign_key "vector_inspections", "city_blocks"
   add_foreign_key "vector_inspections", "home_visits"
   add_foreign_key "vector_inspections", "households"
+  add_foreign_key "vector_inspections", "liraa_draw_items"
+  add_foreign_key "vector_inspections", "transmission_blocks"
   add_foreign_key "vector_parameter_versions", "users", column: "created_by_user_id"
   add_foreign_key "vector_samples", "users", column: "result_by_user_id"
   add_foreign_key "vector_samples", "vector_inspections"
@@ -5860,6 +6095,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900002) do
   add_foreign_key "vector_stock_shortfalls", "users", column: "reconciled_by_user_id"
   add_foreign_key "vector_stock_shortfalls", "vector_inspection_measures"
   add_foreign_key "vector_stock_shortfalls", "vector_products"
+  add_foreign_key "vector_tasks", "disease_notifications"
+  add_foreign_key "vector_tasks", "ovitrap_readings"
+  add_foreign_key "vector_tasks", "ovitraps"
+  add_foreign_key "vector_tasks", "transmission_blocks"
+  add_foreign_key "vector_tasks", "users", column: "closed_by_user_id"
   add_foreign_key "vial_openings", "stock_lots"
   add_foreign_key "vial_openings", "users", column: "closed_by_user_id"
   add_foreign_key "vial_openings", "users", column: "opened_by_user_id"

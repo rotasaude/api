@@ -8,7 +8,9 @@ module FieldSync
     QR_PREFIX = "rotasaude-field:v1:".freeze
     MAX_ACTIVE_DEVICES = 3
     DEVICE_NAME = (1..60)
-    ITEM_TYPES = %w[home_visit home_visit_withdrawal collective_activity patient household individual_registration family].freeze
+    # Módulo 35a (W-4): a instalação e a coleta da ovitrampa, no fim.
+    ITEM_TYPES = %w[home_visit home_visit_withdrawal collective_activity patient household individual_registration family
+                    ovitrap_installation ovitrap_collection].freeze
     MAX_ITEMS = 50
     MAX_BODY_BYTES = 2.megabytes
     PAGE_LIMIT = (1..500)
