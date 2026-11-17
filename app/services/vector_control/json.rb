@@ -20,7 +20,9 @@
 #     conciliou; `reconciled_by: null` na conciliação do sistema). A nota
 #     nunca sai;
 #   - cadences → VectorCadence[] (cidade primeiro); cycle → VectorCycle;
-#     cycle_summary → CycleSummary (VectorControl::CycleStats por bairro).
+#     cycle_summary → CycleSummary (VectorControl::CycleStats por bairro);
+#   - ovitraps → Ovitrap[]; ovitrap_readings → OvitrapReading[]; tasks →
+#     VectorTask[] (Task 9; semana em "YYYY-WW", A-9; notas nunca saem).
 module VectorControl
   module Json
     module_function
@@ -183,6 +185,67 @@ module VectorControl
           neighborhood = by_id.fetch(row[:neighborhood_id])
           { neighborhood: { id: neighborhood.id, name: neighborhood.name } }.merge(row.except(:neighborhood_id))
         end }
+    end
+
+    # Ovitrap[] (Task 9): o domicílio só com o endereço curto do 24a (quem
+    # mostra grava a trilha), o quarteirão congelado, a leitura aberta e a
+    # última coletada (por collected_on), em consultas constantes. epi_week em
+    # "YYYY-WW" (A-9). Nunca morador.
+    def ovitraps(ovitraps)
+      ids = ovitraps.map(&:id)
+      open = OvitrapReading.open_readings.where(ovitrap_id: ids).index_by(&:ovitrap_id)
+      last = OvitrapReading.where(ovitrap_id: ids).where.not(collected_on: nil)
+                           .select("DISTINCT ON (ovitrap_readings.ovitrap_id) ovitrap_readings.*")
+                           .order(:ovitrap_id, collected_on: :desc, created_at: :desc).index_by(&:ovitrap_id)
+      blocks = CityBlock.where(id: ovitraps.map(&:city_block_id)).index_by(&:id)
+      addresses = HomeVisits::Json.addresses(ovitraps.map(&:household_id))
+      ovitraps.map do |ovitrap|
+        block = blocks.fetch(ovitrap.city_block_id)
+        current = open[ovitrap.id]
+        previous = last[ovitrap.id]
+        { id: ovitrap.id, number: ovitrap.number, household: { id: ovitrap.household_id, address_short: addresses.fetch(ovitrap.household_id) },
+          city_block: { id: block.id, number: block.number }, status: ovitrap.status, installed_on: ovitrap.installed_on.iso8601,
+          removed_on: ovitrap.removed_on&.iso8601, open_reading: current && { id: current.id, installed_on: current.installed_on.iso8601 },
+          last_reading: previous && { id: previous.id, collected_on: previous.collected_on.iso8601, condition: previous.condition,
+                                      egg_count: previous.egg_count, epi_week: OvitrapIndex.week_text(previous.epi_week) },
+          version: ovitrap.version }
+      end
+    end
+
+    # OvitrapReading[] (Task 9): a ovitrampa, o quarteirão e o bairro dele, a
+    # semana em "YYYY-WW" e `corrected` (há nota só na correção). A nota nunca
+    # sai, nem decifrada aqui.
+    def ovitrap_readings(readings)
+      ovitraps = Ovitrap.where(id: readings.map(&:ovitrap_id).uniq).includes(city_block: :neighborhood).index_by(&:id)
+      readings.map do |reading|
+        ovitrap = ovitraps.fetch(reading.ovitrap_id)
+        block = ovitrap.city_block
+        { id: reading.id, ovitrap: { id: ovitrap.id, number: ovitrap.number }, city_block: { id: block.id, number: block.number },
+          neighborhood: { id: block.neighborhood.id, name: block.neighborhood.name }, installed_on: reading.installed_on.iso8601,
+          collected_on: reading.collected_on&.iso8601, condition: reading.condition, epi_week: OvitrapIndex.week_text(reading.epi_week),
+          egg_count: reading.egg_count, counted_at: reading.counted_at&.utc&.iso8601,
+          corrected: !reading.read_attribute_before_type_cast("count_note").nil? }
+      end
+    end
+
+    # VectorTask[] (Task 9): a ovitrampa (número) e os quarteirões sugeridos
+    # na intensificação; doença e data no caso de residente fora (nunca o
+    # paciente: só disease_code e suspected_on da notificação); o bloqueio no
+    # caso sem imóvel. closed_at = a última escrita da tarefa fechada (fecha
+    # uma vez). A nota nunca sai.
+    def tasks(tasks)
+      ovitraps = Ovitrap.where(id: tasks.filter_map(&:ovitrap_id)).pluck(:id, :number).to_h
+      numbers = CityBlock.where(id: tasks.flat_map(&:suggested_block_ids).uniq).pluck(:id, :number).to_h
+      cases = DiseaseNotification.where(id: tasks.filter_map(&:disease_notification_id))
+                                 .pluck(:id, :disease_code, :suspected_on).to_h { |id, *rest| [ id, rest ] }
+      tasks.map do |task|
+        disease, case_on = cases[task.disease_notification_id]
+        { id: task.id, kind: task.kind, state: task.state, created_at: task.created_at.utc.iso8601,
+          ovitrap: task.ovitrap_id && { id: task.ovitrap_id, number: ovitraps.fetch(task.ovitrap_id) },
+          suggested_blocks: task.suggested_block_ids.map { |id| { id: id, number: numbers.fetch(id) } },
+          disease: disease, case_on: case_on&.iso8601, transmission_block_id: task.transmission_block_id,
+          closed_at: task.state == "open" ? nil : task.updated_at.utc.iso8601 }
+      end
     end
 
     # { block_id => [ids dos vizinhos vigentes] }, ordenados.

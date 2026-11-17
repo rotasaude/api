@@ -37,6 +37,17 @@ module VectorControl
                       .exists?
     end
 
+    # O agente de endemias na microárea (atribuída a ele, escopo de leitura do
+    # 24b) → nil. Senão o motivo: agente fora dela → :out_of_scope; outro
+    # profissional de campo → :cbo_not_allowed; o resto → :missing_role
+    # (ovitrampas, Task 9).
+    def agent_refusal(user, micro_area)
+      return nil if micro_area && field_agent?(user, micro_area.team) && HomeVisits::Access.reads_micro_area?(user, micro_area)
+      return :out_of_scope if field_agent_somewhere?(user)
+
+      HomeVisits::Access.registers_somewhere?(user) ? :cbo_not_allowed : :missing_role
+    end
+
     def role?(user, role) = !user.nil? && user.has_role?(role)
   end
 end

@@ -97,6 +97,38 @@ module VectorControlHelpers
     user
   end
 
+  # Task 9 (contrato §6): domicílio ativo na microárea atribuída ao agente,
+  # no bairro do quarteirão, com o quarteirão no perfil (sem `block:`, sem
+  # perfil).
+  def ovitrap_household!(agent, block: nil, neighborhood: block&.neighborhood)
+    area = MicroAreaFieldAssignment.active.find_by!(professional: agent.professional).micro_area
+    household = registry_household_rows!(area, **(neighborhood ? { neighborhood_id: neighborhood.id } : {}))
+    vector_profile!(household, block: block) if block
+    household
+  end
+
+  # Ovitrampa instalada pelo caminho real (VectorControl::InstallOvitrap). -> Ovitrap
+  def ovitrap_installed!(agent:, household:, number: "OV-#{SecureRandom.hex(2).upcase}", installed_on: Time.zone.today - 5)
+    params = { "client_uuid" => SecureRandom.uuid, "household_id" => household.id, "number" => number, "consent" => true,
+               "installed_on" => installed_on.iso8601 }
+    result = VectorControl::InstallOvitrap.call(params: params, by: agent)
+    raise ArgumentError, "ovitrap_installed!: #{result.reason} #{result.details.inspect}" if result.failure?
+
+    result.payload[:ovitrap]
+  end
+
+  # Coleta pelo caminho real (VectorControl::CollectOvitrap); devolve a
+  # leitura coletada.
+  def ovitrap_collected!(ovitrap, agent:, condition: "ok", collected_on: nil, reinstall: true, remove: false)
+    reading = ovitrap.readings.open_readings.sole
+    collected_on ||= reading.installed_on + 5
+    params = { "collected_on" => collected_on.iso8601, "condition" => condition, "reinstall" => reinstall, "remove" => remove }
+    result = VectorControl::CollectOvitrap.call(ovitrap: ovitrap, params: params, by: agent)
+    raise ArgumentError, "ovitrap_collected!: #{result.reason} #{result.details.inspect}" if result.failure?
+
+    reading.reload
+  end
+
   private
 
   def vector_author = (@vector_author ||= endemic_coordinator!)
