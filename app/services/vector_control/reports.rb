@@ -268,9 +268,12 @@ module VectorControl
       cycles = TransmissionBlockCycle.group(:transmission_block_id)
                                      .select("transmission_block_cycles.transmission_block_id AS block_id", "count(*) AS cycles")
       # Cada bloqueio com no mínimo 0 h: depois de mover casos, a notificação
-      # mais antiga que sobrou pode ser posterior à confirmação.
-      hours = "GREATEST(extract(epoch FROM (transmission_blocks.confirmed_at - " \
-              "(block_cases.first_notified_at AT TIME ZONE 'UTC'))) / 3600, 0)"
+      # mais antiga que sobrou pode ser posterior à confirmação. Bloqueio sem
+      # caso (todos movidos) fica NULL e o AVG o ignora: GREATEST(NULL, 0) = 0
+      # no Postgres, por isso o CASE.
+      hours = "CASE WHEN block_cases.first_notified_at IS NULL THEN NULL " \
+              "ELSE GREATEST(extract(epoch FROM (transmission_blocks.confirmed_at - " \
+              "(block_cases.first_notified_at AT TIME ZONE 'UTC'))) / 3600, 0) END"
       counts = TransmissionBlock.where(created_at: range)
                                 .joins("LEFT JOIN (#{cases.to_sql}) block_cases ON block_cases.block_id = transmission_blocks.id")
                                 .joins("LEFT JOIN (#{cycles.to_sql}) block_cycles ON block_cycles.block_id = transmission_blocks.id")

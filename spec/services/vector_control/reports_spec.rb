@@ -206,6 +206,18 @@ RSpec.describe VectorControl::Reports, type: :model do
       active = row(build("blocks", from: today.iso8601, to: today.iso8601), "status", "Ativo")
       expect(active).to include("blocks" => 2, "hours_to_confirmation" => "5.0")
     end
+
+    it "bloqueio confirmado sem caso (todos movidos) não entra na média das horas" do
+      coordinator = endemic_coordinator!
+      timed = TransmissionBlock.create!(disease_group: "arbovirus")
+      notification = cases!(timed, 1).sole
+      timed.update!(status: "active", confirmed_by_user: coordinator, confirmed_at: notification.created_at + 10.hours)
+      TransmissionBlock.create!(disease_group: "arbovirus")
+                       .update!(status: "active", confirmed_by_user: coordinator, confirmed_at: Time.current)
+
+      active = row(build("blocks", from: today.iso8601, to: today.iso8601), "status", "Ativo")
+      expect(active).to include("blocks" => 2, "cases" => Admin::SmallCount::SUPPRESSED, "hours_to_confirmation" => "10.0")
+    end
   end
 
   it "liraa: índices por estrato e município, provisório com amostra sem resultado, substituído sem candidato nas notas" do

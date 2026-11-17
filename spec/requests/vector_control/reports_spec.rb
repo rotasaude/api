@@ -86,6 +86,12 @@ RSpec.describe "Vigilância ambiental — relatórios", type: :request do
     expect(lines[1..2].map { |line| line.split(";", -1).last }).to eq(%w[sim sim])
     expect(lines[3..]).to eq([ "", "Provisório: há amostra sem resultado de laboratório.", "" ])
 
+    # O PDF não é tabela: lê as chaves por nome e avisa o provisório no cabeçalho; a coluna sim/não não aparece.
+    get "#{base}/liraa.pdf", params: { survey_id: provisional.id }
+    text = PDF::Reader.new(StringIO.new(response.body)).pages.map(&:text).join("\n").squeeze(" ")
+    expect(text).to include("PROVISÓRIO: há amostra sem resultado de laboratório.", "Estrato 1", "Município", "Amostra planejada: 1")
+    expect(text).not_to match(/Provisório\W+(sim|não)/)
+
     final = drawn_survey!(resulted: true)
     get "#{base}/liraa.csv", params: { survey_id: final.id }
     lines = csv_lines
