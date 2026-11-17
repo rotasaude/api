@@ -1,8 +1,9 @@
 # Quarteirão do estrato do LIRAa (módulo 35a; contrato §1 e §7; A-7): o
 # levantamento é cópia do estrato (trigger) e o quarteirão aparece uma vez por
 # levantamento (idx_liraa_stratum_blocks_block). Sorteado ⇔ início no
-# quarteirão (1–5; Q16: sempre o 1º imóvel). Fixo fora do rascunho (trigger);
-# apagado só no rascunho.
+# quarteirão (1–5; Q16: sempre o 1º imóvel), com a base do sorteio
+# (base_household_ids, só no sorteado; Q25: o substituto sai só dela). Fixo
+# fora do rascunho (trigger); apagado só no rascunho.
 class LiraaStratumBlock < ApplicationRecord
   belongs_to :liraa_stratum, inverse_of: :stratum_blocks
   belongs_to :liraa_survey

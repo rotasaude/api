@@ -10,10 +10,15 @@
 #     escolhem o mesmo imóvel; o INSERT dos itens, FOR KEY SHARE, não espera).
 #     Só em levantamento sorteado e uma vez por item (Review Focus 1: a
 #     retirada e uma nova recusa não criam outro; idx_liraa_draw_items_substitute
-#     garante no banco). O candidato é o imóvel imediatamente anterior na ordem
-#     do quarteirão (a base do sorteio, Liraa::Draw.base), depois o
-#     posterior, alternando para fora (Q16(c)), só entre os que ainda não são
-#     item do estrato. Nasce pending com substitute_of_id; sem candidato, nada
+#     garante no banco). O candidato sai SÓ da base do quarteirão na hora do
+#     sorteio (Q25: liraa_stratum_blocks.base_household_ids, gravada pelo
+#     Liraa::Draw; o esquema não registra quando o imóvel entrou no
+#     quarteirão, então a base é guardada): nunca o cadastrado depois do
+#     sorteio nem o que mudou para o quarteirão depois dele. Na ordem dessa
+#     base, o imóvel imediatamente anterior, depois o posterior, alternando
+#     para fora (Q16(c)), só entre os que ainda não são item do estrato e
+#     seguem na base de hoje (ativos, no quarteirão, sem PE). Nasce pending
+#     com substitute_of_id e a posição na base do sorteio; sem candidato, nada
 #     (o quarteirão fica com um a menos: `missing` no Liraa::Index);
 #   - released!: a visita retirada devolve o item a pending; o substituto,
 #     inspecionado ou não, fica como está (W-13). Levantamento fechado não
@@ -48,12 +53,14 @@ module VectorControl
         LiraaStratum.lock("FOR NO KEY UPDATE").where(id: stratum.id).pick(:id)
         return nil if LiraaDrawItem.exists?(substitute_of_id: item.id)
 
-        order = Draw.base([ item.city_block_id ]).fetch(item.city_block_id, [])
-        order = with_original(order, item.household_id) unless order.include?(item.household_id)
+        order = LiraaStratumBlock.where(liraa_stratum_id: stratum.id, city_block_id: item.city_block_id).pick(:base_household_ids)
+        index = order&.index(item.household_id)
+        return nil unless index
+
+        current = Draw.base([ item.city_block_id ]).fetch(item.city_block_id, []).to_set
         taken = LiraaDrawItem.where(liraa_stratum_id: stratum.id).pluck(:household_id).to_set
-        index = order.index(item.household_id)
         candidate = (1...order.size).lazy.flat_map { |step| [ index - step, index + step ] }
-                                    .find { |at| at.between?(0, order.size - 1) && !taken.include?(order[at]) }
+                                    .find { |at| at.between?(0, order.size - 1) && current.include?(order[at]) && !taken.include?(order[at]) }
         return nil unless candidate
 
         LiraaDrawItem.create!(liraa_stratum_id: stratum.id, city_block_id: item.city_block_id, household_id: order[candidate],
@@ -68,14 +75,6 @@ module VectorControl
       end
 
       def survey_status(item) = LiraaStratum.joins(:liraa_survey).where(id: item.liraa_stratum_id).pick("liraa_surveys.status")
-
-      # O imóvel do item saiu da base (inativo, outro quarteirão, virou PE):
-      # volta à ordem (registered_at, id) só para achar os vizinhos.
-      def with_original(order, household_id)
-        keys = Household.where(id: order + [ household_id ]).pluck(:id, :registered_at).to_h
-        (order + [ household_id ]).sort_by { |id| [ keys.fetch(id), id ] }
-      end
-      private_class_method :with_original
     end
   end
 end

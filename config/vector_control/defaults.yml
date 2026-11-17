@@ -1,3 +1,8 @@
+# REGRA (Q25): antes de mudar qualquer padrão de fábrica deste arquivo, grave
+# em CADA cidade que tem levantamento LIRAa sorteado na versão 0
+# (liraa_surveys.parameters_version = 0) a versão 1 dos parâmetros com os
+# valores ANTIGOS. A versão 0 não é gravada: ela lê este arquivo, e o índice
+# desses levantamentos (iip_bands) mudaria junto com ele.
 # Módulo 35a (contrato §11): padrão de fábrica dos parâmetros técnicos do
 # controle vetorial. A coordenação edita por versão (vector_parameter_versions);
 # este arquivo é só o ponto de partida. As faixas do LIRAa e do IIP foram

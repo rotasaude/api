@@ -266,6 +266,8 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
       refused(/ck_liraa_stratum_blocks_drawn/) { stratum_block!(stratum, block!, drawn: true) }
       refused(/ck_liraa_stratum_blocks_drawn/) { stratum_block!(stratum, block!, household_start: 1) }
       expect { stratum_block!(stratum, block!, drawn: true, household_start: 1) }.not_to raise_error
+      refused(/ck_liraa_stratum_blocks_base/) { stratum_block!(stratum, block!, base_household_ids: [ household.id ]) } # Q25
+      expect { stratum_block!(stratum, block!, drawn: true, household_start: 1, base_household_ids: [ household.id ]) }.not_to raise_error
       refused(/ck_liraa_strata_mode/) { stratum!(stratum.liraa_survey, mode: "quarter", validate: false) }
     end
 

@@ -108,6 +108,76 @@ RSpec.describe VectorControl::Liraa::Items, type: :model do
     expect(VectorControl::Liraa::Index.for(census)[:strata].sole).to include(planned: 2, substitutions: 0, missing: 1)
   end
 
+  describe "Q25: o substituto sai só da base do sorteio" do
+    let(:q25_block) { city_block!(neighborhood: neighborhood, number: "8") }
+    let(:other_block) { city_block!(neighborhood: neighborhood, number: "9") }
+
+    def homes_in(target, count) = liraa_households!(target, count, micro_area: area).map(&:id)
+    def today_order = VectorControl::Liraa::Draw.base([ q25_block.id ]).fetch(q25_block.id)
+
+    # Estrato sorteado à mão no q25_block: a base gravada é `snapshot` (na
+    # ordem) e os itens são os domicílios `drawn` (posição = índice + 1).
+    def drawn_by_hand!(snapshot, drawn)
+      survey = LiraaSurvey.create!(name: "LIRAa #{SecureRandom.hex(2)}", starts_on: Time.zone.today, ends_on: Time.zone.today + 6)
+      stratum = LiraaStratum.create!(liraa_survey: survey, name: "Estrato 1", mode: "standard")
+      LiraaStratumBlock.create!(liraa_stratum: stratum, liraa_survey_id: survey.id, city_block: q25_block, drawn: true, household_start: 1,
+                                base_household_ids: snapshot)
+      items = drawn.map do |id|
+        LiraaDrawItem.create!(liraa_stratum: stratum, city_block: q25_block, household_id: id, position: snapshot.index(id) + 1)
+      end
+      survey.update!(status: "drawn", drawn_at: Time.current, parameters_version: 0)
+      items
+    end
+
+    def refuse!(item) = described_class.inspected!(item.lock!, situation: "refused")
+
+    it "cadastrado depois do sorteio é pulado; o seguinte elegível é o substituto" do
+      base = homes_in(q25_block, 6)
+      last, = drawn_by_hand!(base, [ base[5], base[4] ])
+      late = homes_in(q25_block, 1).first # registered_at depois do drawn_at
+      expect(today_order).to eq(base + [ late ]) # na ordem de hoje, logo depois do 6º
+
+      refuse!(last)
+
+      # passo 1: o anterior (5º) já é item, o posterior seria o cadastrado depois; passo 2: o 4º.
+      expect(substitute_of(last)).to have_attributes(household_id: base[3], position: 4)
+    end
+
+    it "mudou para o quarteirão depois do sorteio é pulado" do
+      first_two = homes_in(q25_block, 2)
+      moved = homes_in(other_block, 1).first # cadastrado antes, no outro quarteirão na hora do sorteio
+      base = first_two + homes_in(q25_block, 3)
+      item, = drawn_by_hand!(base, [ base[2] ])
+      HouseholdVectorProfile.find_by!(household_id: moved).then { |row| row.update!(city_block: q25_block, version: row.version + 1) }
+      expect(today_order).to eq(first_two + [ moved ] + base.last(3)) # hoje, o anterior do item seria o que mudou
+
+      refuse!(item)
+
+      expect(substitute_of(item)).to have_attributes(household_id: base[1], position: 2)
+    end
+
+    it "sem elegível na base do sorteio: substituted sem substituto, mesmo com imóvel novo no quarteirão" do
+      base = homes_in(q25_block, 2)
+      first, = drawn_by_hand!(base, base)
+      homes_in(q25_block, 1)
+
+      refuse!(first)
+
+      expect(first.reload.status).to eq("substituted")
+      expect(substitute_of(first)).to be_nil
+    end
+
+    it "imóvel da base do sorteio que saiu da base de hoje (inativo) não é substituto" do
+      base = homes_in(q25_block, 3)
+      first, = drawn_by_hand!(base, [ base[0] ])
+      Household.where(id: base[1]).update_all(status: "inactive")
+
+      refuse!(first)
+
+      expect(substitute_of(first)).to have_attributes(household_id: base[2], position: 3)
+    end
+  end
+
   it "levantamento que não está sorteado: nenhum substituto" do
     item = drawn(6)
     survey.update!(status: "closed", closed_at: Time.current)
@@ -150,7 +220,8 @@ RSpec.describe VectorControl::Liraa::Items, "× substituições e fechamento ao 
       order = Household.where(id: homes.map(&:id)).order(:registered_at, :id).pluck(:id)
       survey = LiraaSurvey.create!(name: "LIRAa #{SecureRandom.hex(2)}", starts_on: Time.zone.today, ends_on: Time.zone.today + 6)
       stratum = LiraaStratum.create!(liraa_survey: survey, name: "Estrato 1", mode: "standard")
-      LiraaStratumBlock.create!(liraa_stratum: stratum, liraa_survey_id: survey.id, city_block: block, drawn: true, household_start: 1)
+      LiraaStratumBlock.create!(liraa_stratum: stratum, liraa_survey_id: survey.id, city_block: block, drawn: true, household_start: 1,
+                                base_household_ids: order)
       first = LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household_id: order[0], position: 1)
       third = LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household_id: order[2], position: 3)
       survey.update!(status: "drawn", drawn_at: Time.current, parameters_version: 0)

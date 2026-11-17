@@ -36,6 +36,10 @@ RSpec.describe VectorControl::Liraa::Draw, type: :model do
     expect(survey.strata.sole).to have_attributes(households_count: 45, sample_target: 3, block_interval: 3, random_start: 3)
     expect(drawn_numbers(survey)).to contain_exactly("7", "1", "4")
     expect(LiraaStratumBlock.where(liraa_survey_id: survey.id, drawn: true).pluck(:household_start)).to eq([ 1, 1, 1 ])
+    base = described_class.base(blocks.map(&:id))
+    LiraaStratumBlock.where(liraa_survey_id: survey.id).find_each do |row| # Q25: a base do sorteio, só no sorteado
+      expect(row.base_household_ids).to eq(row.drawn ? base.fetch(row.city_block_id) : nil)
+    end
     expect(items_of(survey).pluck(:position)).to eq([ 1, 1, 1 ]) # ⌈0,2 · 5⌉ = 1, o 1º
     expect(items_of(survey).pluck(:household_id) & strategic.map(&:id)).to be_empty
     expect(events).to include([ "liraa_survey.drawn", { liraa_survey_id: survey.id, user_id: coordinator.id } ])

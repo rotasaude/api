@@ -14,7 +14,8 @@
 #   - início casual r em 1..k (`random`; k = 1 → 1); sorteados r, r+k, … até b;
 #   - em cada quarteirão sorteado, household_start = 1 sempre (Q16(b)) e os
 #     imóveis de Sample.household_positions (fração e intervalo do modo).
-# Grava N, n, k e r no estrato, o início no quarteirão, os itens (pending,
+# Grava N, n, k e r no estrato, o início e a base do quarteirão sorteado
+# (base_household_ids, na ordem: o substituto sai só dela, Q25), os itens (pending,
 # created_at na ordem do sorteio), e no levantamento drawn, drawn_at e a versão
 # dos parâmetros (0 sem versão gravada, A-4). `liraa_survey.drawn` só com ids.
 module VectorControl
@@ -99,8 +100,8 @@ module VectorControl
         items = []
         Sample.block_positions(plan: plan, blocks_count: blocks.size, random_start: start).each do |position|
           row = blocks.fetch(position - 1)
-          row.update!(drawn: true, household_start: HOUSEHOLD_START, version: row.version + 1)
           households = planned[:base].fetch(row.city_block_id, [])
+          row.update!(drawn: true, household_start: HOUSEHOLD_START, base_household_ids: households, version: row.version + 1)
           Sample.household_positions(plan: plan, households_count: households.size).each do |at|
             items << { liraa_stratum_id: stratum.id, city_block_id: row.city_block_id, household_id: households.fetch(at - 1),
                        position: at, created_at: now + Rational(offset + items.size, 1_000_000), updated_at: now }

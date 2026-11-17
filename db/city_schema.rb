@@ -2559,6 +2559,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
   end
 
   create_table "liraa_stratum_blocks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "base_household_ids", array: true
     t.uuid "city_block_id", null: false
     t.datetime "created_at", null: false
     t.boolean "drawn", default: false, null: false
@@ -2569,6 +2570,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.integer "version", default: 1, null: false
     t.index ["liraa_stratum_id"], name: "idx_liraa_stratum_blocks_stratum"
     t.index ["liraa_survey_id", "city_block_id"], name: "idx_liraa_stratum_blocks_block", unique: true
+    t.check_constraint "(base_household_ids IS NULL) OR drawn", name: "ck_liraa_stratum_blocks_base"
     t.check_constraint "drawn = (household_start IS NOT NULL)", name: "ck_liraa_stratum_blocks_drawn"
     t.check_constraint "household_start BETWEEN 1 AND 5", name: "ck_liraa_stratum_blocks_household_start"
     t.check_constraint "version >= 1", name: "ck_liraa_stratum_blocks_version"
