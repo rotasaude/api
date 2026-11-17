@@ -9,5 +9,13 @@ class CityBlock < ApplicationRecord
 
   scope :active_blocks, -> { where(active: true) }
 
+  # Ordem natural do número (a mesma do sorteio do LIRAa): os dígitos iniciais
+  # como inteiro, depois o resto sem caixa. Número sem dígitos iniciais vem depois dos
+  # numéricos; o empate cai em lower(number) e, por fim, em number.
+  scope :natural_number_order, lambda {
+    order(Arel.sql("(substring(city_blocks.number from '^[0-9]+'))::numeric NULLS LAST"),
+          Arel.sql("lower(city_blocks.number)"), :number)
+  }
+
   def inspect = "#<CityBlock id=#{id} neighborhood_id=#{neighborhood_id} number=#{number} version=#{version}>"
 end

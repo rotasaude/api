@@ -1,30 +1,25 @@
 # /vector_control/blocks (módulo 35a, ADR 0054; contrato §2, §12; Q8):
 # quarteirões do bairro e vizinhos. Leitura: coordenação, vector_lab e o
 # agente de endemias (vínculo 515140 em alguma equipe); escrita só a
-# coordenação (403 missing_role). Lista `{ items, next_before }` de um bairro,
-# mais recente primeiro; cada item é o CityBlock. Sem dado de pessoa: sem
+# coordenação (403 missing_role). Lista `{ items }` com TODOS os quarteirões de
+# um bairro, sem página, na ordem natural do número (Q18); cada item é o
+# CityBlock. Sem dado de pessoa: sem
 # trilha.
 module VectorControl
   class BlocksController < BaseController
-    PAGE = 500
-
     before_action(only: %i[create update add_neighbor remove_neighbor]) { query_only! }
     before_action :coordinator!, only: %i[create update add_neighbor remove_neighbor]
     before_action :load_block, only: %i[update add_neighbor remove_neighbor]
 
     def index
-      return unless query_only!(:neighborhood_id, :before)
+      return unless query_only!(:neighborhood_id)
       return forbid unless reader?
 
       neighborhood_id = request.query_parameters["neighborhood_id"]
       return render_refusal("invalid_request", path: "neighborhood_id") unless uuid?(neighborhood_id)
 
-      position = cursor
-      return if performed?
-
-      blocks, next_before = page(CityBlock.where(neighborhood_id: neighborhood_id).includes(:neighborhood), :created_at,
-                                 limit: PAGE, position: position)
-      render json: { items: Json.blocks(blocks), next_before: next_before }
+      blocks = CityBlock.where(neighborhood_id: neighborhood_id).includes(:neighborhood).natural_number_order
+      render json: { items: Json.blocks(blocks.to_a) }
     end
 
     def create

@@ -120,8 +120,7 @@ RSpec.describe "Vigilância ambiental — quarteirões", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json_body).to eq("items" => [ { "id" => block.id, "neighborhood" => { "id" => neighborhood.id, "name" => neighborhood.name },
                                              "number" => "1", "active" => true, "neighbor_ids" => [], "households_count" => 0,
-                                             "version" => 1 } ],
-                              "next_before" => nil)
+                                             "version" => 1 } ])
 
       json_post "/vector_control/blocks", neighborhood_id: neighborhood.id, number: "2"
       expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
@@ -143,6 +142,26 @@ RSpec.describe "Vigilância ambiental — quarteirões", type: :request do
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
     json_post "/vector_control/blocks?number=1", neighborhood_id: neighborhood.id, number: "1"
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+  end
+
+  it "lista todos os quarteirões do bairro (501), sem página e sem next_before" do
+    now = Time.current
+    rows = (1..501).map do |n|
+      { neighborhood_id: neighborhood.id, number: n.to_s, created_by_user_id: vector_author.id, created_at: now, updated_at: now }
+    end
+    CityBlock.insert_all!(rows)
+    sign_in_as(coordinator)
+    get "/vector_control/blocks", params: { neighborhood_id: neighborhood.id }
+    expect(response).to have_http_status(:ok)
+    expect(json_body.keys).to eq([ "items" ])
+    expect(json_body["items"].map { |item| item["number"] }).to eq((1..501).map(&:to_s))
+  end
+
+  it "ordena pelo número natural: dígitos iniciais como inteiro, depois o resto" do
+    %w[10 2 2A 1 B A-1 a].each { |number| city_block!(neighborhood: neighborhood, number: number) }
+    sign_in_as(coordinator)
+    get "/vector_control/blocks", params: { neighborhood_id: neighborhood.id }
+    expect(json_body["items"].map { |item| item["number"] }).to eq(%w[1 2 2A 10 a A-1 B])
   end
 
   it "interruptor desligado → 403 feature_disabled" do
