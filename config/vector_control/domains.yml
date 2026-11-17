@@ -1,0 +1,40 @@
+# Módulo 35a: códigos e rótulos dos domínios do controle vetorial, na ordem de
+# VectorControl::Catalog. Os rótulos são os do contracts
+# (field-sync/domains-v1.json → vector_control.<lista>), verbatim; o
+# domains_spec do api compara os dois. Risco: contrato §2 (DN-2025, 5.3).
+# Grupos de depósito: manual do LIRAa de 2013, 4.6.1, e DN-2025, 5.2.2.
+# Métodos: DN-2009, 5.3. Fontes em config/vector_control/sources.yml.
+activities:
+  - { code: li, label: "LI — Levantamento de índice" }
+  - { code: li_t, label: "LI+T — Levantamento de índice e tratamento" }
+  - { code: pe, label: "PE — Ponto estratégico" }
+  - { code: ie, label: "IE — Imóvel especial" }
+  - { code: transmission_block, label: "Bloqueio de transmissão" }
+  - { code: liraa, label: "LIRAa" }
+work_types:
+  - { code: routine, label: "Rotina" }
+  - { code: pending, label: "Recuperação de pendência" }
+situations:
+  - { code: worked, label: "Trabalhado" }
+  - { code: closed, label: "Fechado" }
+  - { code: refused, label: "Recusado" }
+  - { code: vacant, label: "Desocupado" }
+deposit_groups:
+  - { code: A1, label: "A1 — Depósito de água elevado" }
+  - { code: A2, label: "A2 — Depósito de armazenamento ao nível do solo" }
+  - { code: B, label: "B — Pequeno depósito móvel" }
+  - { code: C, label: "C — Depósito fixo" }
+  - { code: D1, label: "D1 — Pneu e outro material rodante" }
+  - { code: D2, label: "D2 — Lixo, sucata e entulho" }
+  - { code: E, label: "E — Depósito natural" }
+measure_methods:
+  - { code: mechanical, label: "Mecânico (eliminação)" }
+  - { code: focal, label: "Focal (larvicida)" }
+  - { code: perifocal, label: "Perifocal (adulticida residual)" }
+  - { code: spatial, label: "Espacial (UBV)" }
+risk_classes:
+  - { code: green, label: "Verde (baixo)" }
+  - { code: yellow, label: "Amarelo (médio)" }
+  - { code: red, label: "Vermelho (alto)" }
+  - { code: gray, label: "Cinza (difícil acesso, com agendamento)" }
+  - { code: purple, label: "Roxo (difícil acesso, exige intervenção legal ou VISA)" }

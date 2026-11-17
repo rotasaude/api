@@ -1,0 +1,39 @@
+# Módulo 35a, Task 1 (prova técnica): fontes oficiais lidas para fechar os
+# valores do LIRAa, da semana epidemiológica e dos rótulos. `pages` são as
+# páginas do PDF (entre parênteses, a numeração impressa). Os arquivos não
+# ficam no repositório: o SHA-256 identifica o que foi lido.
+liraa_manual:
+  title: "Levantamento Rápido de Índices para Aedes aegypti (LIRAa) para vigilância entomológica do Aedes aegypti no Brasil: metodologia para avaliação dos índices de Breteau e Predial e tipo de recipientes"
+  edition: "Ministério da Saúde/SVS, 1ª edição, 2013 (ISBN 978-85-334-1999-5)"
+  url: "https://bvsms.saude.gov.br/bvs/publicacoes/manual_liraa_2013.pdf"
+  fetched_on: "2026-11-17"
+  sha256: "5fc85b90dead3edc5e12b0947f403b79c549e58b915c5ce36f2b6dc29eaae37f"
+  pages: "5; 14-16 (13-15: estratos, 50% no quarteirão, n = 450 / (1 + 450/N), Q, IA); 26 (25: estratos); 29 (28: 20%, um imóvel a cada cinco); 31 (30: substituição); 35-40 (34-39: grupos A1-E); 81-82 (formulários)"
+epi_calendar:
+  title: "Sinan: Calendário de notificação para o ano de 2026"
+  edition: "Ministério da Saúde/Sinan, emitido em 19/12/2025"
+  url: "https://portalsinan.saude.gov.br/images/documentos/Calendario/2026.pdf"
+  fetched_on: "2026-11-17"
+  sha256: "3f93e3ed81f200bdc4e118d5a88a2e667c869975789c0b34296be6e57a722ac5"
+  pages: "1 (SE 1 a 52; regra: domingo a sábado)"
+epi_calendar_2025:
+  title: "Sinan: Calendário de notificação para o ano de 2025"
+  edition: "Ministério da Saúde/Sinan, emitido em 17/12/2024"
+  url: "https://portalsinan.saude.gov.br/images/documentos/Calendario/2025.pdf"
+  fetched_on: "2026-11-17"
+  sha256: "b72e5110249997b63c467ef35c48349b5cdfd2da8ad1852f68c868e67037979a"
+  pages: "1 (SE 1 a 53; SE 53 = 28/12/2025 a 03/01/2026)"
+deposit_groups:
+  title: "Diretrizes nacionais para prevenção e controle das arboviroses urbanas: vigilância entomológica e controle vetorial"
+  edition: "Ministério da Saúde/SVSA/CGARB, 1ª edição, 2025, versão eletrônica"
+  url: "https://www.gov.br/saude/pt-br/centrais-de-conteudo/publicacoes/svsa/dengue/diretrizes-nacionais-para-prevencao-e-controle-das-arboviroses-urbanas-vigilancia-entomologica-e-controle-vetorial.pdf/@@download/file"
+  fetched_on: "2026-11-17"
+  sha256: "103d7cf8d618d6b02c3af8c987c3c5839bc00304fe65762f66c9195f4e670633"
+  pages: "41-42 (40-41: 5.2.2, grupos A1-E); 42-43 (41-42: 5.3, classes de risco do imóvel)"
+control_methods:
+  title: "Diretrizes nacionais para a prevenção e controle de epidemias de dengue"
+  edition: "Ministério da Saúde/SVS, Série A. Normas e Manuais Técnicos, 1ª edição, 2009"
+  url: "https://www.nescon.medicina.ufmg.br/biblioteca/imagem/diretrizes-nacio-prevencao-controle.pdf"
+  fetched_on: "2026-11-17"
+  sha256: "32d600b153d4fb045f91988152fc4795971f6bb93e02990e4908c428346b66d3"
+  pages: "57 (55: controle mecânico); 66 (64: tratamento residual perifocal); 75-77 (73-75: LIRAa e Quadro 5, faixas do IIP); 80-81 (78-79: focal e UBV)"

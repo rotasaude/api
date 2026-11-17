@@ -1,0 +1,24 @@
+# Módulo 35a (contrato §11): padrão de fábrica dos parâmetros técnicos do
+# controle vetorial. A coordenação edita por versão (vector_parameter_versions);
+# este arquivo é só o ponto de partida. As faixas do LIRAa e do IIP foram
+# conferidas na Task 1 (config/vector_control/sources.yml); divergência das
+# fontes volta como Q ao coordenador e não muda estes valores sozinha.
+default_days: 60
+strategic_point_days: 15
+block_radius_rings: 1
+block_grouping_days: 7
+block_diseases: [dengue, chikungunya, zika]
+ubv_cycles_max: 3
+ubv_cycle_days_min: 3
+ubv_cycle_days_max: 5
+ubv_cycle_interval_days: 5
+ovitrap_collection_days_min: 3
+ovitrap_collection_days_max: 10
+ovitrap_alert_eggs: 100
+ovitrap_radius_rings: 1
+liraa_standard_min: 8100
+liraa_standard_max: 12000
+liraa_half_min: 2000
+liraa_base_sample: 450
+liraa_household_fraction: 0.2
+iip_bands: [1.0, 4.0]
