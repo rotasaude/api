@@ -3,7 +3,7 @@
 # distintos (senão 422 invalid_request, path household_ids ou
 # household_ids[i]); quarteirão ativo (senão 422 invalid_request, path
 # city_block_id). Tudo ou nada, o primeiro erro na ordem do corpo: domicílio
-# que não existe → invalid_request; sem neighborhood_id na versão atual do 24a
+# que não existe ou inativo → invalid_request; sem neighborhood_id na versão atual do 24a
 # → household_without_neighborhood; de outro bairro →
 # block_not_in_household_neighborhood (path household_ids[i]). O quarteirão
 # fica FOR SHARE (a desativação espera) e os perfis FOR UPDATE (criados se
@@ -45,11 +45,11 @@ module VectorControl
 
     # O primeiro domicílio recusado, na ordem do corpo (nil = todos aceitos).
     def refusal(ids, block)
-      existing = Household.where(id: ids).pluck(:id).to_set
+      active = Household.where(id: ids, status: "active").pluck(:id).to_set
       neighborhoods = SaveProfile.current_neighborhood_ids(ids)
       ids.each_with_index do |id, i|
         path = { path: "household_ids[#{i}]" }
-        return Result.fail(:invalid_request, details: path) unless existing.include?(id)
+        return Result.fail(:invalid_request, details: path) unless active.include?(id)
         return Result.fail(:household_without_neighborhood, details: path) if neighborhoods[id].nil?
         return Result.fail(:block_not_in_household_neighborhood, details: path) if neighborhoods[id] != block.neighborhood_id
       end

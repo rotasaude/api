@@ -56,7 +56,9 @@ module VectorControl
     # ordem de id, decide a corrida. Também serve ao AssignBlock.
     def lock_profiles!(household_ids, by:)
       now = Time.current
-      rows = household_ids.map { |id| { household_id: id, updated_by_user_id: by.id, created_at: now, updated_at: now } }
+      # Inserção em ordem de id: dois lotes com os mesmos domicílios em ordens
+      # diferentes não se travam no índice único.
+      rows = household_ids.sort.map { |id| { household_id: id, updated_by_user_id: by.id, created_at: now, updated_at: now } }
       created = HouseholdVectorProfile.insert_all(rows, unique_by: UNIQUE, returning: [ :household_id ]).rows.flatten.to_set
       [ HouseholdVectorProfile.where(household_id: household_ids).order(:id).lock.index_by(&:household_id), created ]
     end

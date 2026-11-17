@@ -43,8 +43,9 @@ RSpec.describe "VectorControl::Rings", type: :model do
     link!(b, c)
     b.update!(active: false)
     expect(VectorControl::Rings.around([ a.id ], rings: 3)).to contain_exactly(a.id)
-    # O de partida inativo entra, mas os vizinhos dele só se ativos.
-    expect(VectorControl::Rings.around([ b.id ], rings: 1)).to contain_exactly(a.id, b.id, c.id)
+    # O de partida inativo fica no resultado, mas não expande (contrato §2: ignora inativos).
+    expect(VectorControl::Rings.around([ b.id ], rings: 2)).to contain_exactly(b.id)
+    expect(VectorControl::Rings.around([ b.id, d.id ], rings: 1)).to contain_exactly(b.id, c.id, d.id)
   end
 
   it "rings 0 = só os de partida" do

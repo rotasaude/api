@@ -48,6 +48,9 @@ RSpec.describe "Vigilância ambiental — imóveis", type: :request do
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "household_ids" } ])
     assign([ household!.id, "h2" ])
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "household_ids[1]" } ])
+    inactive = household!.tap { |household| household.update_columns(status: "inactive") }
+    assign([ household!.id, inactive.id ])
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "household_ids[1]" } ])
     block.update!(active: false)
     assign([ household!.id ])
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "city_block_id" } ])

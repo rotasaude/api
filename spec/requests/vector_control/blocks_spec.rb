@@ -42,6 +42,19 @@ RSpec.describe "Vigilância ambiental — quarteirões", type: :request do
     expect(CityBlock.count).to eq(0)
   end
 
+  it "BLOCK_NUMBER aceita e recusa os mesmos números que o CHECK ^[0-9A-Za-z-]{1,10}$ do banco" do
+    db_check = /\A[0-9A-Za-z-]{1,10}\z/
+    { "12A" => true, "A-1" => true, "1234567890" => true, "12 A" => false, "12345678901" => false, "" => false, "12ç" => false }
+      .each do |number, valid|
+        expect(number.match?(VectorControl::Catalog::BLOCK_NUMBER)).to be(valid), number
+        expect(number.match?(db_check)).to be(valid), number
+        accepted = ActiveRecord::Base.connection.select_value(
+          ActiveRecord::Base.sanitize_sql_array([ "SELECT ? ~ '^[0-9A-Za-z-]{1,10}$'", number ])
+        )
+        expect(accepted).to be(valid), number
+      end
+  end
+
   it "vizinho de si mesmo → 422 invalid_neighbor; vizinho repetido é idempotente" do
     sign_in_as(coordinator)
     block = city_block!(neighborhood: neighborhood, number: "1")

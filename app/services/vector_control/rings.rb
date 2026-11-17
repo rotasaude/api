@@ -1,7 +1,8 @@
 # Raio em anéis da vigilância ambiental (módulo 35a, ADR 0054; contrato §2,
 # decisão 26): os quarteirões a até `rings` saltos pelo grafo de vizinhos
 # vigentes (pares sem ended_at; o par pode cruzar bairros). Os de partida
-# sempre entram; além deles, só quarteirões ativos, e o inativo não propaga.
+# sempre entram; além deles, só quarteirões ativos, e nenhum inativo propaga
+# (nem o de partida).
 # `rings: 0` = os de partida. Uma consulta por anel. É a única função de raio
 # do 35a (o raio geométrico pela coordenada do 24c fica para depois, §19).
 module VectorControl
@@ -10,7 +11,8 @@ module VectorControl
 
     def around(block_ids, rings:)
       seen = block_ids.uniq
-      frontier = seen
+      # O de partida inativo fica no resultado, mas não expande (ignora inativos).
+      frontier = seen.empty? ? [] : CityBlock.active_blocks.where(id: seen).pluck(:id)
       rings.to_i.times do
         break if frontier.empty?
 
