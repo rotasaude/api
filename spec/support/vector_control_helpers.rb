@@ -188,6 +188,52 @@ module VectorControlHelpers
   # Início casual fixo (o `random` do Liraa::Draw).
   def fixed_random(value) = Struct.new(:value) { def rand(_range) = value }.new(value)
 
+  # Task 11 (contrato §8): a cidade do 35a com a vigilância do 25 ligada (a
+  # lista nacional carregada; mesma cidade de teste).
+  def block_city!
+    city = vector_city!
+    surveillance_city!
+    city
+  end
+
+  # Par de vizinhos vigente (o menor id primeiro, CHECK).
+  def block_neighbors!(one, other)
+    first, second = [ one, other ].sort_by(&:id)
+    CityBlockNeighbor.create!(city_block: first, neighbor_block: second)
+  end
+
+  # Paciente com cadastro individual ativo (SaveRegistration) num domicílio
+  # novo cujo perfil tem `block` (sem `block`, o domicílio fica sem perfil:
+  # o caso entra sem lugar). -> Patient
+  def block_case_patient!(block: nil)
+    patient = registry_patient!
+    household = registry_household!
+    registry_registration!(patient: patient, household: household)
+    vector_profile!(household, block: block) if block
+    patient
+  end
+
+  # Notificação de arbovirose pelo caminho real (CreateNotification), suspeita
+  # no dia `on`.
+  def arbovirus_case!(patient:, on: Time.zone.today, disease_code: "dengue", **over)
+    notification!(patient: patient, disease_code: disease_code, suspected_at: on.in_time_zone, **over)
+  end
+
+  # O consumidor do 35a sobre o último evento `name` da notificação (o caminho
+  # do IdempotentConsumer, como a fila faria).
+  def propose_from!(name, notification)
+    event = DomainEvent.where(name: name).where("payload->>'notification_id' = ?", notification.id).order(:occurred_at, :created_at).last
+    VectorControl::ProposeBlockJob.perform_now(event_id: event.id, event_name: event.name, city_slug: Current.city.slug,
+                                               payload: event.payload)
+  end
+
+  # Caso proposto pelo consumidor a partir da notificação nova. -> TransmissionBlockCase
+  def proposed_case!(patient:, on: Time.zone.today, **over)
+    notification = arbovirus_case!(patient: patient, on: on, **over)
+    propose_from!("disease_notification.created", notification)
+    TransmissionBlockCase.find_by!(disease_notification_id: notification.id)
+  end
+
   private
 
   def vector_author = (@vector_author ||= endemic_coordinator!)

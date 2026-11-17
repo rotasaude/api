@@ -243,10 +243,12 @@ RSpec.describe "disease surveillance bindings (ADR 0043)" do
   end
 
   # Só ids e booleanos (notification_id, immediate): nunca a doença, a origem
-  # nem dado do paciente. O consumidor (Surveillance::AlertJob) só enfileira o e-mail.
-  it "declares disease_notification.created consumed by the surveillance alert" do
+  # nem dado do paciente. O Surveillance::AlertJob só enfileira o e-mail; o
+  # VectorControl::ProposeBlockJob (módulo 35a, Task 11) propõe o bloqueio.
+  it "declares disease_notification.created consumed by the surveillance alert and the block proposal" do
     expect(DomainEvents.registry.keys).to include("disease_notification.created")
-    expect(DomainEvents.registry["disease_notification.created"].map(&:job)).to eq([ "Surveillance::AlertJob" ])
+    expect(DomainEvents.registry["disease_notification.created"].map(&:job))
+      .to eq([ "Surveillance::AlertJob", "VectorControl::ProposeBlockJob" ])
   end
 
   # Só notification_id (Surveillance::SaveForm): nunca a ficha.
@@ -256,12 +258,16 @@ RSpec.describe "disease surveillance bindings (ADR 0043)" do
   end
 
   # Só notification_id e user_id (Surveillance::Transition / Dismiss): nunca o
-  # motivo, a classificação nem o número oficial.
-  %w[disease_notification.transitioned disease_notification.dismissed].each do |name|
-    it "declares #{name} (no consumer)" do
-      expect(DomainEvents.registry.keys).to include(name)
-      expect(DomainEvents.registry[name]).to be_empty
-    end
+  # motivo, a classificação nem o número oficial. O andamento propõe o
+  # bloqueio quando a possível passa a notified (módulo 35a, Task 11).
+  it "declares disease_notification.transitioned consumed by the block proposal" do
+    expect(DomainEvents.registry.keys).to include("disease_notification.transitioned")
+    expect(DomainEvents.registry["disease_notification.transitioned"].map(&:job)).to eq([ "VectorControl::ProposeBlockJob" ])
+  end
+
+  it "declares disease_notification.dismissed (no consumer)" do
+    expect(DomainEvents.registry.keys).to include("disease_notification.dismissed")
+    expect(DomainEvents.registry["disease_notification.dismissed"]).to be_empty
   end
 
   # Só weekly_negative_report_id e user_id (Surveillance::RecordNegative).
@@ -749,7 +755,8 @@ RSpec.describe "home visit bindings (ADR 0052)" do
   end
 
   # Módulo 35a (contrato §17; Task 2): os 19 eventos da vigilância ambiental,
-  # na ordem da tabela, todos sem consumidor (a Task 11 liga os do bloqueio).
+  # na ordem da tabela, todos sem consumidor (nenhum módulo consome o
+  # transmission_block.*; a Task 11 liga o consumidor do 25).
   it "declares the nineteen 35a events of the contract with no consumer" do
     contract = %w[city_block.changed household_vector_profile.changed vector_stock.shortfall_recorded
                   vector_stock.shortfall_reconciled ovitrap.installed ovitrap.collected ovitrap_reading.counted

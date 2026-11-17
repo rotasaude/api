@@ -400,16 +400,19 @@ Rails.application.config.to_prepare do
     .each { |name| DomainEvents.bind name, to: [] }
   # Notificação nascida (Surveillance::CreateNotification): só ids e booleanos
   # (notification_id, immediate) — nunca a doença, a origem nem dado do
-  # paciente; o job relê a linha. O consumidor só enfileira o e-mail da equipe
-  # (Surveillance::AlertJob → MailJob).
-  DomainEvents.bind "disease_notification.created", to: [ Surveillance::AlertJob ]
+  # paciente; o job relê a linha. O Surveillance::AlertJob só enfileira o
+  # e-mail da equipe (→ MailJob); o VectorControl::ProposeBlockJob (módulo
+  # 35a, contrato §8) propõe o bloqueio de transmissão da arbovirose.
+  DomainEvents.bind "disease_notification.created", to: [ Surveillance::AlertJob, VectorControl::ProposeBlockJob ]
   # Ficha da notificação gravada (Surveillance::SaveForm): só notification_id —
   # nunca a ficha nem dado do paciente; sem consumidor.
   DomainEvents.bind "disease_notification.updated", to: []
   # Andamento (Surveillance::Transition) e descarte da possível
   # (Surveillance::Dismiss): só notification_id e user_id — nunca o motivo, a
-  # classificação nem o número oficial; sem consumidor.
-  DomainEvents.bind "disease_notification.transitioned", to: []
+  # classificação nem o número oficial. O andamento propõe o bloqueio quando a
+  # possível passa a notified (VectorControl::ProposeBlockJob); o descarte não
+  # tem consumidor.
+  DomainEvents.bind "disease_notification.transitioned", to: [ VectorControl::ProposeBlockJob ]
   DomainEvents.bind "disease_notification.dismissed", to: []
   # Negativa semanal da unidade (Surveillance::RecordNegative): só
   # weekly_negative_report_id e user_id; sem consumidor.
@@ -530,8 +533,8 @@ Rails.application.config.to_prepare do
   # Módulo 35a (ADR 0054; contrato §17; Task 2): os 19 eventos da vigilância
   # ambiental de endemias, na ordem da tabela do contrato. Só ids (e
   # `corrected`/`version`), nunca nota, endereço, caso ou pessoa. Sem
-  # consumidor por ora: a Task 11 liga o transmission_block.* e o consumidor
-  # do 25 (VectorControl::ProposeBlockJob).
+  # consumidor: o transmission_block.* (Task 11) não tem quem consuma; o
+  # VectorControl::ProposeBlockJob consome os eventos do 25 (acima).
   DomainEvents.bind "city_block.changed", to: []
   DomainEvents.bind "household_vector_profile.changed", to: []
   DomainEvents.bind "vector_stock.shortfall_recorded", to: []

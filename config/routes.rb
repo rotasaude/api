@@ -1073,6 +1073,16 @@ Rails.application.routes.draw do
     post   "liraa_surveys/:id/draw",          to: "liraa_surveys#draw", constraints: member_id
     post   "liraa_surveys/:id/close",         to: "liraa_surveys#close", constraints: member_id
     get    "liraa_surveys/:id/items",         to: "liraa_surveys#items", constraints: member_id
+    get    "transmission_blocks",             to: "transmission_blocks#index"
+    get    "transmission_blocks/:id",         to: "transmission_blocks#show", constraints: member_id
+    post   "transmission_blocks/:id/confirm", to: "transmission_blocks#confirm", constraints: member_id
+    post   "transmission_blocks/:id/dismiss", to: "transmission_blocks#dismiss", constraints: member_id
+    post   "transmission_blocks/:id/close",   to: "transmission_blocks#close", constraints: member_id
+    post   "transmission_blocks/:id/cycles",  to: "transmission_blocks#add_cycle", constraints: member_id
+    post   "transmission_blocks/:id/cases/:case_id/move", to: "transmission_blocks#move",
+                                                          constraints: member_id.merge(case_id: member_id[:id])
+    get    "transmission_blocks/:id/cases/:case_id/address", to: "transmission_blocks#address",
+                                                             constraints: member_id.merge(case_id: member_id[:id])
   end
 
   # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard

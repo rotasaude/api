@@ -28,6 +28,8 @@
 #     estratégico pela base do sorteio (Q24) e n, intervalo e início nulos);
 #     liraa_items → LiraaItem[] (o domicílio só com o
 #     endereço curto; quem mostra grava a trilha).
+#   - transmission_blocks → TransmissionBlock[] (Task 11: o caso só como
+#     doença, data e número; nunca paciente nem notificação).
 module VectorControl
   module Json
     module_function
@@ -282,6 +284,45 @@ module VectorControl
           status: item.status, substitute_of_id: item.substitute_of_id }
       end
     end
+
+    # TransmissionBlock[] (Task 11; Q8): o caso só como doença, data e "caso
+    # n" (`has_place` = tem lugar pelo CasePlace agora); nunca paciente,
+    # notificação, endereço nem coordenada. Área: as linhas gravadas na
+    # confirmação ou, sem linha (proposta, descartada), a sugestão
+    # Rings.around([centro], block_radius_rings); `suggested` = está na
+    # sugestão. Quarteirões na ordem natural do número; casos pelo número;
+    # ciclos pelo número. O motivo do descarte nunca sai.
+    def transmission_blocks(blocks, rings: Parameters.current.values.fetch("block_radius_rings").to_i)
+      ids = blocks.map(&:id)
+      areas = TransmissionBlockArea.where(transmission_block_id: ids).pluck(:transmission_block_id, :city_block_id)
+                                   .group_by(&:first).transform_values { |pairs| pairs.map(&:last) }
+      suggested = blocks.filter_map(&:center_block_id).uniq.to_h { |id| [ id, Rings.around([ id ], rings: rings) ] }
+      cases = TransmissionBlockCase.where(transmission_block_id: ids).order(:number).to_a
+      notifications = DiseaseNotification.where(id: cases.map(&:disease_notification_id)).pluck(:id, :disease_code, :patient_id)
+                                         .to_h { |id, code, patient_id| [ id, [ code, patient_id ] ] }
+      places = CasePlace.blocks(notifications.values.map(&:last))
+      cycles = TransmissionBlockCycle.where(transmission_block_id: ids).order(:number).group_by(&:transmission_block_id)
+      numbers = CityBlock.where(id: (areas.values.flatten + suggested.values.flatten + suggested.keys).uniq)
+                         .natural_number_order.pluck(:id, :number)
+      position = numbers.each_with_index.to_h { |(id, _), index| [ id, index ] }
+      numbers = numbers.to_h
+      by_block = cases.group_by(&:transmission_block_id)
+      blocks.map do |block|
+        ring = suggested.fetch(block.center_block_id, [])
+        area = areas.fetch(block.id, ring).sort_by { |id| position.fetch(id) }
+        { id: block.id, status: block.status, disease_group: block.disease_group,
+          center_block: block.center_block_id && { id: block.center_block_id, number: numbers.fetch(block.center_block_id) },
+          area: area.map { |id| { id: id, number: numbers.fetch(id), suggested: ring.include?(id) } },
+          cases: by_block.fetch(block.id, []).map do |row|
+            code, patient_id = notifications.fetch(row.disease_notification_id)
+            { id: row.id, number: row.number, disease: code, case_on: row.case_on.iso8601, has_place: places.key?(patient_id) }
+          end,
+          cycles: cycles.fetch(block.id, []).map { |cycle| { number: cycle.number, starts_on: cycle.starts_on.iso8601, ends_on: cycle.ends_on.iso8601 } },
+          created_at: block.created_at.utc.iso8601, confirmed_at: block.confirmed_at&.utc&.iso8601, closed_at: block.closed_at&.utc&.iso8601 }
+      end
+    end
+
+    def transmission_block(block) = transmission_blocks([ block ]).sole
 
     # { block_id => [ids dos vizinhos vigentes] }, ordenados.
     def neighbor_ids(ids)
