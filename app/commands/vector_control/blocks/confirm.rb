@@ -7,7 +7,11 @@
 #     quarteirão que não existe ou está inativo → invalid_request path
 #     block_ids;
 #   - sob a trava do bloqueio e `lock!`, fora de proposed → invalid_transition
-#     path status (409; Q9).
+#     path status (409; Q9);
+#   - a área (block_ids mais o centro) sem o quarteirão de algum caso com
+#     lugar da proposta (caso que entrou depois da leitura do dashboard) →
+#     proposal_changed (409; Q26(4)): o dashboard relê a proposta. Os casos
+#     são lidos sob a mesma trava consultiva da proposta.
 # A área é block_ids mais o centro (só acréscimo); vira active com
 # confirmed_at/by e version + 1. `transmission_block.confirmed` só com ids.
 module VectorControl
@@ -34,6 +38,9 @@ module VectorControl
           active = CityBlock.active_blocks.where(id: ids).pluck(:id)
           next Support.invalid("center_block_id") unless active.include?(center_block_id)
           next Support.invalid("block_ids") unless (ids - active).empty?
+
+          patient_ids = DiseaseNotification.where(id: block.cases.select(:disease_notification_id)).pluck(:patient_id)
+          next Result.fail(:proposal_changed) unless (CasePlace.blocks(patient_ids).values - ids).empty?
 
           TransmissionBlockArea.insert_all(ids.map { |id| { transmission_block_id: block.id, city_block_id: id } })
           block.update!(status: "active", center_block_id: center_block_id, confirmed_at: Time.current, confirmed_by_user: by,

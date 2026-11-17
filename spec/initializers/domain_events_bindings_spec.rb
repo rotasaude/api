@@ -754,16 +754,16 @@ RSpec.describe "home visit bindings (ADR 0052)" do
     expect(names.flat_map { |name| DomainEvents.registry[name] }).to be_empty
   end
 
-  # Módulo 35a (contrato §17; Task 2): os 19 eventos da vigilância ambiental,
+  # Módulo 35a (contrato §17; Task 2; Q26(2)): os 20 eventos da vigilância ambiental,
   # na ordem da tabela, todos sem consumidor (nenhum módulo consome o
   # transmission_block.*; a Task 11 liga o consumidor do 25).
-  it "declares the nineteen 35a events of the contract with no consumer" do
+  it "declares the twenty 35a events of the contract with no consumer" do
     contract = %w[city_block.changed household_vector_profile.changed vector_stock.shortfall_recorded
                   vector_stock.shortfall_reconciled ovitrap.installed ovitrap.collected ovitrap_reading.counted
                   vector_task.opened vector_task.closed liraa_survey.drawn liraa_survey.closed
                   transmission_block.proposed transmission_block.confirmed transmission_block.dismissed
                   transmission_block.closed transmission_block_case.address_viewed vector_sample.result_recorded
-                  vector_parameters.changed vector_product.changed]
+                  vector_parameters.changed vector_product.changed transmission_block_case.moved]
     expect(VectorControl::Catalog::DOMAIN_EVENTS).to eq(contract)
     expect(DomainEvents.registry.keys).to include(*contract)
     expect(contract.flat_map { |name| DomainEvents.registry[name] }).to be_empty

@@ -97,7 +97,9 @@ RSpec.describe "Vigilância ambiental — bloqueio de transmissão", type: :requ
     expect(response).to have_http_status(:ok)
     expect(json_body["id"]).to eq(other.id)
     expect(json_body["cases"].map { |row| [ row["id"], row["number"] ] }).to eq([ [ second.id, 2 ], [ third.id, 3 ] ])
-    expect(second.reload).to have_attributes(number: 2, transmission_block_id: other.id, added_by: "job")
+    expect(second.reload).to have_attributes(number: 2, transmission_block_id: other.id, added_by: "user")
+    expect(DomainEvent.where(name: "transmission_block_case.moved").sole.payload)
+      .to eq("transmission_block_id" => other.id, "from_transmission_block_id" => first.transmission_block_id, "user_id" => coordinator.id)
 
     json_post "#{base}/#{first.transmission_block_id}/cases/#{second.id}/move", to_transmission_block_id: other.id
     expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
@@ -192,6 +194,7 @@ RSpec.describe "Vigilância ambiental — bloqueio de transmissão", type: :requ
 
     get path
     expect(response).to have_http_status(:ok)
+    expect(response.headers["Cache-Control"]).to eq("no-store")
     household = IndividualRegistration.find_by!(patient_id: patient.id).household
     expect(json_body).to eq("patient_address" => "Rua das Palmeiras, 45, Centro",
                             "household_address" => HomeVisits::Json.addresses([ household.id ]).fetch(household.id))
@@ -201,5 +204,47 @@ RSpec.describe "Vigilância ambiental — bloqueio de transmissão", type: :requ
                                 "transmission_block_id" => row.transmission_block_id)
     expect(DomainEvent.where(name: "transmission_block_case.address_viewed").sole.payload)
       .to eq("transmission_block_id" => row.transmission_block_id, "user_id" => coordinator.id)
+    household_trail = DomainEvent.where(name: "clinical_record.viewed").where("payload->>'access' = ?", "territory_registry").sole
+    expect(household_trail.payload).to eq("access" => "territory_registry", "household_id" => household.id, "user_id" => coordinator.id)
+  end
+
+  # Q26(3): fechado ou descartado → 409, sem trilha; com e sem lugar.
+  it "address em bloqueio dismissed ou closed → 409 invalid_transition path status, sem trilha" do
+    dismissed = proposed_case!(patient: registry_patient!) # sem lugar
+    expect(VectorControl::Blocks::Dismiss.call(block: dismissed.transmission_block, reason: "Caso descartado pela vigilância",
+                                               by: coordinator)).to be_ok
+    closed = proposed_case!(patient: block_case_patient!(block: center))
+    block = confirm!(closed.transmission_block)
+    expect(VectorControl::Blocks::Close.call(block: block, by: coordinator)).to be_ok
+
+    stepped_up!(coordinator)
+    [ dismissed, closed ].each do |row|
+      get "#{base}/#{row.transmission_block_id}/cases/#{row.id}/address"
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "invalid_transition", "path" => "status" } ])
+    end
+    expect(DomainEvent.where(name: %w[clinical_record.viewed transmission_block_case.address_viewed])
+                      .where("payload->>'access' IS NULL OR payload->>'access' IN (?)", %w[transmission_block_case territory_registry])
+                      .where("payload->>'user_id' = ?", coordinator.id)).to be_empty
+  end
+
+  # Q26(4): o dashboard leu a proposta; um caso novo com lugar entrou pelos
+  # anéis; a confirmação com a área lida → 409 proposal_changed, nada muda.
+  it "confirm com a área lida antes de um caso novo entrar → 409 proposal_changed" do
+    block = proposed_case!(patient: block_case_patient!(block: center)).transmission_block
+    stepped_up!(coordinator)
+    get "#{base}/#{block.id}"
+    expect(json_body["cases"].size).to eq(1)
+    late = proposed_case!(patient: block_case_patient!(block: neighbor))
+    expect(late.transmission_block_id).to eq(block.id)
+
+    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id ]
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "proposal_changed" } ])
+    expect(block.reload).to have_attributes(status: "proposed", confirmed_at: nil, version: 1)
+    expect(TransmissionBlockArea.where(transmission_block_id: block.id)).to be_empty
+    expect(DomainEvent.where(name: "transmission_block.confirmed")).to be_empty
+
+    json_post "#{base}/#{block.id}/confirm", center_block_id: center.id, block_ids: [ center.id, neighbor.id ]
+    expect(response).to have_http_status(:ok)
+    expect(json_body["status"]).to eq("active")
   end
 end

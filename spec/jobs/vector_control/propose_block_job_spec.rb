@@ -13,6 +13,7 @@ RSpec.describe VectorControl::ProposeBlockJob, type: :job do
   let(:center) { city_block!(neighborhood: neighborhood, number: "10") }
   let(:neighbor) { city_block!(neighborhood: neighborhood, number: "11") }
   let(:far) { city_block!(neighborhood: neighborhood, number: "30") }
+  let(:side) { city_block!(neighborhood: neighborhood, number: "12") }
   let(:today) { Time.zone.today }
 
   before { block_neighbors!(center, neighbor) }
@@ -46,11 +47,12 @@ RSpec.describe VectorControl::ProposeBlockJob, type: :job do
 
     block = first.transmission_block
     coordinator = endemic_coordinator!
-    expect(VectorControl::Blocks::Confirm.call(block: block, center_block_id: center.id, block_ids: [ far.id ], by: coordinator)).to be_ok
+    block_neighbors!(center, side)
+    expect(VectorControl::Blocks::Confirm.call(block: block, center_block_id: center.id, block_ids: [ neighbor.id, far.id ], by: coordinator)).to be_ok
     third = proposed_case!(patient: block_case_patient!(block: far), on: today)
     expect(third.transmission_block_id).to eq(block.id) # a área do ativo é a confirmada
-    outside = proposed_case!(patient: block_case_patient!(block: neighbor), on: today)
-    expect(outside.transmission_block_id).not_to eq(block.id) # vizinho fora da área confirmada
+    outside = proposed_case!(patient: block_case_patient!(block: side), on: today)
+    expect(outside.transmission_block_id).not_to eq(block.id) # vizinho do centro fora da área confirmada
   end
 
   it "caso no 8º dia no mesmo quarteirão → nova proposta" do
@@ -79,6 +81,49 @@ RSpec.describe VectorControl::ProposeBlockJob, type: :job do
     expect(result).to be_ok
     propose_from!("disease_notification.transitioned", notification)
     expect(case_of(notification).transmission_block).to have_attributes(status: "proposed", center_block_id: center.id)
+  end
+
+  # Q26(1): a fila pode atrasar; quem já está em investigação ainda chegou a notified.
+  it "notificação já em investigating: o created atrasado propõe; a reentrega não duplica" do
+    notification = arbovirus_case!(patient: block_case_patient!(block: center))
+    officer = surveillance_officer!
+    expect(Surveillance::Transition.call(notification: notification, to: "investigating", version: notification.reload.version,
+                                         by: officer)).to be_ok
+    expect(notification.reload.status).to eq("investigating")
+
+    2.times { propose_from!("disease_notification.created", notification) }
+    expect(case_of(notification).transmission_block).to have_attributes(status: "proposed", center_block_id: center.id)
+    expect(TransmissionBlockCase.where(disease_notification_id: notification.id).count).to eq(1)
+    propose_from!("disease_notification.transitioned", notification)
+    expect(TransmissionBlockCase.count).to eq(1)
+    expect(DomainEvent.where(name: "transmission_block.proposed").count).to eq(1)
+  end
+
+  it "o transitioned para investigating propõe; closed não age" do
+    notification = arbovirus_case!(patient: block_case_patient!(block: center), origin: "safety_net")
+    officer = surveillance_officer!
+    %w[notified investigating].each do |to|
+      expect(Surveillance::Transition.call(notification: notification, to: to, version: notification.reload.version, by: officer)).to be_ok
+    end
+    propose_from!("disease_notification.transitioned", notification) # o último: notified → investigating
+    propose_from!("disease_notification.transitioned", notification)
+    expect(TransmissionBlockCase.where(disease_notification_id: notification.id).count).to eq(1)
+
+    closed = arbovirus_case!(patient: block_case_patient!(block: center))
+    expect(Surveillance::Transition.call(notification: closed, to: "investigating", version: closed.reload.version, by: officer)).to be_ok
+    expect(Surveillance::Transition.call(notification: closed, to: "closed", version: closed.reload.version, by: officer,
+                                         classification: "confirmed")).to be_ok
+    propose_from!("disease_notification.created", closed)
+    propose_from!("disease_notification.transitioned", closed)
+    expect(case_of(closed)).to be_nil
+  end
+
+  it "a sugestão deixa de fora o quarteirão inativo" do
+    row = proposed_case!(patient: block_case_patient!(block: center))
+    neighbor.update!(active: false)
+    expect(VectorControl::Json.transmission_block(row.transmission_block)[:area]).to eq([ { id: center.id, number: "10", suggested: true } ])
+    center.update!(active: false)
+    expect(VectorControl::Json.transmission_block(row.transmission_block)).to include(center_block: { id: center.id, number: "10" }, area: [])
   end
 
   it "doença fora de block_diseases ou gate desligado → nada" do

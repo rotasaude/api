@@ -11,13 +11,13 @@ RSpec.describe VectorControl::Catalog, type: :model do
       vector_task.opened vector_task.closed liraa_survey.drawn liraa_survey.closed
       transmission_block.proposed transmission_block.confirmed transmission_block.dismissed
       transmission_block.closed transmission_block_case.address_viewed vector_sample.result_recorded
-      vector_parameters.changed vector_product.changed
+      vector_parameters.changed vector_product.changed transmission_block_case.moved
     ]
   end
 
-  it "DOMAIN_EVENTS = os 19 nomes do §17 e todos declarados sem consumidor" do
+  it "DOMAIN_EVENTS = os 20 nomes do §17 (o moved da Q26(2) no fim) e todos declarados sem consumidor" do
     expect(described_class::DOMAIN_EVENTS).to eq(contract)
-    expect(described_class::DOMAIN_EVENTS.size).to eq(19)
+    expect(described_class::DOMAIN_EVENTS.size).to eq(20)
     expect(DomainEvents.registry.keys).to include(*contract)
     expect(contract.flat_map { |name| DomainEvents.registry[name] }).to be_empty
   end

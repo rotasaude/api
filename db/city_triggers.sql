@@ -4599,15 +4599,22 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 
+-- Q26(2): o mover grava quem moveu (added_by job -> user, só no mesmo UPDATE
+-- que troca o bloqueio); nada mais muda, e o número fica.
 CREATE OR REPLACE FUNCTION rota_transmission_block_case_guard() RETURNS trigger AS $fn$
 DECLARE
-  moving text[] := ARRAY['transmission_block_id', 'updated_at', 'version'];
+  moving text[] := ARRAY['transmission_block_id', 'added_by', 'updated_at', 'version'];
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'transmission_block_cases: DELETE refused';
   END IF;
   IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
     RAISE EXCEPTION 'transmission_block_cases: a case only moves to another block';
+  END IF;
+  IF (to_jsonb(NEW) ->> 'added_by') IS DISTINCT FROM (to_jsonb(OLD) ->> 'added_by')
+     AND NOT ((to_jsonb(OLD) ->> 'added_by') = 'job' AND (to_jsonb(NEW) ->> 'added_by') = 'user'
+              AND NEW.transmission_block_id IS DISTINCT FROM OLD.transmission_block_id) THEN
+    RAISE EXCEPTION 'transmission_block_cases: added_by only goes job -> user in a move';
   END IF;
   RETURN NEW;
 END;

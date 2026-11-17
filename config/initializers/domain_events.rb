@@ -530,7 +530,7 @@ Rails.application.config.to_prepare do
   # consumidor.
   DomainEvents.bind "collective_activity.recorded", to: []
   DomainEvents.bind "collective_activity.marked_mistaken", to: []
-  # Módulo 35a (ADR 0054; contrato §17; Task 2): os 19 eventos da vigilância
+  # Módulo 35a (ADR 0054; contrato §17; Task 2; Q26(2)): os 20 eventos da vigilância
   # ambiental de endemias, na ordem da tabela do contrato. Só ids (e
   # `corrected`/`version`), nunca nota, endereço, caso ou pessoa. Sem
   # consumidor: o transmission_block.* (Task 11) não tem quem consuma; o
@@ -554,4 +554,7 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "vector_sample.result_recorded", to: []
   DomainEvents.bind "vector_parameters.changed", to: []
   DomainEvents.bind "vector_product.changed", to: []
+  # Q26(2): caso movido pela coordenação (VectorControl::Blocks::MoveCase):
+  # transmission_block_id (destino), from_transmission_block_id e user_id.
+  DomainEvents.bind "transmission_block_case.moved", to: []
 end

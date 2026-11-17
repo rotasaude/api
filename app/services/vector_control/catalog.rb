@@ -53,14 +53,15 @@ module VectorControl
       "R" => %w[1 7 8 9 10 11 99], "C" => %w[2], "TB" => %w[3], "PE" => %w[4], "O" => %w[5 6 12 13]
     }.freeze
     TRAIL_ACCESS = "transmission_block_case".freeze
-    # Contrato §17, na ordem da tabela.
+    # Contrato §17, na ordem da tabela; o 20º (transmission_block_case.moved,
+    # Q26(2)) no fim.
     DOMAIN_EVENTS = %w[
       city_block.changed household_vector_profile.changed vector_stock.shortfall_recorded
       vector_stock.shortfall_reconciled ovitrap.installed ovitrap.collected ovitrap_reading.counted
       vector_task.opened vector_task.closed liraa_survey.drawn liraa_survey.closed
       transmission_block.proposed transmission_block.confirmed transmission_block.dismissed
       transmission_block.closed transmission_block_case.address_viewed vector_sample.result_recorded
-      vector_parameters.changed vector_product.changed
+      vector_parameters.changed vector_product.changed transmission_block_case.moved
     ].freeze
     REPORTS = %w[situations strategic_points production consumption ovitraps liraa blocks].freeze
   end

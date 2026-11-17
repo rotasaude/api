@@ -289,14 +289,17 @@ module VectorControl
     # n" (`has_place` = tem lugar pelo CasePlace agora); nunca paciente,
     # notificação, endereço nem coordenada. Área: as linhas gravadas na
     # confirmação ou, sem linha (proposta, descartada), a sugestão
-    # Rings.around([centro], block_radius_rings); `suggested` = está na
-    # sugestão. Quarteirões na ordem natural do número; casos pelo número;
+    # Rings.around([centro], block_radius_rings) só com os quarteirões ativos
+    # (o centro inativo fica de fora: o confirm o recusaria); `suggested` =
+    # está na sugestão. Quarteirões na ordem natural do número; casos pelo número;
     # ciclos pelo número. O motivo do descarte nunca sai.
     def transmission_blocks(blocks, rings: Parameters.current.values.fetch("block_radius_rings").to_i)
       ids = blocks.map(&:id)
       areas = TransmissionBlockArea.where(transmission_block_id: ids).pluck(:transmission_block_id, :city_block_id)
                                    .group_by(&:first).transform_values { |pairs| pairs.map(&:last) }
       suggested = blocks.filter_map(&:center_block_id).uniq.to_h { |id| [ id, Rings.around([ id ], rings: rings) ] }
+      usable = CityBlock.active_blocks.where(id: suggested.values.flatten.uniq).pluck(:id).to_set
+      suggested.transform_values! { |ids| ids.select { |id| usable.include?(id) } }
       cases = TransmissionBlockCase.where(transmission_block_id: ids).order(:number).to_a
       notifications = DiseaseNotification.where(id: cases.map(&:disease_notification_id)).pluck(:id, :disease_code, :patient_id)
                                          .to_h { |id, code, patient_id| [ id, [ code, patient_id ] ] }

@@ -6,11 +6,14 @@
 #   - sob a trava, os dois bloqueios travados em ordem de id e o caso
 #     travado: o caso já saiu deste bloqueio → not_found; origem ou destino
 #     fora de proposed/active → invalid_transition path status (409).
-# Só o transmission_block_id muda (trigger): o `number` ("caso n") e o
-# added_by ficam. Sem evento (§17).
+# Mudam o transmission_block_id e o added_by (user, Q26(2); o trigger só
+# deixa job → user no mesmo UPDATE do mover); o `number` ("caso n") fica.
+# `transmission_block_case.moved` só com ids (destino, origem e quem moveu).
 module VectorControl
   module Blocks
     module MoveCase
+      EVENT = "transmission_block_case.moved".freeze
+
       module_function
 
       # -> Result.ok(block: <destino>) | fail(:invalid_request | :not_found | :invalid_transition, details: { path: })
@@ -28,7 +31,8 @@ module VectorControl
           next Result.fail(:not_found) unless block_case.transmission_block_id == block.id
           next Support.transition unless Support::OPEN.include?(block.status) && Support::OPEN.include?(target.status)
 
-          block_case.update!(transmission_block_id: target.id, version: block_case.version + 1)
+          block_case.update!(transmission_block_id: target.id, added_by: "user", version: block_case.version + 1)
+          DomainEvents.publish(EVENT, transmission_block_id: target.id, from_transmission_block_id: block.id, user_id: by.id)
           Result.ok(block: target)
         end
       end

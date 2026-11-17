@@ -9,7 +9,8 @@
 #     (o do destino no mover); fora do estado → 409 invalid_transition path
 #     status (Q9);
 #   - GET /:id/cases/:case_id/address (step-up) → CaseAddress, a única
-#     resposta do 35a com endereço de pessoa; grava a trilha.
+#     resposta do 35a com endereço de pessoa, só em bloqueio proposed ou
+#     active (Q26(3)), com Cache-Control: no-store; grava a trilha.
 # O caso sai só como doença, data e "caso n": nunca paciente, notificação,
 # endereço (fora da rota do endereço) nem coordenada. Chave de corpo
 # desconhecida → 422 invalid_request com o path dela.
@@ -84,6 +85,7 @@ module VectorControl
       result = Blocks::CaseAddress.call(block: @block, block_case: @block_case, by: Current.user)
       return render_failure(result) if result.failure?
 
+      response.headers["Cache-Control"] = "no-store"
       render json: result.payload[:address]
     end
 

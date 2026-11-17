@@ -382,15 +382,19 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
                                            added_by: "job", number: number }.merge(over)), validate)
       end
 
-      it "caso em dois bloqueios → RecordNotUnique; number do caso não muda (trigger); só muda de bloqueio" do
+      it "caso em dois bloqueios → RecordNotUnique; number do caso não muda (trigger); só muda de bloqueio (added_by job → user só no mover)" do
         first = transmission_block!
         other = transmission_block!
         row = case!(first, number: 1)
         not_unique(/idx_transmission_block_cases_notification/) { case!(other, number: 2) }
         refused(/transmission_block_cases: a case only moves to another block/) { raw_update(row, number: 7) }
         refused(/transmission_block_cases: a case only moves to another block/) { raw_update(row, case_on: Date.yesterday) }
+        refused(/transmission_block_cases: added_by only goes job -> user in a move/) { raw_update(row, added_by: "user") }
         row.update!(transmission_block: other)
         expect(row.reload.transmission_block_id).to eq(other.id)
+        row.update!(transmission_block: first, added_by: "user") # Q26(2): quem moveu, no mesmo UPDATE do mover
+        expect(row.reload).to have_attributes(transmission_block_id: first.id, added_by: "user", number: 1)
+        refused(/transmission_block_cases: added_by only goes job -> user in a move/) { raw_update(row, transmission_block_id: other.id, added_by: "job") }
         second = notification!(patient: surveillance_patient!(2))
         not_unique(/idx_transmission_block_cases_number/) { case!(other, number: 1, notification: second) }
         refused(/ck_transmission_block_cases_added_by/) { case!(other, number: 2, notification: second, added_by: "app", validate: false) }
