@@ -138,7 +138,9 @@ module Pharmacy
     end
 
     def write(location:, kind:, document:, rows:, by:, now:)
-      lock_vector_products!(rows)
+      inactive = lock_vector_products!(rows)
+      return failure(inactive) if inactive.any?
+
       lots = ensure_lots(rows, by)
       mismatches = mismatch_problems(rows, lots)
       return failure(mismatches) if mismatches.any?
@@ -280,13 +282,17 @@ module Pharmacy
 
     # Passo 0 da ordem de travas: FOR SHARE nos produtos das linhas, em ordem de
     # id, antes dos lotes (carry-over da Task 6: a unidade do lote novo é a do
-    # produto relido sob a trava).
+    # produto relido sob a trava). O produto desativado entre a validação e a
+    # trava não recebe lote: `invalid_item`, como na validação.
+    # -> [ problem ] (vazio: todos ativos sob a trava)
     def lock_vector_products!(rows)
       ids = rows.filter_map { |row| row.vector_product&.id }.uniq.sort
-      return if ids.empty?
+      return [] if ids.empty?
 
       locked = VectorProduct.where(id: ids).order(:id).lock("FOR SHARE").index_by(&:id)
       rows.each { |row| row.vector_product = locked.fetch(row.vector_product.id) if row.vector_product }
+      rows.select { |row| row.vector_product && !row.vector_product.active }
+          .map { |row| problem("items[#{row.index}].vector_product_id", :invalid_item) }
     end
 
     # Linha de vacina (§15 V4/V19): código do catálogo, fabricante pela key da

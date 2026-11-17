@@ -108,6 +108,36 @@ RSpec.describe "Estoque do insumo de campo pelas rotas do 27a", type: :request d
     expect(position["balance"]).to eq("5.00")
   end
 
+  it "a equipe do local vector_control é só stock_keeper: farmacêutico e auxiliar → invalid_request path role (como a rede de frio)" do
+    admin = pharmacy_admin!
+    %w[pharmacist pharmacy_assistant].each do |role|
+      user = staff_with("#{role.tr('_', '-')}-#{SecureRandom.hex(3)}@cidade.gov.br", role)
+      result = Pharmacy::LinkStaff.add(location: location, user_id: user.id, role: role, by: admin)
+      expect([ result.reason, result.details[:path] ]).to eq([ :invalid_request, "role" ]), role
+    end
+    user = staff_with("almoxarife-#{SecureRandom.hex(3)}@cidade.gov.br", "stock_keeper")
+    expect(Pharmacy::LinkStaff.add(location: location, user_id: user.id, role: "stock_keeper", by: admin)).to be_ok
+    expect(StockLocationStaff.where(stock_location_id: location.id).pluck(:role)).to eq([ "stock_keeper" ])
+  end
+
+  it "produto desativado entre a validação e a trava não recebe lote: invalid_item pelo produto relido FOR SHARE" do
+    product
+    reads = 0
+    allow(VectorProduct).to receive(:where).and_wrap_original do |original, *args, **kwargs|
+      relation = original.call(*args, **kwargs)
+      reads += 1
+      next relation unless reads == 1
+
+      # A leitura sem trava (validação) já viu o produto ativo; desativa antes da trava.
+      relation.load.tap { product.update_columns(active: false) }
+    end
+    result = Pharmacy::RecordEntry.call(location: location, kind: "opening", document: nil, items: [ line.stringify_keys ],
+                                        by: keeper, catalog: {})
+    expect([ result.reason, result.details[:path] ]).to eq([ :invalid_item, "items[0].vector_product_id" ])
+    expect(StockLot.where(vector_product_id: product.id)).to be_empty
+    expect(StockMovement.count).to eq(0)
+  end
+
   it "`POST /pharmacy/items/search` com `domain: vector_control` devolve o produto com `vector_product_id`; sem domínio, só CATMAT" do
     product
     vector_product!(code: "BTI", name: "Bti WG", active: false)

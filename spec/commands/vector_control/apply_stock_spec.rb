@@ -149,6 +149,57 @@ RSpec.describe VectorControl::ApplyStock, type: :model do
   end
 end
 
+# Rodada de correção 1: a baixa escolhe SÓ entre os lotes que o ApplyStock
+# travou antes do local; nunca trava lote depois do local (a ordem do Ledger).
+RSpec.describe VectorControl::DeductStock, type: :model do
+  let!(:city) { vector_city! }
+  let(:product) { vector_product!(charge_size: "2.00") }
+  let(:location) { vector_location! }
+  let(:today) { Time.zone.today }
+
+  before { allow(Ledi::DeliverJob).to receive(:perform_later) }
+
+  def measure = Struct.new(:quantity, :vector_product_id).new(BigDecimal("2"), product.id)
+
+  it "lote com saldo fora do conjunto travado não é candidato (no_lot), e nenhum lote é travado aqui" do
+    fresh_lot = vector_lot!(location, product: product, quantity: "5", expires_on: today + 30)
+    later_lot = vector_lot!(location, product: product, quantity: "5", expires_on: today + 60)
+    expect(Pharmacy::Ledger).not_to receive(:lock_lots!)
+
+    none = described_class.call(measure: measure, location_id: location.id, today: today, locked: {})
+    expect(none.payload).to include(shortfall_cause: "no_lot", location: location)
+
+    only_later = described_class.call(measure: measure, location_id: location.id, today: today, locked: { later_lot.id => later_lot })
+    expect(only_later.payload).to include(lot: later_lot, quantity: BigDecimal("2"))
+    expect(only_later.payload[:lot]).not_to eq(fresh_lot)
+  end
+
+  it "o ApplyStock trava os lotes de todas as medidas numa chamada só, antes do local" do
+    other = vector_product!(uses: %w[perifocal])
+    vector_stock_location!(location)
+    vector_lot!(location, product: product, quantity: "5")
+    vector_lot!(location, product: other, quantity: "5")
+    calls = []
+    allow(Pharmacy::Ledger).to receive(:lock_lots!).and_wrap_original { |original, ids| calls << [ :lots, ids.size ] && original.call(ids) }
+    allow(Pharmacy::Ledger).to receive(:lock_location!).and_wrap_original { |original, id| calls << [ :location ] && original.call(id) }
+
+    agent = endemic_agent!
+    member = HealthTeamMember.active.find_by!(professional: agent.professional)
+    household = registry_household!(micro_area: MicroAreaFieldAssignment.find_by!(professional: agent.professional).micro_area)
+    report = { "activity" => "li", "work_type" => "routine", "situation" => "worked", "educational_action" => false,
+               "measures" => [ { "method" => "focal", "vector_product_id" => product.id, "charges" => 1 },
+                               { "method" => "perifocal", "vector_product_id" => other.id, "charges" => 1 } ] }
+    result = HomeVisits::Record.call(params: { "client_uuid" => SecureRandom.uuid, "team_id" => member.health_team_id,
+                                               "occurred_at" => Time.current.change(usec: 0).iso8601, "household_id" => household.id,
+                                               "subject" => "none", "outcome" => 1, "reasons" => [], "vector_inspection" => report },
+                                     by: agent, vector_control: true)
+    expect(result).to be_ok
+    expect(calls.first).to eq([ :lots, 2 ])
+    expect(calls.count { |call| call.first == :lots }).to eq(1)
+    expect(StockMovement.where(kind: "vector_application").count).to eq(2)
+  end
+end
+
 # Review Focus 2 (plano; contrato §4): duas visitas (dois agentes, dois
 # domicílios) baixam o mesmo produto com saldo para uma só. A primeira grava a
 # baixa e fica parada antes do commit; a segunda leu o mesmo saldo no FEFO e

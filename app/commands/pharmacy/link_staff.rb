@@ -14,8 +14,9 @@ module Pharmacy
     def add(location:, user_id:, role:, by:)
       invalid = invalid_body(user_id, role)
       return invalid if invalid
-      # Módulo 29: a rede de frio só tem almoxarife.
-      return refuse(:invalid_request, "role") if location.cold_chain_central? && role != "stock_keeper"
+      # Módulo 29: a rede de frio só tem almoxarife. Módulo 35a (contrato §4):
+      # o local vector_control também (nem farmacêutico nem auxiliar).
+      return refuse(:invalid_request, "role") if (location.cold_chain_central? || location.vector_control?) && role != "stock_keeper"
 
       user = User.find_by(id: user_id)
       return Result.fail(:not_found) unless user&.active?

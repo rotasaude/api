@@ -26,27 +26,29 @@ module VectorControl
       return [] if measures.empty?
 
       location_id = VectorControlSetting.find_by(id: 1)&.stock_location_id
-      lock!(measures, location_id, today)
-      measures.map { |measure| apply(measure, location_id, by, today) }
+      locked = lock!(measures, location_id, today)
+      measures.map { |measure| apply(measure, location_id, locked, by, today) }
     end
 
+    # -> { lot_id => StockLot } travados (o único conjunto de onde a baixa escolhe).
     def lock!(measures, location_id, today)
       location = location_id && StockLocation.find_by(id: location_id, kind: "vector_control", active: true)
-      return unless location
+      return {} unless location
 
       lot_ids = measures.map(&:vector_product_id).uniq.flat_map do |product_id|
         Fefo.lots(product_id: product_id, location: location, today: today).map { |entry| entry.lot.id }
       end
-      Pharmacy::Ledger.lock_lots!(lot_ids)
+      locked = Pharmacy::Ledger.lock_lots!(lot_ids)
       Pharmacy::Ledger.lock_location!(location.id)
+      locked
     rescue Pharmacy::Ledger::Inactive
-      nil # a DeductStock vê o local inativo e grava no_location
+      {} # a DeductStock vê o local inativo e grava no_location
     end
 
-    def apply(measure, location_id, by, today)
+    def apply(measure, location_id, locked, by, today)
       location = nil
       outcome = VectorInspectionMeasure.transaction(requires_new: true) do
-        result = DeductStock.call(measure: measure, location_id: location_id, today: today)
+        result = DeductStock.call(measure: measure, location_id: location_id, today: today, locked: locked)
         location = result.payload[:location]
         next result if result.payload[:shortfall_cause]
 
