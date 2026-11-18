@@ -78,7 +78,8 @@ RSpec.describe "Migração de cidade 20260928100001 (CreateTerritory): down e up
   # FKs que apontam para os bairros: as do módulo 11 (as duas de
   # neighborhood_coverages e as três *.neighborhood_id) e as de migrações
   # posteriores: household_versions→neighborhoods (24a, 20261023900001) e
-  # disease_notifications→neighborhoods (25, 20261027900002).
+  # disease_notifications→neighborhoods (25, 20261027900002), mais
+  # city_blocks→neighborhoods e vector_cadences→neighborhoods (35a, 20261116900001).
   def territory_fks(fp)
     fp[:constraints].select do |(table, _name, defn)|
       defn.start_with?("FOREIGN KEY") && "#{table} #{defn}".include?("neighborhood")
@@ -102,18 +103,23 @@ RSpec.describe "Migração de cidade 20260928100001 (CreateTerritory): down e up
       expect(before[:indexes].map(&:second)).to include(*new_indexes)
       expect(before[:constraints].map(&:second)).to include(*new_checks)
       # coverages→neighborhoods, coverages→health_units, 3 *.neighborhood_id,
-      # household_versions→neighborhoods (24a) e disease_notifications→neighborhoods (25)
-      expect(territory_fks(before).size).to eq(7)
-      later = territory_fks(before).select { |(table, _name, _defn)| table.in?(%w[household_versions disease_notifications]) }
+      # household_versions→neighborhoods (24a), disease_notifications→neighborhoods (25),
+      # city_blocks→neighborhoods e vector_cadences→neighborhoods (35a, 20261116900001)
+      expect(territory_fks(before).size).to eq(9)
+      later = territory_fks(before).select do |(table, _name, _defn)|
+        table.in?(%w[household_versions disease_notifications city_blocks vector_cadences])
+      end
       expect(later.map { |(table, _name, defn)| "#{table} #{defn}" }).to eq([
+        "city_blocks FOREIGN KEY (neighborhood_id) REFERENCES neighborhoods(id)",
         "disease_notifications FOREIGN KEY (neighborhood_id) REFERENCES neighborhoods(id)",
-        "household_versions FOREIGN KEY (neighborhood_id) REFERENCES neighborhoods(id)"
+        "household_versions FOREIGN KEY (neighborhood_id) REFERENCES neighborhoods(id)",
+        "vector_cadences FOREIGN KEY (neighborhood_id) REFERENCES neighborhoods(id)"
       ])
       expect(before[:triggers].map(&:second)).to include("triages_neighborhood_immutable")
       expect(before[:functions].map(&:first)).to include("rota_triage_neighborhood_guard")
 
       # Migrações posteriores que dependem dos bairros saem antes (a ordem de
-      # um rollback de verdade: 25 e 24a descem antes do 11) e voltam depois do up.
+      # um rollback de verdade: 35a, 25 e 24a descem antes do 11) e voltam depois do up.
       later.each { |(table, name, _defn)| conn.remove_foreign_key table, name: name }
       migrate(:down)
       down = fingerprint
