@@ -220,6 +220,51 @@ RSpec.describe VectorControlCrew, type: :model do
     end
   end
 
+  # Deriva do dev: a família do José na R. das Acácias mudou (prova manual),
+  # pelo comando real do cadastro, com os valores que ela já tinha.
+  def move_out_family_of!(key, number)
+    household = household_at(number)
+    family = Family.active_families.find_by!(household_id: household.id, responsible_patient_id: patient(key).id)
+    params = { "moved_out" => true, "members_count" => family.members_count, "income_band" => family.income_band,
+               "living_since" => family.living_since, "version" => household.reload.version }
+    moved = TerritoryRegistry::SaveFamily.call(household: household, family: family, params: params,
+                                               by: User.find_by!(email_address: "acs@curitiba.demo"))
+    expect(moved).to be_ok
+    household
+  end
+
+  def overdue_visit = HomeVisit.find_by(client_uuid: described_class.client_uuid("curitiba", "home_visit", :overdue_li))
+
+  it "a família esperada mudou e o domicílio ficou sem família ativa: o LI vai sem pessoa, e de novo não duplica" do
+    acacias = move_out_family_of!(:jose, "245")
+    expect(acacias.families.active_families).to be_empty
+
+    expect { seed }.not_to raise_error
+    visit = overdue_visit
+    expect(visit).to have_attributes(household_id: acacias.id, subject: "none", family_id: nil, patient_id: nil)
+    expect(visit.reasons).to include(34, 35, 36, 37)
+    expect { seed }.not_to change(HomeVisit, :count)
+  end
+
+  it "a família esperada mudou e o domicílio tem outra família ativa: o LI vai para a família ativa mais antiga" do
+    acacias = move_out_family_of!(:jose, "245")
+    params = { "responsible" => { "patient_id" => patient(:ana).id }, "members_count" => 1, "income_band" => "4",
+               "living_since" => "2026-10", "version" => acacias.reload.version }
+    other = TerritoryRegistry::SaveFamily.call(household: acacias, params: params, by: User.find_by!(email_address: "acs@curitiba.demo"))
+    expect(other).to be_ok
+
+    expect { seed }.not_to raise_error
+    expect(overdue_visit).to have_attributes(household_id: acacias.id, subject: "family_responsible", family_id: other.payload[:family].id)
+  end
+
+  it "o código do produto reescrito em outra caixa na tela não quebra a semente de novo" do
+    seed
+    product = VectorProduct.find_by!(code: "PPF05")
+    expect(VectorControl::SaveProduct.call(product: product, params: { "code" => "ppf05" }, by: coordinator)).to be_ok
+
+    expect { seed }.not_to raise_error
+  end
+
   it "nenhum CPF/CNS inválido na semente nova" do
     professionals = Professional.count
     patients = Patient.count

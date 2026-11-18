@@ -408,7 +408,22 @@ class VectorControlCrew
       check!(HomeVisits::Record.call(params: params, by: ace, vector_control: usable), "visita #{key}").payload[:visit]
     end
 
-    def family_of(household, responsible) = Family.active_families.find_by!(household_id: household.id, responsible_patient_id: responsible.id)
+    # A família ativa do responsável esperado. O dev deriva (provas manuais
+    # mudam famílias): sem ela, a família ativa mais antiga do domicílio
+    # (created_at, id); sem nenhuma, nil — a visita vai sem pessoa, que a Q44
+    # aceita com os motivos 34–37 só quando o domicílio não tem família ativa.
+    # Família com o responsável saído (family_without_responsible) não serve.
+    # Só lê: nunca muda as famílias.
+    def family_of(household, responsible)
+      families = Family.active_families.where(household_id: household.id).order(:created_at, :id).to_a
+      exited = TerritoryRegistry::Families.responsible_exited_ids(families)
+      usable = families.reject { |family| exited.include?(family.id) }
+      usable.detect { |family| family.responsible_patient_id == responsible.id } || usable.first
+    end
+
+    # O produto pelo código sem diferenciar caixa, como o stock! o acha (a
+    # coordenação pode reescrever o código na tela).
+    def product!(key) = VectorProduct.find_by!("lower(code) = lower(?)", PRODUCTS.dig(key, "code"))
 
     def today_at(ago)
       now = Time.current
@@ -421,7 +436,7 @@ class VectorControlCrew
       day = [ Time.zone.today - OVERDUE_DAYS, HomeVisits::Rules.min_date(Time.zone.today) ].max
       time = day.in_time_zone.change(hour: 9, min: 30)
       household = place[:households].fetch(:acacias)
-      product = VectorProduct.find_by!(code: PRODUCTS.dig(:pyriproxyfen, "code"))
+      product = product!(:pyriproxyfen)
       report = { "activity" => "li", "work_type" => "routine", "situation" => "worked", "educational_action" => true,
                  "entered_at" => (time - 12.minutes).iso8601, "left_at" => (time + 18.minutes).iso8601,
                  "deposits" => [ { "group" => "A2", "existing" => 4, "with_water" => 3, "with_larvae" => 1, "eliminated" => 2, "treated" => 1 } ],
@@ -558,7 +573,7 @@ class VectorControlCrew
       return unless block.status == "active"
 
       household = place[:households].fetch(:pedro_gusso)
-      product = VectorProduct.find_by!(code: PRODUCTS.dig(:spinosad, "code"))
+      product = product!(:spinosad)
       report = { "activity" => "transmission_block", "transmission_block_id" => block.id, "work_type" => "routine", "situation" => "worked",
                  "educational_action" => true,
                  "deposits" => [ { "group" => "A2", "existing" => 2, "with_water" => 2, "with_larvae" => 1, "eliminated" => 0, "treated" => 1 } ],
