@@ -25,7 +25,7 @@ module TerritoryRegistry
 
         scope = scope.where("(households.registered_at, households.id) < (?, ?)", *cursor)
       end
-      rows = scope.limit(limit + 1).includes({ micro_area: :team }, registered_by_user: :professional).to_a
+      rows = scope.limit(limit + 1).includes(:micro_area, registered_by_user: :professional).to_a
       page = rows.first(limit)
       Trail.households_listed!(user: Current.user, micro_area_id: area.id, household_ids: page.map(&:id))
       render json: { households: rendered(page, full: false), next_before: rows.size > limit ? encode_cursor(page.last) : nil }
@@ -81,8 +81,7 @@ module TerritoryRegistry
       household if household && visible?(household.micro_area_id, household.micro_area.team)
     end
 
-    # A última versão de cada domicílio e as famílias, sem N+1. Para o agente
-    # de endemias na equipe do domicílio (Q41), só a contagem das famílias.
+    # A última versão de cada domicílio e as famílias, sem N+1.
     def rendered(households, full:)
       ids = households.map(&:id)
       versions = HouseholdVersion.joins(:household).where(household_id: ids).where("household_versions.version = households.version")
@@ -91,13 +90,7 @@ module TerritoryRegistry
       exited = Families.responsible_exited_ids(rows)
       families = rows.group_by(&:household_id)
       households.map do |household|
-        version = versions.fetch(household.id)
-        own = families[household.id] || []
-        if hides_people?(household.micro_area.team)
-          Json.household_without_people(household, version, families_count: own.count { |family| !family.moved_out }, full: full)
-        else
-          Json.household(household, version, families: own, exited: exited, full: full)
-        end
+        Json.household(household, versions.fetch(household.id), families: families[household.id] || [], exited: exited, full: full)
       end
     end
   end

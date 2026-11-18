@@ -50,16 +50,6 @@ module TerritoryRegistry
       @vector_control_usable
     end
 
-    # Módulo 35a (Q41): o agente de endemias (VectorControl::Access.field_agent?,
-    # 515140 com papel de campo na equipe) não recebe morador — o domicílio sai
-    # sem famílias (só a contagem) e os cadastros do domicílio não vêm. Vale pelo
-    # papel, com ou sem vector_control (a leitura de campo do 24b não depende
-    # dele). Uma conta por equipe e requisição.
-    def hides_people?(team)
-      @hides_people ||= {}
-      @hides_people.fetch(team.id) { @hides_people[team.id] = VectorControl::Access.field_agent?(Current.user, team) }
-    end
-
     # LEITURA (index, show e o achado do update, que depois exige
     # registrar_visible?): quem cadastra na microárea, ou o CBO de campo
     # atribuído a ela com home_visits utilizável (Q11, Q48).

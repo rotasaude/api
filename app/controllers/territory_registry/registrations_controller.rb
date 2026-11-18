@@ -22,9 +22,6 @@ module TerritoryRegistry
         visible = team && (Access.visible_micro_area_ids(Current.user, team) + field_ids).include?(household.micro_area_id)
         return not_found unless visible
 
-        # Q41 (35a): o agente de endemias enxerga o domicílio, nunca os moradores
-        # (lista vazia, sem trilha). O reads_registration? já o recusa.
-        field_ids = [] if hides_people?(team)
         scope = IndividualRegistration.active_registrations.where(household_id: household.id)
       else
         scope = IndividualRegistration.where(patient_id: patient_id)
