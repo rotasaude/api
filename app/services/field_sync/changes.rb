@@ -41,18 +41,17 @@
 # Módulo 35a (ADR 0054; contrato §13; Q6; W-14; plano, Review Focus 5): SÓ com
 # o gate vector_control utilizável (lido aqui, fora de transação; o app
 # anterior ao 35a não ignora tipo desconhecido), o fluxo ganha
-#   - city_block (t = updated_at): os quarteirões dos bairros das versões
-#     atuais dos domicílios do escopo (o vizinho novo sobe a version dos dois);
-#   - ovitrap (t = GREATEST(o.updated_at, max(r.updated_at))): as ovitrampas
-#     dos domicílios do escopo (coleta, contagem e reinstalação reemitem);
-#   - liraa_item (t = GREATEST(i.updated_at, s.updated_at)): itens de
-#     levantamentos drawn ou closed com domicílio do escopo; `status` "closed"
-#     quando o levantamento fechou (o fechamento sobe o levantamento e reemite
-#     cada item uma vez);
-#   - transmission_block (t = GREATEST(tb.updated_at, max(c.updated_at))): o
-#     active e o closed (que já foi active; o CHECK confirmed) com quarteirão de
-#     domicílio do escopo (o do perfil); o ciclo de UBV novo reemite; nunca
-#     caso, notificação nem paciente;
+#   - city_block: os quarteirões dos bairros das versões atuais dos domicílios
+#     do escopo e os dos perfis deles (o vizinho novo sobe a version dos dois);
+#   - ovitrap: as ovitrampas dos domicílios do escopo (coleta, contagem e
+#     reinstalação reemitem);
+#   - liraa_item: itens de levantamentos drawn ou closed com domicílio do
+#     escopo; `status` "closed" quando o levantamento fechou (o fechamento sobe
+#     o levantamento e reemite cada item uma vez);
+#   - transmission_block: o active e o closed (que já foi active; o CHECK
+#     confirmed) com quarteirão de perfil de domicílio do escopo; o ciclo de UBV
+#     novo reemite; nunca caso, notificação nem paciente;
+#   cada `t` com o instante de junção ao escopo (VECTOR_SCOPE);
 # e o <household> ganha `vector` (VectorControl::Json.profile, null sem
 # perfil), com o perfil no t (HOUSEHOLD_VECTOR_T). O gate entra no
 # scope_digest (FieldSync::Scope): ligar ou desligar → reset: true. Nenhuma
@@ -82,27 +81,72 @@ module FieldSync
     HOUSEHOLD_VECTOR_T = <<~SQL.squish.freeze
       GREATEST(#{HOUSEHOLD_T}, (SELECT p.updated_at FROM household_vector_profiles p WHERE p.household_id = h.id))
     SQL
-    SCOPE_HOUSEHOLDS = "SELECT sh.id FROM households sh WHERE sh.micro_area_id IN (:ids)".freeze
+    # Entrada no escopo (fix round 1 da Task 15): as quatro entidades do 35a
+    # entram no escopo por junção (o domicílio, a versão atual dele e o perfil),
+    # não por escrita na própria linha. O `t` de cada uma leva o MÍNIMO do
+    # "instante de junção" dos membros que a trazem ao escopo, = GREATEST do
+    # updated_at do domicílio e do perfil. O mínimo sai de NULL para um valor
+    # recente exatamente quando o conjunto deixa de ser vazio (toda entrada
+    # escreve no domicílio ou no perfil: domicílio novo, versão nova com outro
+    # bairro, troca de microárea, quarteirão no perfil) e, depois disso, só
+    # cresce: membro novo entra com o instante da escrita (≥ o mínimo), membro
+    # que sai ou que é editado só pode subir o mínimo, e updated_at nunca
+    # desce. Com o conjunto vazio a linha está fora do fluxo. Logo o `t` de uma
+    # linha no escopo nunca anda para trás em relação a um cursor emitido.
+    #   - scope_members: cada domicílio do escopo, o bairro da versão atual, o
+    #     quarteirão do perfil e os dois instantes de junção: pelo bairro, só o
+    #     do domicílio (o perfil não entra nessa junção; a edição do perfil não
+    #     reemite os quarteirões do bairro); pelo quarteirão do perfil, o
+    #     GREATEST do domicílio e do perfil;
+    #   - by_neighborhood / by_block: o mínimo por bairro e por quarteirão;
+    #   - block_members: o mínimo por bloqueio, pelas áreas → by_block.
+    VECTOR_SCOPE = <<~SQL.squish.freeze
+      scope_members AS (
+        SELECT hb.id AS household_id, hv.neighborhood_id, vp.city_block_id, hb.updated_at AS household_joined_at,
+               GREATEST(hb.updated_at, vp.updated_at) AS profile_joined_at
+          FROM households hb
+          JOIN household_versions hv ON hv.household_id = hb.id AND hv.version = hb.version
+          LEFT JOIN household_vector_profiles vp ON vp.household_id = hb.id
+         WHERE hb.micro_area_id IN (:ids)),
+      by_neighborhood AS (
+        SELECT neighborhood_id, min(household_joined_at) AS joined_at FROM scope_members WHERE neighborhood_id IS NOT NULL
+         GROUP BY neighborhood_id),
+      by_block AS (
+        SELECT city_block_id, min(profile_joined_at) AS joined_at FROM scope_members WHERE city_block_id IS NOT NULL GROUP BY city_block_id),
+      block_members AS (
+        SELECT a.transmission_block_id, min(bb.joined_at) AS joined_at
+          FROM transmission_block_areas a JOIN by_block bb ON bb.city_block_id = a.city_block_id
+         GROUP BY a.transmission_block_id),
+      block_cycles AS (
+        SELECT c.transmission_block_id, max(c.updated_at) AS updated_at
+          FROM transmission_block_cycles c JOIN block_members bm ON bm.transmission_block_id = c.transmission_block_id
+         GROUP BY c.transmission_block_id)
+    SQL
+    # city_block: os quarteirões dos bairros das versões atuais E os quarteirões
+    # dos perfis do escopo (o perfil cujo quarteirão ficou noutro bairro depois
+    # de uma mudança do 24a nunca aponta para um quarteirão ausente).
     VECTOR_STREAM = <<~SQL.squish.freeze
       UNION ALL
-      SELECT 'city_block', b.id, b.updated_at FROM city_blocks b
-       WHERE b.neighborhood_id IN (SELECT hv.neighborhood_id FROM households hb
-                                     JOIN household_versions hv ON hv.household_id = hb.id AND hv.version = hb.version
-                                    WHERE hb.micro_area_id IN (:ids) AND hv.neighborhood_id IS NOT NULL)
+      SELECT 'city_block', b.id, GREATEST(b.updated_at, LEAST(bn.joined_at, bb.joined_at)) FROM city_blocks b
+        LEFT JOIN by_neighborhood bn ON bn.neighborhood_id = b.neighborhood_id
+        LEFT JOIN by_block bb ON bb.city_block_id = b.id
+       WHERE bn.neighborhood_id IS NOT NULL OR bb.city_block_id IS NOT NULL
       UNION ALL
-      SELECT 'ovitrap', o.id, GREATEST(o.updated_at, (SELECT max(r.updated_at) FROM ovitrap_readings r WHERE r.ovitrap_id = o.id))
-        FROM ovitraps o WHERE o.household_id IN (#{SCOPE_HOUSEHOLDS})
+      SELECT 'ovitrap', o.id,
+             GREATEST(o.updated_at, (SELECT max(r.updated_at) FROM ovitrap_readings r WHERE r.ovitrap_id = o.id), ho.updated_at)
+        FROM ovitraps o JOIN households ho ON ho.id = o.household_id
+       WHERE ho.micro_area_id IN (:ids)
       UNION ALL
-      SELECT 'liraa_item', i.id, GREATEST(i.updated_at, s.updated_at) FROM liraa_draw_items i
+      SELECT 'liraa_item', i.id, GREATEST(i.updated_at, s.updated_at, hl.updated_at) FROM liraa_draw_items i
         JOIN liraa_strata st ON st.id = i.liraa_stratum_id JOIN liraa_surveys s ON s.id = st.liraa_survey_id
-       WHERE s.status IN ('drawn', 'closed') AND i.household_id IN (#{SCOPE_HOUSEHOLDS})
+        JOIN households hl ON hl.id = i.household_id
+       WHERE s.status IN ('drawn', 'closed') AND hl.micro_area_id IN (:ids)
       UNION ALL
-      SELECT 'transmission_block', tb.id,
-             GREATEST(tb.updated_at, (SELECT max(c.updated_at) FROM transmission_block_cycles c WHERE c.transmission_block_id = tb.id))
+      SELECT 'transmission_block', tb.id, GREATEST(tb.updated_at, bc.updated_at, bm.joined_at)
         FROM transmission_blocks tb
+        JOIN block_members bm ON bm.transmission_block_id = tb.id
+        LEFT JOIN block_cycles bc ON bc.transmission_block_id = tb.id
        WHERE tb.status IN ('active', 'closed')
-         AND EXISTS (SELECT 1 FROM transmission_block_areas a JOIN household_vector_profiles vp ON vp.city_block_id = a.city_block_id
-                      WHERE a.transmission_block_id = tb.id AND vp.household_id IN (#{SCOPE_HOUSEHOLDS}))
     SQL
 
     # Corpos das entidades do 35a no download (changes-response-v1, §13): só
@@ -204,6 +248,7 @@ module FieldSync
         binds.merge!(since: position[:since], after_id: position[:after_id])
       end
       sql = <<~SQL.squish
+        #{"WITH #{VECTOR_SCOPE}" if vector_control}
         SELECT stream.kind, stream.id, to_char(stream.t, :format) FROM (
           SELECT 'micro_area' AS kind, m.id, m.updated_at AS t FROM micro_areas m WHERE m.id IN (:ids)
           UNION ALL

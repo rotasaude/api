@@ -170,6 +170,106 @@ RSpec.describe "FieldSync::Changes — vigilância ambiental (v1.3.0)", type: :m
     end
   end
 
+  # Fix round 1: as entidades do 35a entram no escopo por junção (domicílio,
+  # versão atual, perfil). Cursor antigo, a mudança, e a página seguinte traz a
+  # entidade (o `t` leva o instante de junção dos membros, VECTOR_SCOPE).
+  describe "entrada no escopo por domicílio ou perfil" do
+    let(:nurse) { registry_nurse!(team: team) }
+    let(:fresh) { Neighborhood.create!(name: "Novo #{SecureRandom.hex(3)}", source: "manual") }
+
+    # A microárea tocada agora vai por último na carga: o cursor passa de tudo o
+    # que já existe (sem isso, o quarteirão gravado depois da última linha
+    # emitida sairia de qualquer jeito, pelo próprio updated_at).
+    def cursor_now
+      area.touch
+      all_pages.last.fetch("next_cursor")
+    end
+
+    def save_household!(household, **changes)
+      params = registry_household_params(household).merge("version" => household.reload.version)
+      params = params.merge(changes.transform_keys(&:to_s)) { |_key, old, new| old.is_a?(Hash) ? old.merge(new) : new }
+      result = TerritoryRegistry::SaveHousehold.call(params: params, by: nurse, household: household)
+      raise "domicílio recusado: #{result.reason} #{result.details}" if result.failure?
+    end
+
+    it "(a) domicílio novo num bairro sem outro domicílio do escopo → os quarteirões dele chegam" do
+      ovitrap_household!(agent, block: block)
+      blocks = [ city_block!(neighborhood: fresh, number: "1"), city_block!(neighborhood: fresh, number: "2") ]
+      cursor = cursor_now
+      registry_household_rows!(area, neighborhood_id: fresh.id)
+      expect(refs(all_pages(cursor), "city_block")).to match_array(blocks.map(&:id))
+    end
+
+    it "(b) o endereço do domicílio muda para um bairro novo → os quarteirões chegam" do
+      household = registry_household!(micro_area: area)
+      fresh_block = city_block!(neighborhood: fresh, number: "1")
+      cursor = cursor_now
+      expect(refs(all_pages(cursor.dup), "city_block")).to eq([])
+      save_household!(household, address: { "neighborhood_id" => fresh.id })
+      expect(household.reload.latest_version.neighborhood_id).to eq(fresh.id)
+      expect(refs(all_pages(cursor), "city_block")).to eq([ fresh_block.id ])
+    end
+
+    it "(c) AssignBlock num quarteirão de bloqueio ativo → o bloqueio chega" do
+      household = registry_household_rows!(area, neighborhood_id: neighborhood.id)
+      target = city_block!(neighborhood: neighborhood, number: "40")
+      active = TransmissionBlock.create!(disease_group: "arbovirus", center_block: target)
+      expect(VectorControl::Blocks::Confirm.call(block: active, center_block_id: target.id, block_ids: [ target.id ], seen_case_ids: [],
+                                                 by: coordinator)).to be_ok
+      cursor = cursor_now
+      expect(refs(all_pages, "transmission_block")).to eq([])
+      expect(VectorControl::AssignBlock.call(household_ids: [ household.id ], city_block_id: target.id, by: coordinator)).to be_ok
+      pages = all_pages(cursor)
+      expect(refs(pages, "transmission_block")).to eq([ active.id ])
+      expect(body_of(pages, "household", household.id).dig("vector", "city_block_id")).to eq(target.id)
+    end
+
+    it "(d) domicílio que muda para uma microárea do escopo → a ovitrampa e o item pendente do LIRAa chegam" do
+      other = endemic_agent!(team: team)
+      other_area = MicroAreaFieldAssignment.active.find_by!(professional_id: other.professional.id).micro_area
+      liraa_parameters!(liraa_standard_min: 10, liraa_standard_max: 100, liraa_half_min: 5)
+      liraa_households!(block, 12, micro_area: other_area)
+      survey = liraa_survey!([ { mode: "standard", blocks: [ block ] } ])
+      expect(VectorControl::Liraa::Draw.call(survey: survey, by: coordinator, random: fixed_random(1))).to be_ok
+      item = LiraaDrawItem.joins(:liraa_stratum).where(liraa_strata: { liraa_survey_id: survey.id }).order(:position).first
+      household = Household.find(item.household_id)
+      ovitrap = ovitrap_installed!(agent: other, household: household)
+      registry_household_rows!(area) # o agente já baixa algo; o cursor é de uma carga real
+      cursor = cursor_now
+
+      save_household!(household, micro_area_id: area.id)
+      pages = all_pages(cursor)
+      expect(pages.first.fetch("reset")).to be(false)
+      expect(refs(pages, "ovitrap")).to eq([ ovitrap.id ])
+      expect(refs(pages, "liraa_item")).to eq([ item.id ])
+      expect(body_of(pages, "liraa_item", item.id)).to include("status" => "pending")
+      expect(refs(pages, "city_block")).to eq([ block.id ])
+    end
+
+    it "(e) carga completa: perfil cujo quarteirão ficou noutro bairro depois de uma mudança do 24a → o quarteirão vai" do
+      household = registry_household_rows!(area, neighborhood_id: fresh.id)
+      vector_profile!(household, block: block) # block fica no `neighborhood`, não no `fresh`
+      pages = all_pages
+      expect(refs(pages, "city_block")).to eq([ block.id ])
+      expect(body_of(pages, "household", household.id).dig("vector", "city_block_id")).to eq(block.id)
+    end
+
+    it "membro que sai não faz a linha andar para trás nem a reemite" do
+      stays = registry_household_rows!(area, neighborhood_id: neighborhood.id)
+      leaves = registry_household_rows!(area, neighborhood_id: neighborhood.id)
+      block
+      cursor = cursor_now
+      elsewhere = MicroAreaFieldAssignment.active.find_by!(professional_id: endemic_agent!(team: team).professional.id).micro_area
+      save_household!(leaves, micro_area_id: elsewhere.id)
+      pages = all_pages(cursor)
+      expect(refs(pages, "household")).to eq([])
+      expect(refs(pages, "city_block")).to eq([])
+      full = all_pages
+      expect(refs(full, "household")).to eq([ stays.id ])
+      expect(refs(full, "city_block")).to eq([ block.id ])
+    end
+  end
+
   it "gate desligado → nenhuma entidade nova e <household> sem a chave vector; ligado, imóvel sem perfil → vector: null (Q6)" do
     household = ovitrap_household!(agent, block: block)
     bare = registry_household_rows!(area)
