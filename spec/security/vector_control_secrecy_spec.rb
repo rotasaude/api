@@ -276,8 +276,9 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
                                                     ends_on: (ends_on - 1).iso8601 }).fetch("id")
       req.(:patch, "#{base}/cycles/#{ids[:cycle]}", { ends_on: ends_on.iso8601 })
       req.(:get, "#{base}/cycles?year=#{today.year}")
-      values = req.(:get, "#{base}/parameters").fetch("values")
-      req.(:put, "#{base}/parameters", { values: values.merge("ovitrap_alert_eggs" => 120) })
+      read = req.(:get, "#{base}/parameters")
+      req.(:put, "#{base}/parameters", { values: read.fetch("values").merge("ovitrap_alert_eggs" => 120),
+                                         expected_version: read.fetch("version") })
 
       # LIRAa: standard num estrato pequeno → fora da faixa; census → sorteado.
       survey_body = lambda do |mode|

@@ -2,9 +2,12 @@
 # A-5; Q8, Q13(8)): os parâmetros técnicos. GET para a coordenação e o agente
 # de endemias (403 missing_role para os outros) → VectorParameterVersion
 # `{ version, values, created_at }` (versão 0 = defaults.yml, created_at null).
-# PUT `{ values }` só a coordenação, com step-up (401 mfa_required): cria a
-# versão seguinte (VectorControl::SaveParameters); recusa → 422
-# invalid_parameter com o path values.<chave>. Sem dado de pessoa: sem trilha.
+# PUT `{ values, expected_version }` só a coordenação, com step-up (401
+# mfa_required): cria a versão seguinte (VectorControl::SaveParameters); recusa
+# → 422 invalid_parameter com o path values.<chave>. Q34: expected_version (a
+# versão lida; 0 = defaults) ausente → 422 expected_version_required, fora de
+# inteiro >= 0 → 422 invalid_request, divergente da vigente → 409
+# parameters_changed. Sem dado de pessoa: sem trilha.
 module VectorControl
   class ParametersController < BaseController
     before_action(only: :update) { query_only! }
@@ -19,10 +22,10 @@ module VectorControl
     end
 
     def update
-      unknown = (body.keys - %w[values]).first
+      unknown = (body.keys - %w[values expected_version]).first
       return render_refusal("invalid_request", path: unknown) if unknown
 
-      result = SaveParameters.call(values: body_param("values"), by: Current.user)
+      result = SaveParameters.call(values: body_param("values"), by: Current.user, expected_version: body_param("expected_version"))
       return render_failure(result) if result.failure?
 
       row = result.payload.fetch(:version)

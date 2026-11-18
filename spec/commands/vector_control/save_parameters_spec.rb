@@ -5,14 +5,19 @@ require "rails_helper"
 # nem a menos, cada uma na faixa do A-5 (Q17: liraa_half_household_fraction
 # como a liraa_household_fraction); recusa → invalid_parameter com o path
 # values.<chave>, só o primeiro erro. Cada edição cria a versão seguinte (só
-# acréscimo); o LIRAa sorteado antes guarda a versão do sorteio.
+# acréscimo); o LIRAa sorteado antes guarda a versão do sorteio. Q34: a
+# edição traz a versão que a tela leu (expected_version; 0 = o padrão de
+# fábrica), conferida sob a mesma trava da escrita; divergiu →
+# parameters_changed e nada gravado.
 RSpec.describe VectorControl::SaveParameters, type: :model do
   let!(:city) { block_city! } # a lista de doenças da plataforma (block_diseases)
   let(:coordinator) { endemic_coordinator! }
   let(:factory) { VectorControl::Parameters.defaults }
 
   def save(**over) = save_values(factory.merge(over.stringify_keys))
-  def save_values(values) = described_class.call(values: values, by: coordinator)
+  def save_values(values, expected_version: VectorParameterVersion.maximum(:version).to_i)
+    described_class.call(values: values, by: coordinator, expected_version: expected_version)
+  end
 
   def refused_path(result)
     expect(result).to be_failure
@@ -129,6 +134,43 @@ RSpec.describe VectorControl::SaveParameters, type: :model do
   it "recusa não publica evento" do
     expect(DomainEvents).not_to receive(:publish)
     save(default_days: 1)
+    save_values(factory, expected_version: 1)
+  end
+
+  it "expected_version nil → expected_version_required; fora de inteiro >= 0 → invalid_request; path expected_version" do
+    result = save_values(factory, expected_version: nil)
+    expect([ result.reason, result.details ]).to eq([ :expected_version_required, { path: "expected_version" } ])
+    [ -1, 1.5, "0", true ].each do |value|
+      result = save_values(factory, expected_version: value)
+      expect([ result.reason, result.details ]).to eq([ :invalid_request, { path: "expected_version" } ]), value.inspect
+    end
+    expect(VectorParameterVersion.count).to eq(0)
+  end
+
+  it "expected_version diferente da vigente → parameters_changed, nada gravado; 0 sem versão grava a 1" do
+    expect(save_values(factory, expected_version: 1).reason).to eq(:parameters_changed)
+    expect(save_values(factory.merge("default_days" => 45), expected_version: 0)).to be_ok
+    expect(save_values(factory.merge("default_days" => 50), expected_version: 0).reason).to eq(:parameters_changed)
+    expect(save_values(factory.merge("default_days" => 50), expected_version: 2).reason).to eq(:parameters_changed)
+    expect(VectorParameterVersion.pluck(:version)).to eq([ 1 ])
+    expect(VectorControl::Parameters.current.values["default_days"]).to eq(45)
+  end
+
+  it "a versão vigente é lida depois do advisory lock (a gravação concorrente comitada conta)" do
+    calls = []
+    connection = VectorParameterVersion.connection
+    allow(connection).to receive(:execute).and_wrap_original do |m, sql, *rest|
+      if sql.to_s.include?("pg_advisory_xact_lock")
+        calls << :lock
+        # outro PUT comitou entre a leitura da tela e a trava
+        VectorParameterVersion.create!(version: 1, values: factory, created_by_user: coordinator) if calls.size == 1
+      end
+      m.call(sql, *rest)
+    end
+
+    expect(save_values(factory.merge("default_days" => 45), expected_version: 0).reason).to eq(:parameters_changed)
+    expect(VectorParameterVersion.pluck(:version)).to eq([ 1 ])
+    expect(VectorControl::Parameters.current.values["default_days"]).to eq(60)
   end
 
   context "block_diseases contra a versão vigente (lista de doenças vazia)" do
