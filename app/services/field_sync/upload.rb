@@ -63,7 +63,8 @@
 #     agente de endemias com o gate (feature_disabled, cbo_not_allowed); o `id`
 #     dos dois é o da ovitrampa (W-9, Q7(2)); `ovitrap_client_uuid` cita a
 #     instalação aceita antes, no mesmo lote ou em outro (os itens vão em
-#     ordem, Q10); `reinstall` é ignorado com `remove: true` (Q7(5)).
+#     ordem, Q10); reinstall == remove depois dos padrões do comando →
+#     rejected invalid_request path reinstall (Q33).
 #
 # Nada de nome, CPF, CNS, motivo, medida, observação ou coordenada no resultado
 # de erro, no log ou em evento: só código, path, ids e a forma

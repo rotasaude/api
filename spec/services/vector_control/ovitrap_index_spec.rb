@@ -62,7 +62,7 @@ RSpec.describe VectorControl::OvitrapIndex, type: :model do
   it "leitura instalada em 2026-01-01 cai em 2025-53" do
     block = city_block!(neighborhood: north, number: "7")
     ovitrap = ovitrap_installed!(agent: agent, household: ovitrap_household!(agent, block: block), installed_on: Date.new(2026, 1, 1))
-    reading = ovitrap_collected!(ovitrap, agent: agent, collected_on: Date.new(2026, 1, 6), reinstall: false)
+    reading = ovitrap_collected!(ovitrap, agent: agent, collected_on: Date.new(2026, 1, 6))
     expect(reading.epi_week).to eq(202_553)
     expect(VectorControl::CountReading.call(reading: reading, egg_count: 12, note: nil, by: lab)).to be_ok
 
