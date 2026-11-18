@@ -17,9 +17,10 @@ require_relative "home_visit_crew"
 #   UVZ Curitiba (environmental_surveillance) com o local vector_control, que
 #   o vector_control_settings aponta; três produtos com cargas de catálogo
 #   (dois larvicidas focais e um adulticida espacial) e um lote de cada, com
-#   saldo pela abertura do 27a (o do espinosade, curto: 2 un), lançada pelo
-#   almoxarife da UVZ (almoxarifado-uvz@, stock_keeper vinculado ao local pelo
-#   Pharmacy::LinkStaff): o caminho local → almoxarife → entrada → baixa (Q21).
+#   saldo pela entrada de nota do 27a (o do espinosade, curto: 2 un), lançada
+#   há 20 dias pelo almoxarife da UVZ (almoxarifado-uvz@, stock_keeper vinculado
+#   ao local pelo Pharmacy::LinkStaff): o caminho local → almoxarife → nota →
+#   baixa (Q21).
 #
 #   quarteirão         bairro         imóveis (perfil)                         risco
 #   001                Butiatuvinha   R. das Acácias 245; borracharia (PE)     vermelho; —
@@ -83,7 +84,9 @@ class VectorControlCrew
     ubv: { "code" => "IMP-PRA", "name" => "Imidacloprida 3% + praletrina 0,75% UBV", "unit" => "ml", "charge_size" => "50.00",
            "uses" => %w[spatial] }
   }.freeze
-  # Um lote de cada pela abertura do local; o do espinosade é curto de propósito (a falta do roteiro 2).
+  # Um lote de cada pela nota fiscal (entrada de nota do 27a); o do espinosade é
+  # curto de propósito (a falta do roteiro 2).
+  INVOICE = { number: "000874312", supplier: "Distribuidora de Insumos Sanitários Paraná Ltda.", days_ago: 20 }.freeze
   LOTS = { pyriproxyfen: { lot: "PPF2611A", quantity: "500", months: 18 }, spinosad: { lot: "SPN2610B", quantity: "2", months: 12 },
            ubv: { lot: "IPR2609C", quantity: "4000", months: 24 } }.freeze
 
@@ -317,17 +320,20 @@ class VectorControlCrew
       check!(Pharmacy::LinkStaff.add(location: location, user_id: keeper.id, role: "stock_keeper", by: admin), "vínculo do almoxarife ao local")
     end
 
-    # Abertura do local (uma por produto): só os produtos ainda sem abertura nele.
+    # A nota fiscal dos três lotes, uma vez por local (a guarda do PharmacyCrew:
+    # nenhuma entrada de nota com este número no local), datada de 20 dias atrás.
     def lots!(location, products, by)
-      today = Time.zone.today
-      pending = LOTS.reject { |key, _| StockOpening.exists?(stock_location_id: location.id, vector_product_id: products.fetch(key).id) }
-      return if pending.empty?
+      return if StockEntry.exists?(stock_location_id: location.id, kind: "invoice", document_number: INVOICE[:number])
 
-      items = pending.map do |key, spec|
+      today = Time.zone.today
+      items = LOTS.map do |key, spec|
         { "vector_product_id" => products.fetch(key).id, "lot_number" => spec[:lot], "expires_on" => (today >> spec[:months]).iso8601,
           "manufacturer" => "Fornecedor do Ministério da Saúde", "quantity" => spec[:quantity] }
       end
-      check!(Pharmacy::RecordEntry.call(location: location, kind: "opening", document: nil, items: items, by: by, catalog: {}), "abertura dos insumos")
+      document = { "number" => INVOICE[:number], "supplier" => INVOICE[:supplier] }
+      received_at = (today - INVOICE[:days_ago]).in_time_zone.change(hour: 10)
+      check!(Pharmacy::RecordEntry.call(location: location, kind: "invoice", document: document, items: items, by: by, catalog: {},
+                                        now: received_at), "nota fiscal #{INVOICE[:number]}")
     end
 
     # --- território -------------------------------------------------------------

@@ -79,7 +79,7 @@ RSpec.describe VectorControlCrew, type: :model do
   it "semear duas vezes não duplica quarteirão, ovitrampa, levantamento nem bloqueio" do
     first = seed
     tables = [ User, Membership, StockLocationStaff, Professional, ProfessionalLink, HealthTeamMember, MicroAreaFieldAssignment, HealthUnit, StockLocation,
-               VectorControlSetting, VectorProduct, StockLot, StockMovement, StockEntry, CityBlock, CityBlockNeighbor, Household,
+               VectorControlSetting, VectorProduct, StockLot, StockMovement, StockEntry, StockOpening, CityBlock, CityBlockNeighbor, Household,
                HouseholdVersion, HouseholdVectorProfile, VectorCadence, VectorCycle, HomeVisitDay, HomeVisit, VectorInspection,
                VectorSample, VectorStockShortfall, Ovitrap, OvitrapReading, VectorTask, LiraaSurvey, LiraaStratum, LiraaDrawItem,
                DiseaseNotification, TransmissionBlock, TransmissionBlockArea, TransmissionBlockCase, TransmissionBlockCycle,
@@ -125,9 +125,19 @@ RSpec.describe VectorControlCrew, type: :model do
       expect(keeper.has_role?("stock_keeper")).to be(true)
       expect(StockLocationStaff.active.where(stock_location: location, user: keeper).pluck(:role)).to eq([ "stock_keeper" ])
       expect(Pharmacy::Access.allowed?(user: keeper, location: location, roles: %w[stock_keeper])).to be(true)
+      # Os lotes vêm de UMA entrada de nota (invoice) do almoxarife, nunca de abertura.
       entries = StockEntry.where(stock_location_id: location.id)
-      expect(entries).to exist
-      expect(entries.pluck(:recorded_by_user_id).uniq).to eq([ keeper.id ])
+      expect(entries.pluck(:kind, :document_number, :recorded_by_user_id))
+        .to eq([ [ "invoice", VectorControlCrew::INVOICE[:number], keeper.id ] ])
+      expect(entries.sole.supplier).to eq(VectorControlCrew::INVOICE[:supplier])
+      expect(entries.sole.created_at.to_date).to eq(today - VectorControlCrew::INVOICE[:days_ago])
+      expect(StockOpening.where(stock_location_id: location.id)).to be_empty
+      receipts = StockMovement.where(stock_location_id: location.id, kind: "receipt")
+      expect(receipts.count).to eq(3)
+      expect(receipts.pluck(:stock_entry_id).uniq).to eq([ entries.sole.id ])
+      spinosad_lot = StockLot.find_by!(vector_product: VectorProduct.find_by!(code: "SPN748"))
+      expect(spinosad_lot.lot_number).to eq("SPN2610B")
+      expect(receipts.find_by!(stock_lot_id: spinosad_lot.id).quantity.abs).to eq(BigDecimal("2"))
 
       # Território: quarteirões com vizinhos em dois bairros, todos os imóveis
       # das duas microáreas com perfil e quarteirão, risco variado, dois PE.
