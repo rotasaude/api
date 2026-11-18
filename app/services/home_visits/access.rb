@@ -83,6 +83,18 @@ module HomeVisits
     # equipe): o mesmo vínculo do aparelho (Tabela 7 em equipe ativa 70/76).
     def registers_somewhere?(user) = device_owner?(user).present?
 
+    # Lê visita em alguma equipe (as rotas sem equipe; Q32 do 35a, os domínios
+    # do boletim): vínculo ativo em equipe ativa 70/76 com papel na visita
+    # (`role`: ACS, Tabela 7, enfermeiro, médico), as equipes do /home_visits/context.
+    def reads_somewhere?(user)
+      return false unless user&.professional && user.has_role?("health_professional")
+
+      HealthTeamMember.active.joins(:health_team)
+                      .where(professional_id: user.professional.id,
+                             health_teams: { active: true, kind: TerritoryRegistry::Catalog::TEAM_KINDS })
+                      .any? { |member| role(member) }
+    end
+
     # Cadastra aparelho de campo: Tabela 7 com vínculo ativo em equipe ativa
     # 70/76 → esse vínculo (o mais antigo, se houver mais de um); senão nil.
     # Usuário inativo fica para quem chama (o aparelho distingue user_disabled).

@@ -59,17 +59,40 @@ RSpec.describe "Vigilância ambiental — domínios", type: :request do
     )
   end
 
-  it "o agente de endemias e os leitores do 35a leem; o ACS → 403 missing_role" do
+  it "o agente de endemias e os leitores do 35a leem; sem leitura de visita → 403 missing_role" do
     [ endemic_agent!, vector_lab!, municipal_admin! ].each do |user|
       sign_in_as(user)
       get "/vector_control/domains"
       expect(response).to have_http_status(:ok)
     end
-    sign_in_as(field_agent!)
+    sign_in_as(pharmacy_staff!(unit_location!, "pharmacist"))
+    get "/vector_control/domains"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    sign_in_as(field_agent!(cbo: "223405"))
     get "/vector_control/domains"
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
     sign_in_as(coordinator)
     get "/vector_control/domains?x=1"
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+  end
+
+  # Q32: quem lê a visita domiciliar do 24b (HomeVisits::Access.reads_somewhere?)
+  # lê os domínios, que são vocabulário da cidade; as outras rotas não mudam.
+  it "Q32: enfermeiro, médico, ACS e TACS da equipe leem os domínios" do
+    team = registry_team!
+    [ registry_nurse!(team: team), field_agent!(cbo: "225142", team: team), field_agent!(team: team),
+      field_agent!(cbo: "322255", team: team) ].each do |user|
+      sign_in_as(user)
+      get "/vector_control/domains"
+      expect([ response.status, json_body ]).to eq([ 200, JSON.parse(VectorControl::Json.domains.to_json) ])
+    end
+  end
+
+  it "Q32: vigilância ambiental desligada → o enfermeiro recebe 403 feature_disabled" do
+    Platform::Features.set!(city: city, key: VectorControl::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    sign_in_as(registry_nurse!)
+    get "/vector_control/domains"
+    expect([ response.status, json_body["error"] ]).to eq([ 403, "feature_disabled" ])
   end
 end

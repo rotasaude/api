@@ -125,6 +125,21 @@ RSpec.describe HomeVisits::Access, type: :model do
     expect(described_class.device_owner?(field_agent!(cbo: "515105", team: other))).to be_nil
   end
 
+  # Q32 (35a): as rotas sem equipe (os domínios do boletim) abrem a quem lê
+  # visita em alguma equipe; o papel é o mesmo `role` do /home_visits/context.
+  it "reads_somewhere?: papel na visita (ACS, Tabela 7, enfermeiro, médico) em equipe ativa 70/76; o resto não" do
+    [ acs, tacs, nurse, doctor, field_agent!(cbo: "515140", team: team) ].each do |user|
+      expect(described_class.reads_somewhere?(user)).to be(true)
+    end
+    expect(described_class.reads_somewhere?(field_agent!(cbo: "223405", team: team))).to be(false)
+    expect(described_class.reads_somewhere?(municipal_admin!)).to be(false)
+    expect(described_class.reads_somewhere?(nil)).to be(false)
+    other = HealthTeam.create!(health_unit: unit, ine: format("%010d", SecureRandom.random_number(10**10)), kind: "71", name: "eSB")
+    expect(described_class.reads_somewhere?(field_agent!(cbo: "515105", team: other))).to be(false)
+    HealthTeamMember.find_by!(professional: nurse.professional).update!(ended_on: Time.zone.today)
+    expect(described_class.reads_somewhere?(nurse)).to be(false)
+  end
+
   # Q11: o CBO de campo que não é ACS lê o 24a só nas microáreas atribuídas.
   it "field_reader_micro_area_ids (24a): só as atribuídas e ativas do CBO de campo; vazio para ACS, enfermeiro e admin" do
     assignment!(open_area, tacs.professional, by: nurse)
