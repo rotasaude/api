@@ -4,12 +4,11 @@ require "rails_helper"
 # /vector_control/domains devolve exatamente VectorControl::Json.domains, o
 # mesmo serializador do `vector_control_domains` da referência do app (Task
 # 15). O esquema é o reference-response-v1.json do contracts v1.3.0 (commit
-# 2b1c24c), copiado em spec/fixtures/field_sync/v1.3.0/ (o container do
-# bin/test só monta apps/api); a Task 15 passa a cópia para config/field_sync/.
+# 2b1c24c), a cópia presa em config/field_sync/ (FieldSync::Schemas, Task 15).
 RSpec.describe "Vigilância ambiental — domínios", type: :request do
   let!(:city) { vector_city! }
   let(:coordinator) { endemic_coordinator! }
-  let(:contracts) { Rails.root.join("spec/fixtures/field_sync/v1.3.0") }
+  let(:contracts) { FieldSync::Schemas::DIR }
   let(:labels) { YAML.load_file(Rails.root.join("config/vector_control/domains.yml")) }
   let(:lists) { %w[activities work_types situations deposit_groups measure_methods risk_classes] }
 

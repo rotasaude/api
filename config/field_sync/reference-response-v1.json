@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rota-saude/schemas/field-sync/reference-response-v1.json",
   "title": "rotasaude.field_sync.reference_response.v1",
-  "description": "GET /field/v1/reference (contrato do 24c §3.5): o que o app precisa para montar os formulários sem rede — dicionários do cadastro, bairros, unidades, profissionais da equipe e domínios da visita e da atividade coletiva. Nenhum dado de cidadão; do profissional, só nome, CBO e se tem CNS (nunca CPF nem CNS). Fechado no topo; as seções de dicionário ficam abertas, porque a fonte é o YAML do api (K-2). reference_version é o mesmo valor da sessão: o app compara, nunca recalcula.",
+  "description": "GET /field/v1/reference (contrato do 24c §3.5): o que o app precisa para montar os formulários sem rede — dicionários do cadastro, bairros, unidades, profissionais da equipe e domínios da visita e da atividade coletiva e, só com o gate vector_control utilizável, vector_control_domains (35a). Nenhum dado de cidadão; do profissional, só nome, CBO e se tem CNS (nunca CPF nem CNS). Fechado no topo; as seções de dicionário ficam abertas, porque a fonte é o YAML do api (K-2). reference_version é o mesmo valor da sessão: o app compara, nunca recalcula.",
   "type": "object",
   "additionalProperties": false,
   "required": ["reference_version", "registration_dictionaries", "string_domains", "neighborhoods", "health_units", "team_professionals", "home_visit_domains", "collective_activity_domains"],
@@ -90,11 +90,131 @@
     "collective_activity_domains": {
       "type": "object",
       "description": "CollectiveActivities::Json.domains do api, um bloco só (Q7).",
-      "required": ["activity_types", "meeting_topics", "target_audience", "health_topics", "health_practices", "procedures", "rules"]
-    }
+      "required": ["activity_types", "meeting_topics", "target_audience", "health_topics", "health_practices", "procedures", "rules"],
+      "properties": { "rules": { "$ref": "#/$defs/collective_activity_rules" } }
+    },
+    "vector_control_domains": { "$ref": "#/$defs/vector_control_domains", "description": "Só com o gate vector_control utilizável (§13)." }
   },
   "$defs": {
     "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "uuid_or_null": { "type": ["string", "null"], "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "collective_activity_rules": {
+      "type": "object",
+      "description": "As sete regras de CollectiveActivities::Json.domains[:rules] do api (Q3). Fechado: o vocabulário antigo (by_activity_type e afins) é recusado.",
+      "additionalProperties": false,
+      "required": ["list_max", "by_type", "health_topics_with_meeting_topic", "practices_only_in_type", "procedure_practices", "smoking_practices", "participant_measurements"],
+      "properties": {
+        "list_max": {
+          "type": "object", "additionalProperties": false,
+          "required": ["meeting_topics", "target_audience", "health_topics", "health_practices"],
+          "properties": {
+            "meeting_topics": { "type": "integer", "minimum": 1 },
+            "target_audience": { "type": "integer", "minimum": 1 },
+            "health_topics": { "type": "integer", "minimum": 1 },
+            "health_practices": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "by_type": {
+          "type": "object", "minProperties": 1, "propertyNames": { "pattern": "^[1-7]$" },
+          "additionalProperties": {
+            "type": "object", "additionalProperties": false,
+            "required": ["meeting_topics", "target_audience", "health_topics", "health_practices", "participants"],
+            "properties": {
+              "meeting_topics": { "enum": ["required", "forbidden", "optional"] },
+              "target_audience": { "enum": ["required", "forbidden", "optional"] },
+              "health_topics": { "enum": ["required", "forbidden", "optional"] },
+              "health_practices": { "enum": ["required", "forbidden", "optional"] },
+              "participants": { "enum": ["required", "forbidden", "optional"] }
+            }
+          }
+        },
+        "health_topics_with_meeting_topic": { "type": "array", "items": { "type": "integer" } },
+        "practices_only_in_type": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["type", "practices"],
+            "properties": { "type": { "type": "integer" }, "practices": { "type": "array", "items": { "type": "integer" } } }
+          }
+        },
+        "procedure_practices": { "type": "array", "items": { "type": "integer" } },
+        "smoking_practices": { "type": "array", "items": { "type": "integer" } },
+        "participant_measurements": {
+          "type": "object", "additionalProperties": false, "required": ["weight_kg", "height_cm"],
+          "properties": { "weight_kg": { "$ref": "#/$defs/measurement_range" }, "height_cm": { "$ref": "#/$defs/measurement_range" } }
+        }
+      }
+    },
+    "measurement_range": {
+      "type": "object", "additionalProperties": false, "required": ["min", "max", "decimals"],
+      "properties": { "min": { "type": "number" }, "max": { "type": "number" }, "decimals": { "type": "integer", "minimum": 0 } }
+    },
+    "vector_control_domains": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Domínios do controle vetorial (35a, contrato §13): listas de {code, label} espelhadas de domains-v1.json (vector_control), produtos, cadências, parâmetros e limites.",
+      "required": ["activities", "work_types", "situations", "deposit_groups", "measure_methods", "risk_classes", "products", "cadences", "parameters", "limits"],
+      "properties": {
+        "activities": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/string_entry" } },
+        "work_types": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/string_entry" } },
+        "situations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/string_entry" } },
+        "deposit_groups": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/string_entry" } },
+        "measure_methods": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/string_entry" } },
+        "risk_classes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/string_entry" } },
+        "products": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "code", "name", "unit", "charge_size", "uses"],
+            "properties": {
+              "id": { "$ref": "#/$defs/uuid" },
+              "code": { "type": "string", "minLength": 1, "maxLength": 10 },
+              "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+              "unit": { "enum": ["g", "ml", "un"] },
+              "charge_size": { "type": "string", "pattern": "^[0-9]{1,8}\\.[0-9]{2}$", "description": "numeric(10,2) como texto; \"> 0\" é do api." },
+              "uses": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["focal", "perifocal", "spatial"] } }
+            }
+          }
+        },
+        "cadences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["neighborhood_id", "risk_class", "strategic_point", "days"],
+            "properties": {
+              "neighborhood_id": { "$ref": "#/$defs/uuid_or_null" },
+              "risk_class": { "enum": ["green", "yellow", "red", "gray", "purple", null] },
+              "strategic_point": { "type": "boolean" },
+              "days": { "type": "integer", "minimum": 7, "maximum": 365 }
+            }
+          }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["default_days", "strategic_point_days", "ovitrap_collection_days_min", "ovitrap_collection_days_max"],
+          "properties": {
+            "default_days": { "type": "integer", "minimum": 1 },
+            "strategic_point_days": { "type": "integer", "minimum": 1 },
+            "ovitrap_collection_days_min": { "type": "integer", "minimum": 1 },
+            "ovitrap_collection_days_max": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["deposit_count_max", "charges_max", "samples_max", "larvae_collected_max", "measures_max"],
+          "properties": {
+            "deposit_count_max": { "type": "integer", "minimum": 1 },
+            "charges_max": { "type": "integer", "minimum": 1 },
+            "samples_max": { "type": "integer", "minimum": 1 },
+            "larvae_collected_max": { "type": "integer", "minimum": 1 },
+            "measures_max": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
     "string_entry": {
       "type": "object",
       "additionalProperties": false,

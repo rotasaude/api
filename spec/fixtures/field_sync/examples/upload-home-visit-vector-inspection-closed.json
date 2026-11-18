@@ -1,0 +1,26 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee62-0000-4000-8000-000000000062",
+      "type": "home_visit",
+      "body": {
+        "team_id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+        "occurred_at": "2026-11-12T10:15:00-03:00",
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "subject": "none",
+        "outcome": 3,
+        "reasons": [],
+        "shared": false,
+        "vector_inspection": {
+          "activity": "liraa",
+          "work_type": "routine",
+          "situation": "closed",
+          "educational_action": false,
+          "entered_at": "2026-11-12T10:14:00-03:00",
+          "left_at": "2026-11-12T10:16:00-03:00",
+          "liraa_draw_item_id": "d4e5f6a7-b8c9-4d0e-9f1a-3b4c5d6e7f8a"
+        }
+      }
+    }
+  ]
+}

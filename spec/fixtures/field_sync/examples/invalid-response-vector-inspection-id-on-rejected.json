@@ -1,0 +1,172 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee70-0000-4000-8000-000000000070",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "cbo_not_allowed",
+      "path": "vector_inspection",
+      "vector_inspection_id": "2c3d4e5f-6a7b-4c8d-8e9f-1a2b3c4d5e6f"
+    },
+    {
+      "client_uuid": "c0ffee71-0000-4000-8000-000000000071",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "vector_inspection_invalid",
+      "path": "vector_inspection.liraa_draw_item_id"
+    },
+    {
+      "client_uuid": "c0ffee72-0000-4000-8000-000000000072",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "situation_outcome_mismatch",
+      "path": "vector_inspection.situation"
+    },
+    {
+      "client_uuid": "c0ffee73-0000-4000-8000-000000000073",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "inspection_not_worked",
+      "path": "vector_inspection.deposits"
+    },
+    {
+      "client_uuid": "c0ffee74-0000-4000-8000-000000000074",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "activity_property_mismatch",
+      "path": "vector_inspection.activity"
+    },
+    {
+      "client_uuid": "c0ffee75-0000-4000-8000-000000000075",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "liraa_item_not_found",
+      "path": "vector_inspection.liraa_draw_item_id"
+    },
+    {
+      "client_uuid": "c0ffee76-0000-4000-8000-000000000076",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "transmission_block_not_active",
+      "path": "vector_inspection.transmission_block_id"
+    },
+    {
+      "client_uuid": "c0ffee77-0000-4000-8000-000000000077",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "deposit_counts_inconsistent",
+      "path": "vector_inspection.deposits[0].with_larvae"
+    },
+    {
+      "client_uuid": "c0ffee78-0000-4000-8000-000000000078",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "product_not_allowed",
+      "path": "vector_inspection.measures[1].vector_product_id"
+    },
+    {
+      "client_uuid": "c0ffee79-0000-4000-8000-000000000079",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "samples_exceed_larvae",
+      "path": "vector_inspection.samples[1]"
+    },
+    {
+      "client_uuid": "c0ffee80-0000-4000-8000-000000000080",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "sample_label_taken",
+      "path": "vector_inspection.samples[0]"
+    },
+    {
+      "client_uuid": "c0ffee81-0000-4000-8000-000000000081",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "inspection_times_invalid",
+      "path": "vector_inspection.entered_at"
+    },
+    {
+      "client_uuid": "c0ffee82-0000-4000-8000-000000000082",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "reason_derived",
+      "path": "reasons"
+    },
+    {
+      "client_uuid": "c0ffee83-0000-4000-8000-000000000083",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "block_already_set",
+      "path": "vector_inspection.city_block_id"
+    },
+    {
+      "client_uuid": "c0ffee84-0000-4000-8000-000000000084",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "household_without_neighborhood",
+      "path": "vector_inspection.city_block_id"
+    },
+    {
+      "client_uuid": "c0ffee85-0000-4000-8000-000000000085",
+      "status": "rejected",
+      "type": "home_visit",
+      "error": "block_not_in_household_neighborhood",
+      "path": "vector_inspection.city_block_id"
+    },
+    {
+      "client_uuid": "c0ffee86-0000-4000-8000-000000000086",
+      "status": "rejected",
+      "type": "ovitrap_installation",
+      "error": "cbo_not_allowed"
+    },
+    {
+      "client_uuid": "c0ffee87-0000-4000-8000-000000000087",
+      "status": "rejected",
+      "type": "ovitrap_installation",
+      "error": "household_without_block",
+      "path": "household_id"
+    },
+    {
+      "client_uuid": "c0ffee88-0000-4000-8000-000000000088",
+      "status": "rejected",
+      "type": "ovitrap_installation",
+      "error": "consent_required",
+      "path": "consent"
+    },
+    {
+      "client_uuid": "c0ffee89-0000-4000-8000-000000000089",
+      "status": "rejected",
+      "type": "ovitrap_installation",
+      "error": "ovitrap_number_taken",
+      "path": "number"
+    },
+    {
+      "client_uuid": "c0ffee90-0000-4000-8000-000000000090",
+      "status": "rejected",
+      "type": "ovitrap_collection",
+      "error": "not_found",
+      "path": "ovitrap_client_uuid"
+    },
+    {
+      "client_uuid": "c0ffee91-0000-4000-8000-000000000091",
+      "status": "rejected",
+      "type": "ovitrap_collection",
+      "error": "collection_out_of_range",
+      "path": "collected_on"
+    },
+    {
+      "client_uuid": "c0ffee92-0000-4000-8000-000000000092",
+      "status": "rejected",
+      "type": "ovitrap_collection",
+      "error": "reading_not_open",
+      "path": "ovitrap_id"
+    },
+    {
+      "client_uuid": "c0ffee93-0000-4000-8000-000000000093",
+      "status": "rejected",
+      "type": "ovitrap_collection",
+      "error": "ovitrap_not_active",
+      "path": "ovitrap_id"
+    }
+  ]
+}

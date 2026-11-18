@@ -1,0 +1,23 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee64-0000-4000-8000-000000000064",
+      "type": "ovitrap_installation",
+      "body": {
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "number": "OVT-015",
+        "consent": true,
+        "installed_on": "2026-11-12"
+      }
+    },
+    {
+      "client_uuid": "c0ffee65-0000-4000-8000-000000000065",
+      "type": "ovitrap_collection",
+      "body": {
+        "ovitrap_client_uuid": "c0ffee64-0000-4000-8000-000000000064",
+        "collected_on": "2026-11-17",
+        "condition": "ok"
+      }
+    }
+  ]
+}

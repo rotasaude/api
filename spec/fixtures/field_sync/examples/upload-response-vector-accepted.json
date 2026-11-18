@@ -1,0 +1,29 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee60-0000-4000-8000-000000000060",
+      "status": "accepted",
+      "type": "home_visit",
+      "id": "7f8a9b0c-1d2e-4f3a-9b4c-5d6e7f8a9b0c",
+      "vector_inspection_id": "2c3d4e5f-6a7b-4c8d-8e9f-1a2b3c4d5e6f"
+    },
+    {
+      "client_uuid": "c0ffee63-0000-4000-8000-000000000063",
+      "status": "accepted",
+      "type": "ovitrap_installation",
+      "id": "c3d4e5f6-a7b8-4c9d-8e0f-2a3b4c5d6e7f"
+    },
+    {
+      "client_uuid": "c0ffee66-0000-4000-8000-000000000066",
+      "status": "accepted",
+      "type": "ovitrap_collection",
+      "id": "c3d4e5f6-a7b8-4c9d-8e0f-2a3b4c5d6e7f"
+    },
+    {
+      "client_uuid": "c0ffee60-0000-4000-8000-000000000060",
+      "status": "duplicate",
+      "type": "home_visit",
+      "id": "7f8a9b0c-1d2e-4f3a-9b4c-5d6e7f8a9b0c"
+    }
+  ]
+}

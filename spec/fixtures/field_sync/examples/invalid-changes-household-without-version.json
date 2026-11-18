@@ -31,7 +31,7 @@
         },
         "address": {
           "zip": "80010000",
-          "street_type": "RUA",
+          "street_type": "081",
           "street": "das Flores",
           "number": "120",
           "no_number": false,

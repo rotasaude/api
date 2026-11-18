@@ -80,6 +80,78 @@
       "if": { "required": ["source"], "properties": { "source": { "const": "gps" } } },
       "then": { "required": ["accuracy_m"] }
     },
+    "ovitrap_number": { "type": "string", "pattern": "^[0-9A-Za-z-]{1,12}$" },
+    "city_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Quarteirão (35a, §13): número, vizinhança e situação. Sem dado de pessoa.",
+      "required": ["id", "neighborhood_id", "number", "active", "neighbor_ids", "version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "neighborhood_id": { "$ref": "#/$defs/uuid" },
+        "number": { "type": "string", "pattern": "^[0-9A-Za-z-]{1,10}$" },
+        "active": { "type": "boolean" },
+        "neighbor_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/uuid" } },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "ovitrap": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Ovitrampa (35a, §6, §13). Nunca leva morador; o fim vem pelo status, não por removal.",
+      "required": ["id", "number", "household_id", "status", "open_reading", "last_reading", "version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "number": { "$ref": "#/$defs/ovitrap_number" },
+        "household_id": { "$ref": "#/$defs/uuid" },
+        "status": { "enum": ["active", "removed", "lost"] },
+        "open_reading": { "anyOf": [
+          { "type": "object", "additionalProperties": false, "required": ["installed_on"],
+            "properties": { "installed_on": { "$ref": "#/$defs/date" } } },
+          { "type": "null" }] },
+        "last_reading": { "anyOf": [
+          { "type": "object", "additionalProperties": false, "required": ["collected_on", "condition", "egg_count"],
+            "properties": {
+              "collected_on": { "$ref": "#/$defs/date" },
+              "condition": { "enum": ["ok", "damaged", "lost", "dry"] },
+              "egg_count": { "type": ["integer", "null"], "minimum": 0, "maximum": 9999 } } },
+          { "type": "null" }] },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "liraa_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Item sorteado do LIRAa (35a, §7, §13). closed = o levantamento fechou.",
+      "required": ["id", "survey_id", "survey_name", "household_id", "city_block_id", "status", "version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "survey_id": { "$ref": "#/$defs/uuid" },
+        "survey_name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "household_id": { "$ref": "#/$defs/uuid" },
+        "city_block_id": { "$ref": "#/$defs/uuid" },
+        "status": { "enum": ["pending", "inspected", "substituted", "closed"] },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "transmission_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Bloqueio de transmissão (35a, §8, §13): quarteirões e ciclos de UBV. Nunca leva caso, notificação nem paciente (§8, §17); proposta e descarte nunca saem.",
+      "required": ["id", "status", "block_ids", "cycles", "version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "status": { "enum": ["active", "closed"] },
+        "block_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/uuid" } },
+        "cycles": { "type": "array", "maxItems": 3, "items": {
+          "type": "object", "additionalProperties": false, "required": ["number", "starts_on", "ends_on"],
+          "properties": {
+            "number": { "type": "integer", "minimum": 1, "maximum": 3 },
+            "starts_on": { "$ref": "#/$defs/date" },
+            "ends_on": { "$ref": "#/$defs/date" } } } },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    },
     "household": {
       "type": "object",
       "additionalProperties": false,
@@ -98,7 +170,20 @@
         "registered_by": { "$ref": "#/$defs/registered_by" },
         "location": { "anyOf": [{ "$ref": "#/$defs/location" }, { "type": "null" }], "description": "Ponto do imóvel (24c); null = sem ponto." },
         "families": { "type": "array", "items": { "$ref": "#/$defs/family" } },
-        "living_conditions": { "type": "object", "description": "Seção do dicionário do 24a (§15): chaves e domínios do api, não deste esquema (K-2)." }
+        "living_conditions": { "type": "object", "description": "Seção do dicionário do 24a (§15): chaves e domínios do api, não deste esquema (K-2)." },
+        "vector": { "anyOf": [{ "$ref": "#/$defs/household_vector" }, { "type": "null" }], "description": "Perfil de vigilância (35a), só leitura, na forma de GET /vector_control/households/:id. Acrescentado pelo FieldSync; o TerritoryRegistry::Json.household do 24a não muda (Q8). Ausente = gate vector_control não utilizável; null = sem perfil (Q6, CV-10). Nunca vai no item household." }
+      }
+    },
+    "household_vector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["city_block_id", "risk_class", "risk_assessed_on", "last_worked_on", "last_situation"],
+      "properties": {
+        "city_block_id": { "$ref": "#/$defs/uuid_or_null" },
+        "risk_class": { "enum": ["green", "yellow", "red", "gray", "purple", null] },
+        "risk_assessed_on": { "$ref": "#/$defs/date_or_null" },
+        "last_worked_on": { "$ref": "#/$defs/date_or_null" },
+        "last_situation": { "enum": ["worked", "closed", "refused", "vacant", null] }
       }
     },
     "family": {
@@ -212,7 +297,7 @@
       "additionalProperties": false,
       "required": ["type", "id", "body"],
       "properties": {
-        "type": { "enum": ["micro_area", "household", "registration"] },
+        "type": { "enum": ["micro_area", "household", "registration", "city_block", "ovitrap", "liraa_item", "transmission_block"] },
         "id": { "$ref": "#/$defs/uuid" },
         "version": { "type": "integer", "minimum": 1 },
         "body": { "type": "object" }
@@ -223,7 +308,15 @@
         { "if": { "required": ["type"], "properties": { "type": { "const": "household" } } },
           "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/household" } } } },
         { "if": { "required": ["type"], "properties": { "type": { "const": "registration" } } },
-          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/registration" } } } }
+          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/registration" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "city_block" } } },
+          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/city_block" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "ovitrap" } } },
+          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/ovitrap" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "liraa_item" } } },
+          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/liraa_item" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "transmission_block" } } },
+          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/transmission_block" } } } }
       ]
     },
     "removal": {

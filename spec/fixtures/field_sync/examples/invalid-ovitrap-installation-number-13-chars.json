@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee63-0000-4000-8000-000000000063",
+      "type": "ovitrap_installation",
+      "body": {
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "number": "OVT-012345678",
+        "consent": true,
+        "installed_on": "2026-11-12"
+      }
+    }
+  ]
+}

@@ -38,7 +38,8 @@ RSpec.describe "App de campo — autenticação e GET /field/v1/session", type: 
     expect(FieldSync::Schemas.errors("session-response-v1", json_body)).to eq([])
     expect(json_body).to include("contract" => "field-sync-v1", "user" => { "id" => acs.id, "name" => acs.professional.professional_name },
                                  "professional" => { "id" => acs.professional.id, "cbo" => "515105", "has_cns" => true },
-                                 "features" => { "home_visits" => true, "collective_activities" => false, "territory_registry" => true },
+                                 "features" => { "home_visits" => true, "collective_activities" => false, "territory_registry" => true,
+                                                 "vector_control" => false },
                                  "min_date" => HomeVisits::Rules.min_date(Time.zone.today).iso8601)
     expect(Time.iso8601(json_body.fetch("server_time"))).to be_within(1.minute).of(Time.current)
     expect(json_body.fetch("teams")).to eq([ { "id" => team.id, "ine" => team.ine, "name" => team.name, "out_of_area_allowed" => true,
@@ -55,6 +56,18 @@ RSpec.describe "App de campo — autenticação e GET /field/v1/session", type: 
     expect(json_body.fetch("teams")).to eq([ { "id" => team.id, "ine" => team.ine, "name" => team.name, "out_of_area_allowed" => false,
                                                "micro_areas" => [ { "id" => assigned.id, "code" => "03", "name" => "Microárea 03",
                                                                     "scope" => "assigned" } ] } ])
+  end
+
+  # Módulo 35a, Task 15 (contrato §13): features.vector_control =
+  # VectorControl::Gate.usable?; o exemplo do agente de endemias do contracts.
+  it "features.vector_control acompanha o gate (v1.3.0)" do
+    session_get
+    expect(json_body.dig("features", "vector_control")).to be(false)
+    Platform::Features.set!(city: city, key: VectorControl::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    session_get
+    expect(FieldSync::Schemas.errors("session-response-v1", json_body)).to eq([])
+    expect(json_body.dig("features", "vector_control")).to be(true)
   end
 
   it "last_used_at muda no máximo uma vez por minuto" do

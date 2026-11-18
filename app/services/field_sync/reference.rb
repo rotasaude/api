@@ -7,6 +7,11 @@
 # O conteúdo depende só da cidade e das equipes do aparelho (nunca do usuário),
 # e `reference_version` é o SHA-256 do JSON canônico (RFC 8785) do corpo sem
 # ele: o app compara, nunca recalcula. O cache guarda só o hex.
+#
+# Módulo 35a (§13; Q6, Q8, Q15): `vector_control_domains` =
+# VectorControl::Json.domains (o corpo de GET /vector_control/domains) só com o
+# gate utilizável; o estado do gate entra na chave do cache (e no conteúdo,
+# logo no reference_version).
 module FieldSync
   module Reference
     FIELD_KEYS = %w[domain max min max_items required].freeze
@@ -15,7 +20,7 @@ module FieldSync
 
     # -> Hash na forma do reference-response-v1 (chaves texto).
     def build(user:, city:)
-      body = body(Json.field_teams(user).map(&:first)).as_json
+      body = body(Json.field_teams(user).map(&:first), vector_control: VectorControl::Gate.usable?(city)).as_json
       { "reference_version" => digest(body) }.merge(body)
     end
 
@@ -23,14 +28,16 @@ module FieldSync
     def version(user:, city:)
       teams = Json.field_teams(user).map(&:first)
       teams_digest = Digest::SHA256.hexdigest(teams.map(&:id).sort.join(","))
-      Rails.cache.fetch("field_sync/reference_version/#{city.id}/#{teams_digest}", expires_in: Catalog::REFERENCE_CACHE) do
-        digest(body(teams).as_json)
+      vector = VectorControl::Gate.usable?(city)
+      key = "field_sync/reference_version/#{city.id}/#{teams_digest}#{'/vector_control' if vector}"
+      Rails.cache.fetch(key, expires_in: Catalog::REFERENCE_CACHE) do
+        digest(body(teams, vector_control: vector).as_json)
       end
     end
 
     def digest(body) = Digest::SHA256.hexdigest(Signatures::Jcs.dump(body))
 
-    def body(teams)
+    def body(teams, vector_control:)
       data = TerritoryRegistry::Dictionary::DATA
       { registration_dictionaries: { version: data.fetch("version"), domains: lists(data.fetch("domains")),
                                      sections: data.fetch("sections").transform_values { |fields| fields(fields) } },
@@ -39,7 +46,8 @@ module FieldSync
         health_units: HealthUnit.active_units.order(:id).map { |unit| { id: unit.id, cnes: unit.cnes.presence, name: unit.name } },
         team_professionals: teams.flat_map { |team| professionals(team) },
         home_visit_domains: HomeVisits::Json.domains,
-        collective_activity_domains: CollectiveActivities::Json.domains }
+        collective_activity_domains: CollectiveActivities::Json.domains,
+        **(vector_control ? { vector_control_domains: VectorControl::Json.domains } : {}) }
     end
 
     # Q27: cada domínio é uma LISTA na ordem do YAML (um objeto de códigos

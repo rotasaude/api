@@ -90,6 +90,98 @@
     "health_topics": [],
     "health_practices": [],
     "procedures": [],
-    "rules": {}
+    "rules": {
+      "list_max": {
+        "meeting_topics": 7,
+        "target_audience": 17,
+        "health_topics": 16,
+        "health_practices": 14
+      },
+      "by_type": {
+        "1": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "forbidden",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "2": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "forbidden",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "3": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "forbidden",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "4": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "5": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "optional",
+          "participants": "required"
+        },
+        "6": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "optional",
+          "health_practices": "required",
+          "participants": "required"
+        },
+        "7": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        }
+      },
+      "health_topics_with_meeting_topic": [
+        6
+      ],
+      "practices_only_in_type": [
+        {
+          "type": 6,
+          "practices": [
+            2,
+            9,
+            33
+          ]
+        }
+      ],
+      "procedure_practices": [
+        30
+      ],
+      "smoking_practices": [
+        25,
+        26,
+        27,
+        28
+      ],
+      "participant_measurements": {
+        "weight_kg": {
+          "min": 0.5,
+          "max": 500,
+          "decimals": 3
+        },
+        "height_cm": {
+          "min": 20,
+          "max": 250,
+          "decimals": 1
+        }
+      }
+    }
   }
 }

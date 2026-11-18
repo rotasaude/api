@@ -34,4 +34,23 @@ RSpec.describe "App de campo — GET /field/v1/reference", type: :request do
     get "/field/v1/reference"
     expect([ response.status, json_body ]).to eq([ 401, { "error" => "invalid_token" } ])
   end
+
+  # Módulo 35a, Task 15 (Q8): o vector_control_domains da referência é o corpo
+  # de GET /vector_control/domains (um serializador só).
+  it "vector_control_domains só com o gate e igual ao GET /vector_control/domains (Q8)" do
+    vector_product!(code: "PYR", charge_size: "1.00")
+    get "/field/v1/reference", headers: auth
+    expect(json_body).not_to have_key("vector_control_domains")
+    Platform::Features.set!(city: city, key: VectorControl::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+
+    get "/field/v1/reference", headers: auth
+    expect(response).to have_http_status(:ok)
+    expect(FieldSync::Schemas.errors("reference-response-v1", json_body)).to eq([])
+    reference = json_body.fetch("vector_control_domains")
+    sign_in_as(endemic_coordinator!)
+    get "/vector_control/domains"
+    expect(response).to have_http_status(:ok)
+    expect(reference).to eq(json_body)
+  end
 end

@@ -52,7 +52,7 @@
       "required": ["client_uuid", "type", "body"],
       "properties": {
         "client_uuid": { "$ref": "#/$defs/uuid", "description": "Gerado pelo app, um por item; chave de idempotência (field_sync_receipts). Só itens aceitos vão ao livro." },
-        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "family", "individual_registration"] },
+        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "family", "individual_registration", "ovitrap_installation", "ovitrap_collection"] },
         "body": { "type": "object" }
       },
       "allOf": [
@@ -62,13 +62,15 @@
         { "if": { "required": ["type"], "properties": { "type": { "const": "patient" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/patient_body" } } } },
         { "if": { "required": ["type"], "properties": { "type": { "const": "household" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/household_body" } } } },
         { "if": { "required": ["type"], "properties": { "type": { "const": "family" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/family_body" } } } },
-        { "if": { "required": ["type"], "properties": { "type": { "const": "individual_registration" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/individual_registration_body" } } } }
+        { "if": { "required": ["type"], "properties": { "type": { "const": "individual_registration" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/individual_registration_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "ovitrap_installation" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/ovitrap_installation_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "ovitrap_collection" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/ovitrap_collection_body" } } } }
       ]
     },
     "home_visit_body": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Corpo do POST /home_visits (§6) sem client_uuid (vai no item). shift nunca vem: o api deriva de occurred_at no fuso da cidade. patient_client_uuid cita um item patient aceito antes (C11). location é a coordenada da visita (24c): ausente = sem coordenada; null não é aceito. family_client_uuid cita um item family aceito antes; no máximo um entre family_id e family_client_uuid.",
+      "description": "Corpo do POST /home_visits (§6) sem client_uuid (vai no item). shift nunca vem: o api deriva de occurred_at no fuso da cidade. patient_client_uuid cita um item patient aceito antes (C11). location é a coordenada da visita (24c): ausente = sem coordenada; null não é aceito. family_client_uuid cita um item family aceito antes; no máximo um entre family_id e family_client_uuid. vector_inspection é o boletim do agente de endemias (35a, §3): ausente = sem boletim; null não é aceito.",
       "required": ["team_id", "occurred_at", "subject", "outcome", "reasons", "shared"],
       "properties": {
         "team_id": { "$ref": "#/$defs/uuid" },
@@ -85,6 +87,7 @@
         "family_id": { "$ref": "#/$defs/uuid" },
         "family_client_uuid": { "$ref": "#/$defs/uuid", "description": "Cita um item family aceito antes, no mesmo lote ou em outro. No máximo um entre family_id e family_client_uuid." },
         "location": { "$ref": "#/$defs/location" },
+        "vector_inspection": { "$ref": "#/$defs/vector_inspection" },
         "duplicates_reviewed": { "type": "boolean" },
         "outcome": { "enum": [1, 2, 3], "description": "1 Realizada, 2 Recusada, 3 Ausente." },
         "reasons": { "type": "array", "uniqueItems": true, "maxItems": 36, "items": { "$ref": "#/$defs/visit_reason" }, "description": "No máximo 36 (motivosVisita do LEDI; Q36); estourar → no app, rejected invalid_request com path reasons (Q31); na rota da equipe, 422 invalid_home_visit." },
@@ -320,6 +323,90 @@
         { "not": { "required": ["patient_id", "patient_client_uuid"] } },
         { "not": { "required": ["family_id", "family_client_uuid"] } }
       ]
+    },
+    "vector_inspection": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Boletim de campo na visita (35a, §3). As relações do §3 são do api (domains-v1.json, vector_control.rules); listas ausentes = vazias; erro de esquema aqui dentro → rejected vector_inspection_invalid com o mesmo path (CV-4).",
+      "required": ["activity", "work_type", "situation", "educational_action"],
+      "properties": {
+        "activity": { "enum": ["li", "li_t", "pe", "ie", "transmission_block", "liraa"] },
+        "work_type": { "enum": ["routine", "pending"] },
+        "situation": { "enum": ["worked", "closed", "refused", "vacant"] },
+        "educational_action": { "type": "boolean" },
+        "entered_at": { "$ref": "#/$defs/datetime" },
+        "left_at": { "$ref": "#/$defs/datetime" },
+        "city_block_id": { "$ref": "#/$defs/uuid" },
+        "risk_class": { "enum": ["green", "yellow", "red", "gray", "purple"] },
+        "liraa_draw_item_id": { "$ref": "#/$defs/uuid" },
+        "transmission_block_id": { "$ref": "#/$defs/uuid" },
+        "deposits": { "type": "array", "maxItems": 7, "items": { "$ref": "#/$defs/vector_deposit" } },
+        "measures": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/vector_measure" } },
+        "samples": { "type": "array", "maxItems": 99, "items": { "$ref": "#/$defs/vector_sample" } }
+      }
+    },
+    "deposit_group": { "enum": ["A1", "A2", "B", "C", "D1", "D2", "E"] },
+    "deposit_count": { "type": "integer", "minimum": 0, "maximum": 999 },
+    "vector_deposit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group", "existing", "with_water", "with_larvae", "eliminated", "treated"],
+      "properties": {
+        "group": { "$ref": "#/$defs/deposit_group" },
+        "existing": { "$ref": "#/$defs/deposit_count" },
+        "with_water": { "$ref": "#/$defs/deposit_count" },
+        "with_larvae": { "$ref": "#/$defs/deposit_count" },
+        "eliminated": { "$ref": "#/$defs/deposit_count" },
+        "treated": { "$ref": "#/$defs/deposit_count" }
+      }
+    },
+    "vector_measure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method"],
+      "properties": {
+        "method": { "enum": ["mechanical", "focal", "perifocal", "spatial"] },
+        "vector_product_id": { "$ref": "#/$defs/uuid" },
+        "charges": { "type": "number", "exclusiveMinimum": 0, "maximum": 999, "multipleOf": 0.01 }
+      }
+    },
+    "vector_sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "deposit_group", "larvae_collected"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1, "maximum": 99 },
+        "deposit_group": { "$ref": "#/$defs/deposit_group" },
+        "larvae_collected": { "type": "integer", "minimum": 1, "maximum": 10 }
+      }
+    },
+    "ovitrap_number": { "type": "string", "pattern": "^[0-9A-Za-z-]{1,12}$" },
+    "ovitrap_installation_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "consent", "installed_on"],
+      "properties": {
+        "household_id": { "$ref": "#/$defs/uuid" },
+        "household_client_uuid": { "$ref": "#/$defs/uuid" },
+        "number": { "$ref": "#/$defs/ovitrap_number" },
+        "consent": { "type": "boolean", "description": "false → rejected consent_required (regra do api, CV-9)." },
+        "installed_on": { "$ref": "#/$defs/date" }
+      },
+      "oneOf": [{ "required": ["household_id"] }, { "required": ["household_client_uuid"] }]
+    },
+    "ovitrap_collection_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collected_on", "condition"],
+      "properties": {
+        "ovitrap_id": { "$ref": "#/$defs/uuid" },
+        "ovitrap_client_uuid": { "$ref": "#/$defs/uuid" },
+        "collected_on": { "$ref": "#/$defs/date" },
+        "condition": { "enum": ["ok", "damaged", "lost", "dry"] },
+        "reinstall": { "type": "boolean", "description": "Padrão true; com remove true, reinstall é ignorado (CV-9)." },
+        "remove": { "type": "boolean", "description": "Padrão false; true → status removed (com condition lost → lost); com remove true, reinstall é ignorado (CV-9)." }
+      },
+      "oneOf": [{ "required": ["ovitrap_id"] }, { "required": ["ovitrap_client_uuid"] }]
     }
   }
 }

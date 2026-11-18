@@ -9,20 +9,25 @@
 # `digest` = SHA-256 dos ids ordenados, separados por vírgula: só ids de
 # microárea, nunca dado pessoal. Mudou o conjunto (atribuição nova ou
 # encerrada, ACS trocado, microárea desativada) → o digest muda → reset.
+# Módulo 35a (W-14, Q6): com `vector_control:` utilizável, o texto do digest
+# ganha ",vector_control"; ligar ou desligar o interruptor chega ao aparelho
+# como reset: true (as linhas antigas do 35a vêm na carga nova).
 module FieldSync
   module Scope
     FIELD_KINDS = [ HomeVisits::Access::SCOPE_KINDS.fetch(:acs), HomeVisits::Access::SCOPE_KINDS.fetch(:field) ].freeze
 
     module_function
 
+    VECTOR_MARK = ",vector_control".freeze
+
     # -> { micro_area_ids: [uuid ordenados], digest: "<64 hex>" }
-    def for(user)
+    def for(user, vector_control: false)
       ids = teams(user).flat_map do |team|
         scope = HomeVisits::Access.scope(user, team)
         FIELD_KINDS.include?(scope[:kind]) ? scope[:micro_area_ids] : []
       end
       ids = ids.empty? ? [] : MicroArea.where(id: ids, active: true).pluck(:id).sort
-      { micro_area_ids: ids, digest: Digest::SHA256.hexdigest(ids.join(",")) }
+      { micro_area_ids: ids, digest: Digest::SHA256.hexdigest("#{ids.join(',')}#{VECTOR_MARK if vector_control}") }
     end
 
     def teams(user)

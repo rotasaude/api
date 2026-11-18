@@ -1,0 +1,187 @@
+{
+  "reference_version": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+  "registration_dictionaries": {
+    "version": "8.7.0",
+    "domains": {
+      "renda_familiar": [
+        {
+          "code": 3,
+          "label": "1/2 a 1 salário mínimo"
+        }
+      ],
+      "abastecimento_de_agua": [
+        {
+          "code": 117,
+          "label": "Rede encanada até o domicílio"
+        },
+        {
+          "code": 214,
+          "label": "Poço/nascente no domicílio"
+        },
+        {
+          "code": 118,
+          "label": "Cisterna"
+        }
+      ]
+    },
+    "sections": {
+      "living_conditions": []
+    }
+  },
+  "string_domains": {
+    "uf": [
+      {
+        "code": "41",
+        "label": "PARANÁ"
+      }
+    ],
+    "tipo_logradouro": [
+      {
+        "code": "081",
+        "label": "RUA"
+      }
+    ]
+  },
+  "neighborhoods": [
+    {
+      "id": "c0ffee40-0000-4000-8000-000000000040",
+      "name": "Vila Nova"
+    }
+  ],
+  "health_units": [
+    {
+      "id": "6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b",
+      "cnes": "2384299",
+      "name": "UBS Vila Nova"
+    },
+    {
+      "id": "c0ffee41-0000-4000-8000-000000000041",
+      "cnes": null,
+      "name": "Ponto de apoio Jardim Esperança"
+    }
+  ],
+  "team_professionals": [
+    {
+      "team_id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+      "professional_id": "5d6e7f8a-9b0c-4d1e-9f2a-3b4c5d6e7f8a",
+      "name": "Carla Mendes",
+      "cbo": "515105",
+      "has_cns": true
+    }
+  ],
+  "home_visit_domains": {
+    "motivo_visita": [],
+    "desfecho": [],
+    "turno": [],
+    "tipo_glicemia": [],
+    "tipo_de_imovel": [],
+    "non_residential_property_types": [],
+    "non_residential_reasons": [],
+    "male_forbidden_reasons": [],
+    "without_person_allowed_reasons": [],
+    "responsible_document_reasons": [],
+    "reasons_max": 36,
+    "measurement_ranges": {}
+  },
+  "collective_activity_domains": {
+    "activity_types": [],
+    "meeting_topics": [],
+    "target_audience": [],
+    "health_topics": [],
+    "health_practices": [],
+    "procedures": [],
+    "rules": {
+      "list_max": {
+        "meeting_topics": 7,
+        "target_audience": 17,
+        "health_topics": 16,
+        "health_practices": 14
+      },
+      "by_type": {
+        "1": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "with_meeting_topic_6",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "2": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "forbidden",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "3": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "forbidden",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "4": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "5": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "optional",
+          "participants": "required"
+        },
+        "6": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "optional",
+          "health_practices": "required",
+          "participants": "required"
+        },
+        "7": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        }
+      },
+      "health_topics_with_meeting_topic": [
+        6
+      ],
+      "practices_only_in_type": [
+        {
+          "type": 6,
+          "practices": [
+            2,
+            9,
+            33
+          ]
+        }
+      ],
+      "procedure_practices": [
+        30
+      ],
+      "smoking_practices": [
+        25,
+        26,
+        27,
+        28
+      ],
+      "participant_measurements": {
+        "weight_kg": {
+          "min": 0.5,
+          "max": 500,
+          "decimals": 3
+        },
+        "height_cm": {
+          "min": 20,
+          "max": 250,
+          "decimals": 1
+        }
+      }
+    }
+  }
+}

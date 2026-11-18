@@ -1,0 +1,68 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee60-0000-4000-8000-000000000060",
+      "type": "home_visit",
+      "body": {
+        "team_id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+        "occurred_at": "2026-11-12T09:40:00-03:00",
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "subject": "family_responsible",
+        "family_id": "9d0e1f2a-3b4c-4d5e-9f6a-7b8c9d0e1f2a",
+        "outcome": 1,
+        "reasons": [],
+        "shared": false,
+        "vector_inspection": {
+          "activity": "li_t",
+          "work_type": "routine",
+          "situation": "worked",
+          "educational_action": true,
+          "entered_at": "2026-11-12T09:30:00-03:00",
+          "left_at": "2026-11-12T09:52:00-03:00",
+          "risk_class": "yellow",
+          "deposits": [
+            {
+              "group": "A1",
+              "existing": 3,
+              "with_water": 2,
+              "with_larvae": 1,
+              "eliminated": 1,
+              "treated": 1
+            },
+            {
+              "group": "D2",
+              "existing": 4,
+              "with_water": 2,
+              "with_larvae": 1,
+              "eliminated": 4,
+              "treated": 0
+            }
+          ],
+          "measures": [
+            {
+              "method": "mechanical"
+            },
+            {
+              "method": "focal",
+              "vector_product_id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+              "charges": 2.25
+            }
+          ],
+          "samples": [
+            {
+              "number": 1,
+              "deposit_group": "A1",
+              "larvae_collected": 8,
+              "label": "ABCDEF12-01"
+            },
+            {
+              "number": 2,
+              "deposit_group": "D2",
+              "larvae_collected": 5
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

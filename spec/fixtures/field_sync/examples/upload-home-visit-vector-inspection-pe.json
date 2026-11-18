@@ -1,0 +1,43 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee61-0000-4000-8000-000000000061",
+      "type": "home_visit",
+      "body": {
+        "team_id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+        "occurred_at": "2026-11-12T14:05:00-03:00",
+        "household_id": "9e0f1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "subject": "none",
+        "outcome": 1,
+        "reasons": [],
+        "shared": false,
+        "vector_inspection": {
+          "activity": "pe",
+          "work_type": "routine",
+          "situation": "worked",
+          "educational_action": false,
+          "entered_at": "2026-11-12T13:50:00-03:00",
+          "left_at": "2026-11-12T14:20:00-03:00",
+          "city_block_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "deposits": [
+            {
+              "group": "D1",
+              "existing": 12,
+              "with_water": 5,
+              "with_larvae": 0,
+              "eliminated": 0,
+              "treated": 5
+            }
+          ],
+          "measures": [
+            {
+              "method": "perifocal",
+              "vector_product_id": "1b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e",
+              "charges": 0.5
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee66-0000-4000-8000-000000000066",
+      "type": "ovitrap_collection",
+      "body": {
+        "ovitrap_id": "c3d4e5f6-a7b8-4c9d-8e0f-2a3b4c5d6e7f",
+        "collected_on": "2026-11-12",
+        "condition": "ok",
+        "reinstall": true,
+        "remove": false
+      }
+    },
+    {
+      "client_uuid": "c0ffee67-0000-4000-8000-000000000067",
+      "type": "ovitrap_collection",
+      "body": {
+        "ovitrap_id": "d5e6f7a8-b9c0-4d1e-8f2a-3b4c5d6e7f80",
+        "collected_on": "2026-11-12",
+        "condition": "lost",
+        "remove": true
+      }
+    }
+  ]
+}

@@ -52,6 +52,19 @@
 #     cadastro ficou, gravada no livro (`result_version`); o `duplicate` devolve
 #     a do livro, e o recibo anterior à coluna sai sem ela (Q5).
 #
+# Módulo 35a (ADR 0054; contrato §13; Q6, Q7, Q10, Q13(2); CV-3, CV-4, CV-9):
+#   - home_visit: o gate vector_control (lido aqui, fora da transação) vai ao
+#     HomeVisits::Record (`vector_control:`); aceito ou duplicate com boletim →
+#     `vector_inspection_id` (lido por VectorInspection.where(home_visit_id:));
+#     erro de esquema sob /body/vector_inspection → `rejected
+#     vector_inspection_invalid` com o mesmo path (CV-4);
+#   - ovitrap_installation (VectorControl::InstallOvitrap) e ovitrap_collection
+#     (VectorControl::CollectOvitrap), origin field_app com o aparelho, só do
+#     agente de endemias com o gate (feature_disabled, cbo_not_allowed); o `id`
+#     dos dois é o da ovitrampa (W-9, Q7(2)); `ovitrap_client_uuid` cita a
+#     instalação aceita antes, no mesmo lote ou em outro (os itens vão em
+#     ordem, Q10); `reinstall` é ignorado com `remove: true` (Q7(5)).
+#
 # Nada de nome, CPF, CNS, motivo, medida, observação ou coordenada no resultado
 # de erro, no log ou em evento: só código, path, ids e a forma
 # `candidate`/`current` do 24a.
@@ -63,12 +76,16 @@ module FieldSync
     PATH_MAX = 128
     RESULT_TYPES = { "home_visit" => "HomeVisit", "home_visit_withdrawal" => "HomeVisit",
                      "collective_activity" => "CollectiveActivity", "patient" => "Patient", "household" => "Household",
-                     "individual_registration" => "IndividualRegistration", "family" => "Family" }.freeze
-    # Citações pelo livro (Q27; family no 24c): <tipo>_client_uuid → <tipo>_id.
-    CITATIONS = %w[patient household family].freeze
+                     "individual_registration" => "IndividualRegistration", "family" => "Family",
+                     "ovitrap_installation" => "Ovitrap", "ovitrap_collection" => "Ovitrap" }.freeze
     # Q26, Q51: quem cita uma pessoa pode citar o item que a registrou ou o cadastro dela.
     PERSON_ITEMS = %w[patient individual_registration].freeze
+    # Citações pelo livro (Q27; family no 24c; ovitrap no 35a): <tipo>_client_uuid
+    # → <tipo>_id, pelo recibo de um destes itens.
+    CITATIONS = { "patient" => PERSON_ITEMS, "household" => %w[household], "family" => %w[family],
+                  "ovitrap" => %w[ovitrap_installation] }.freeze
     LOCATION_POINTER = %r{\A/body/location(/|\z)}
+    VECTOR_POINTER = %r{\A/body/vector_inspection(/|\z)}
     # Palavras do esquema que são falha do próprio objeto (Q46): o `required`
     # dentro delas não aponta o campo que falta.
     COMPOSITE = %r{/(oneOf|anyOf|not)/}
@@ -185,7 +202,8 @@ module FieldSync
       return rejected("client_uuid_conflict") unless receipt.item_type == type && receipt.user_id == user.id
 
       # A versão daquele recebimento (Q5): nula no recibo anterior à coluna e nos tipos sem versão.
-      { status: "duplicate", id: receipt.result_id, version: receipt.result_version, receipt: false }
+      { status: "duplicate", id: receipt.result_id, version: receipt.result_version, receipt: false,
+        vector_inspection_id: (inspection_id(receipt.result_id) if type == "home_visit") }
     end
 
     def dispatch(type, uuid, body, context, shown)
@@ -197,6 +215,8 @@ module FieldSync
       when "household" then household(body, context)
       when "individual_registration" then registration(body, context, shown)
       when "family" then family(body, context)
+      when "ovitrap_installation" then ovitrap_installation(uuid, body, context)
+      when "ovitrap_collection" then ovitrap_collection(body, context)
       else raise ArgumentError, "type fora do esquema"
       end
     end
@@ -208,10 +228,11 @@ module FieldSync
       return missing if missing
 
       result = HomeVisits::Record.call(params: params.merge("client_uuid" => uuid), by: context[:user], origin: "field_app",
-                                       device: context[:device], trail: shown)
+                                       device: context[:device], trail: shown, vector_control: context[:vector] == true)
       return failure(result) if result.failure?
 
-      accepted(result.payload[:visit].id, replayed: result.payload[:replayed])
+      visit = result.payload[:visit]
+      accepted(visit.id, replayed: result.payload[:replayed], vector_inspection_id: inspection_id(visit.id))
     end
 
     # Q45: retirada pela visita do app (visit_client_uuid) ou pelo id, com
@@ -281,7 +302,7 @@ module FieldSync
         return rejected("not_found", "household_id") unless visible
       end
       result = TerritoryRegistry::SaveHousehold.call(params: body.except("household_id"), by: user, household: household, vector_control: vector)
-      return stale_household(household) if result.failure? && result.reason == :stale_version && household
+      return stale_household(household, context) if result.failure? && result.reason == :stale_version && household
       return failure(result) if result.failure?
 
       accepted(result.payload[:household].id, version: result.payload[:household].version)
@@ -319,7 +340,7 @@ module FieldSync
 
       result = TerritoryRegistry::SaveFamily.call(household: household, by: user, family: existing,
                                                   params: params.except("household_id", "family_id").merge({ "responsible" => responsible }.compact))
-      return stale_household(household) if result.failure? && result.reason == :stale_version
+      return stale_household(household, context) if result.failure? && result.reason == :stale_version
       return failure(result) if result.failure?
 
       accepted(result.payload[:family].id, version: result.payload[:household].version)
@@ -357,7 +378,52 @@ module FieldSync
       accepted(result.payload[:registration].id, version: result.payload[:registration].version)
     end
 
+    # Módulo 35a (§6, §13; Q13(2)): a instalação pelo domicílio do id ou do
+    # livro (household_client_uuid); o client_uuid do item é o da ovitrampa.
+    def ovitrap_installation(uuid, body, context)
+      refusal = vector_refusal(context)
+      return refusal if refusal
+
+      params, missing = cite(body, context[:user])
+      return missing if missing
+
+      result = VectorControl::InstallOvitrap.call(params: params.merge("client_uuid" => uuid), by: context[:user], origin: "field_app",
+                                                  device: context[:device])
+      return failure(result) if result.failure?
+
+      accepted(result.payload[:ovitrap].id, replayed: result.payload[:replayed])
+    end
+
+    # A coleta pela ovitrampa do id ou do livro (ovitrap_client_uuid; falta →
+    # not_found com o path da chave usada). O resultado leva o id da ovitrampa.
+    def ovitrap_collection(body, context)
+      refusal = vector_refusal(context)
+      return refusal if refusal
+
+      key = body.key?("ovitrap_client_uuid") ? "ovitrap_client_uuid" : "ovitrap_id"
+      params, missing = cite(body, context[:user])
+      return missing if missing
+
+      ovitrap = Ovitrap.includes(household: :micro_area).find_by(id: params["ovitrap_id"])
+      return rejected("not_found", key) unless ovitrap
+
+      result = VectorControl::CollectOvitrap.call(ovitrap: ovitrap, params: params.except("ovitrap_id"), by: context[:user],
+                                                  origin: "field_app", device: context[:device])
+      return failure(result) if result.failure?
+
+      accepted(ovitrap.id)
+    end
+
     # --- apoio -------------------------------------------------------------------
+
+    # Os itens de ovitrampa: gate utilizável e só o agente de endemias.
+    def vector_refusal(context)
+      return rejected("feature_disabled") unless context[:vector]
+
+      rejected("cbo_not_allowed") unless context[:endemic]
+    end
+
+    def inspection_id(home_visit_id) = VectorInspection.where(home_visit_id: home_visit_id).pick(:id)
 
     # household, family e individual_registration: territory_registry
     # utilizável e só o ACS (W-9; Q11). Módulo 35a (Q13(1)): o item household
@@ -372,16 +438,17 @@ module FieldSync
     end
 
     # Q27: patient_client_uuid → patient_id, household_client_uuid →
-    # household_id e (24c) family_client_uuid → family_id, pelo livro.
+    # household_id, (24c) family_client_uuid → family_id e (35a)
+    # ovitrap_client_uuid → ovitrap_id, pelo livro.
     # -> [params, nil] | [nil, rejected]
     def cite(body, user)
       params = body.dup
-      CITATIONS.each do |kind|
+      CITATIONS.each do |kind, item_types|
         key = "#{kind}_client_uuid"
         next unless params.key?(key)
 
         uuid = params.delete(key)
-        id = kind == "patient" ? cited_patient_id(uuid, user) : cited_id(uuid, kind, user)
+        id = kind == "patient" ? cited_patient_id(uuid, user) : cited_id(uuid, item_types, user)
         return [ nil, rejected("not_found", key) ] unless id
 
         params["#{kind}_id"] = id
@@ -394,7 +461,7 @@ module FieldSync
     # o paciente existente por patient_id sem documento novo não consome.
     def person_search?(params) = params["new_patient"].is_a?(Hash) || %w[cpf cns].any? { |key| params[key].present? }
 
-    def cited_id(uuid, item_type, user) = FieldSyncReceipt.where(client_uuid: uuid, item_type: item_type, user_id: user.id).pick(:result_id)
+    def cited_id(uuid, item_types, user) = FieldSyncReceipt.where(client_uuid: uuid, item_type: item_types, user_id: user.id).pick(:result_id)
 
     # Q26, Q51: o client_uuid de um item `patient` aceito vale pelo paciente
     # criado; o de um `individual_registration` aceito, pelo paciente daquele
@@ -416,12 +483,12 @@ module FieldSync
     end
 
     # O `current` é o <household> do download (Json.household_body: sem a
-    # família de responsável provisório da UPA, Q47), e a trilha lista só os
-    # responsáveis mostrados.
-    def stale_household(household)
+    # família de responsável provisório da UPA, Q47; com `vector` só com o
+    # gate, 35a), e a trilha lista só os responsáveis mostrados.
+    def stale_household(household, context)
       household.reload
       families = Family.where(household_id: household.id).includes(:responsible_patient).order(:created_at, :id).to_a
-      current = Json.household_body(household, families)
+      current = Json.household_body(household, families, vector_control: context[:vector] == true)
       { status: "stale_version", id: household.id, current_version: household.version, current: current, receipt: false,
         viewed: { household_ids: [ household.id ], patient_ids: Json.household_responsible_ids(current).compact } }
     end
@@ -461,9 +528,10 @@ module FieldSync
       context[:trail].records_viewed!(user: context[:user], **viewed) if viewed
     end
 
-    # `version`: só household, family (a do domicílio) e individual_registration.
-    def accepted(id, version: nil, replayed: false)
-      { status: replayed ? "duplicate" : "accepted", id: id, version: version, receipt: true }
+    # `version`: só household, family (a do domicílio) e individual_registration;
+    # `vector_inspection_id`: só home_visit com boletim.
+    def accepted(id, version: nil, replayed: false, vector_inspection_id: nil)
+      { status: replayed ? "duplicate" : "accepted", id: id, version: version, vector_inspection_id: vector_inspection_id, receipt: true }
     end
 
     # O código e o path do Result; candidates só no duplicate_suspected,
@@ -487,6 +555,7 @@ module FieldSync
       when "accepted", "duplicate"
         json["id"] = outcome[:id]
         json["version"] = outcome[:version] if outcome[:version]
+        json["vector_inspection_id"] = outcome[:vector_inspection_id] if outcome[:vector_inspection_id]
       when "stale_version"
         json.merge!("id" => outcome[:id], "current_version" => outcome[:current_version], "current" => outcome[:current])
       else
@@ -503,13 +572,18 @@ module FieldSync
 
     # Q2 (24c): quando o primeiro erro está sob /body/location, o código é
     # invalid_location e o path é o do erro mais fundo dali (o domicílio aceita
-    # objeto ou null, e o json_schemer reporta os dois ramos).
+    # objeto ou null, e o json_schemer reporta os dois ramos). Módulo 35a
+    # (CV-4, Q7(7)): o mesmo sob /body/vector_inspection, com o código
+    # vector_inspection_invalid.
     def invalid_item(item, errors)
       error = errors.first
       code = "invalid_request"
-      if error[:pointer].to_s.match?(LOCATION_POINTER)
-        code = "invalid_location"
-        error = errors.select { |e| e[:pointer].to_s.match?(LOCATION_POINTER) }.max_by { |e| e[:pointer].to_s.count("/") }
+      { LOCATION_POINTER => "invalid_location", VECTOR_POINTER => "vector_inspection_invalid" }.each do |pointer, name|
+        next unless error[:pointer].to_s.match?(pointer)
+
+        code = name
+        error = errors.select { |e| e[:pointer].to_s.match?(pointer) }.max_by { |e| e[:pointer].to_s.count("/") }
+        break
       end
       json = { "status" => "rejected", "error" => code, "path" => schema_path(error) }
       if item.is_a?(Hash)
@@ -540,7 +614,7 @@ module FieldSync
 
     def invalid_envelope(path) = Result.fail(:invalid_request, details: { path: path })
     private_class_method :process, :lock!, :ledger, :dispatch, :home_visit, :withdrawal, :collective_activity, :patient, :household,
-                         :family, :registration, :registry_refusal, :cite, :person_search?, :cited_id, :cited_patient_id, :acs?, :stale_household, :stale_registration,
+                         :family, :registration, :ovitrap_installation, :ovitrap_collection, :vector_refusal, :inspection_id, :registry_refusal, :cite, :person_search?, :cited_id, :cited_patient_id, :acs?, :stale_household, :stale_registration,
                          :registration_duplicate, :already_registered, :trail!, :accepted, :failure, :rejected, :result_json, :invalid_item, :schema_path,
                          :invalid_envelope
   end

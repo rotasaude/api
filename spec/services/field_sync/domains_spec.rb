@@ -98,24 +98,25 @@ RSpec.describe "FieldSync domains-v1.json × api (Ruling A5)" do
       expect(ca.fetch("tipo_atividade_coletiva").map { |row| row["code"] }).to eq(CollectiveActivities::Catalog::TYPES.to_a)
     end
 
-    it "campos por tipo (with_meeting_topic_6 = proibido salvo com o tema de reunião 6)" do
-      exception = "with_meeting_topic_#{CollectiveActivities::Rules::MEETING_EXCEPTION}"
-      api = CollectiveActivities::Rules::BY_TYPE.to_h do |type, row|
-        fields = row.to_h do |field, value|
-          meeting = CollectiveActivities::Catalog::MEETING_TYPES.include?(type)
-          [ field, field == "health_topics" && meeting && value == "forbidden" ? exception : value ]
-        end
-        [ type.to_s, fields ]
-      end
-      expect(ca_rules.fetch("by_activity_type")).to eq(api)
-      expect(ca_rules.fetch("values").keys).to match_array(api.values.flat_map(&:values).uniq)
+    # v1.3.0 (contracts Task 6, Q3): as sete chaves de regra são as de
+    # CollectiveActivities::Json.domains[:rules], na forma em que o api as serve
+    # (sem o campo LEDI das medidas).
+    it "regras na forma que o api serve (as sete chaves de CollectiveActivities::Json.domains)" do
+      keys = %w[list_max by_type health_topics_with_meeting_topic practices_only_in_type procedure_practices smoking_practices
+                participant_measurements]
+      api = JSON.parse(CollectiveActivities::Json.domains.fetch(:rules).to_json)
+      expect(api.keys).to eq(keys)
+      expect(ca_rules.slice(*keys)).to eq(api)
+      expect(ca_rules.fetch("participant_measurements").values.flat_map(&:keys)).not_to include("ledi")
+      expect(ca_rules.fetch("values").keys).to match_array(api.fetch("by_type").values.flat_map(&:values).uniq)
     end
 
     it "regras cruzadas do §4" do
-      expect(ca_rules.fetch("practices_only_in_activity_type")).to eq("6" => CollectiveActivities::Catalog::PRACTICE_TYPE6_ONLY)
+      expect(ca_rules.fetch("practices_only_in_type")).to eq([ { "type" => 6, "practices" => CollectiveActivities::Catalog::PRACTICE_TYPE6_ONLY } ])
       expect(CollectiveActivities::Rules::TYPE6_ONLY).to eq(CollectiveActivities::Catalog::PRACTICE_TYPE6_ONLY)
-      expect(ca_rules.fetch("procedure_code_with_practice")).to eq(CollectiveActivities::Catalog::PROCEDURE_PRACTICE)
-      expect(ca_rules.fetch("smoking_with_practices")).to eq(CollectiveActivities::Catalog::SMOKING_PRACTICES)
+      expect(ca_rules.fetch("procedure_practices")).to eq([ CollectiveActivities::Catalog::PROCEDURE_PRACTICE ])
+      expect(ca_rules.fetch("smoking_practices")).to eq(CollectiveActivities::Catalog::SMOKING_PRACTICES)
+      expect(ca_rules.fetch("health_topics_with_meeting_topic")).to eq([ CollectiveActivities::Rules::MEETING_EXCEPTION ])
       expect(ca_rules.fetch("pse_only_health_topics")).to eq(CollectiveActivities::Catalog::FORBIDDEN_HEALTH_TOPICS)
       expect(ca_rules.fetch("list_max")).to eq(CollectiveActivities::Rules::LIST_MAX)
       expect(ca_rules.fetch("participants_count")).to eq("min" => CollectiveActivities::Catalog::COUNT.min,
@@ -127,10 +128,53 @@ RSpec.describe "FieldSync domains-v1.json × api (Ruling A5)" do
       expect(ca_rules.fetch("mistaken_reason_length")).to eq("min" => CollectiveActivities::Catalog::MISTAKEN_REASON.min,
                                                              "max" => CollectiveActivities::Catalog::MISTAKEN_REASON.max)
       ca_rules.fetch("participant_measurements").each do |key, rule|
-        expect(rule).to eq(CollectiveActivities::Rules::PARTICIPANT_MEASUREMENTS.fetch(key).slice("min", "max", "decimals", "ledi")), key
+        expect(rule).to eq(CollectiveActivities::Rules::PARTICIPANT_MEASUREMENTS.fetch(key).slice("min", "max", "decimals")), key
       end
       expect(ca_rules.fetch("participant_measurements").keys).to match_array(CollectiveActivities::Rules::PARTICIPANT_MEASUREMENTS.keys)
       expect(ca_rules.dig("unidentified_patient", "error")).to eq("patient_unidentified")
+    end
+  end
+
+  # Módulo 35a (§3, §6, §13; Q7(3), Q16(f)): os domínios e limites do
+  # vector_control são os do VectorControl::Catalog e do
+  # config/vector_control/domains.yml (códigos, rótulos e ORDEM).
+  describe "vigilância ambiental (vector_control, v1.3.0)" do
+    let(:vector) { domains.fetch("vector_control") }
+    let(:labels) { YAML.load_file(Rails.root.join("config/vector_control/domains.yml")) }
+
+    it "as seis listas do domains.yml: códigos, rótulos e ordem" do
+      lists = %w[activities work_types situations deposit_groups measure_methods risk_classes]
+      expect(vector.slice(*lists)).to eq(labels.slice(*lists))
+      expect(labels.keys).to match_array(lists)
+      expect(vector.slice(*lists).transform_values { |rows| rows.map { _1["code"] } }).to eq(
+        "activities" => VectorControl::Catalog::ACTIVITIES, "work_types" => VectorControl::Catalog::WORK_TYPES,
+        "situations" => VectorControl::Catalog::SITUATIONS, "deposit_groups" => VectorControl::Catalog::DEPOSIT_GROUPS,
+        "measure_methods" => VectorControl::Catalog::METHODS, "risk_classes" => VectorControl::Catalog::RISK_CLASSES
+      )
+      expect(JSON.parse(VectorControl::Json.domains.slice(*lists.map(&:to_sym)).to_json)).to eq(vector.slice(*lists))
+    end
+
+    it "os códigos das outras listas são os do Catalog (unidade, condição, situação da ovitrampa, item e bloqueio)" do
+      codes = vector.slice("product_units", "ovitrap_conditions", "ovitrap_statuses", "liraa_item_statuses", "transmission_block_statuses")
+                    .transform_values { |rows| rows.map { _1["code"] } }
+      expect(codes).to eq("product_units" => VectorControl::Catalog::UNITS, "ovitrap_conditions" => VectorControl::Catalog::CONDITIONS,
+                          "ovitrap_statuses" => Ovitrap::STATUSES, "liraa_item_statuses" => LiraaDrawItem::STATUSES + %w[closed],
+                          "transmission_block_statuses" => %w[active closed])
+      expect(VectorControl::Catalog::BLOCK_STATUSES).to include(*codes.fetch("transmission_block_statuses"))
+    end
+
+    it "limits = Catalog::LIMITS (Q7(3)) e as regras numéricas do §3" do
+      expect(vector.fetch("limits")).to eq(VectorControl::Catalog::LIMITS.stringify_keys)
+      expect(VectorControl::Json.domains.fetch(:limits)).to eq(VectorControl::Catalog::LIMITS)
+      rules = vector.fetch("rules")
+      expect(rules.fetch("registrar_cbos")).to eq([ TerritoryRegistry::Catalog::ENDEMIC_AGENT_CBO ])
+      expect(rules.fetch("situation_outcome")).to eq(VectorControl::Catalog::SITUATION_OUTCOME)
+      expect(rules.fetch("activity_property_types")).to eq("pe" => [ VectorControl::Catalog::PE_PROPERTY ],
+                                                           "ie" => VectorControl::Catalog::IE_PROPERTIES)
+      expect(rules.fetch("activity_links")).to eq(VectorControl::Catalog::LINKED_ACTIVITIES)
+      expect(rules.dig("times", "max_hours")).to eq(VectorControl::Catalog::INSPECTION_MAX / 1.hour)
+      expect(rules.fetch("derived_reasons").keys.map(&:to_i)).to eq(VectorControl::Catalog::DERIVED_REASONS)
+      expect(rules.fetch("sample_label_collision")).to eq("sample_label_taken")
     end
   end
 
@@ -204,6 +248,25 @@ RSpec.describe "FieldSync domains-v1.json × api (Ruling A5)" do
         File.read(Rails.root.join(file), encoding: "utf-8").scan(/\b(?:err|refuse|fail)\(\s*:([a-z_]+)/m).flatten
       end.uniq
       expect(codes.size).to be >= 20
+      expect(codes - domains.dig("errors", "item")).to eq([])
+    end
+
+    # Módulo 35a (§17; Q7(1), Q13(2)): os 21 códigos novos do boletim e da
+    # ovitrampa, e todo código que as regras e os comandos do 35a recusam no
+    # envio do app.
+    it "errors.item tem os 21 códigos novos do 35a e os que as regras e os comandos dele recusam" do
+      novos = %w[vector_inspection_invalid situation_outcome_mismatch inspection_not_worked activity_property_mismatch liraa_item_not_found
+                 transmission_block_not_active deposit_counts_inconsistent product_not_allowed samples_exceed_larvae inspection_times_invalid
+                 reason_derived block_already_set household_without_neighborhood block_not_in_household_neighborhood household_without_block
+                 consent_required ovitrap_number_taken collection_out_of_range reading_not_open ovitrap_not_active sample_label_taken]
+      expect(novos.size).to eq(21)
+      expect(novos - domains.dig("errors", "item")).to eq([])
+      files = %w[app/services/vector_control/inspection_rules.rb app/commands/vector_control/record_inspection.rb
+                 app/commands/vector_control/install_ovitrap.rb app/commands/vector_control/collect_ovitrap.rb]
+      codes = files.flat_map do |file|
+        File.read(Rails.root.join(file), encoding: "utf-8").scan(/\b(?:err|refuse|fail|fail_with)\(\s*:([a-z_]+)/m).flatten
+      end.uniq
+      expect(codes).to include("sample_label_taken", "consent_required", "vector_inspection_invalid")
       expect(codes - domains.dig("errors", "item")).to eq([])
     end
 

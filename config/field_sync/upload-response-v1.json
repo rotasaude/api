@@ -88,7 +88,20 @@
         "registered_by": { "$ref": "#/$defs/registered_by" },
         "location": { "anyOf": [{ "$ref": "#/$defs/location" }, { "type": "null" }], "description": "Ponto do imóvel (24c); null = sem ponto." },
         "families": { "type": "array", "items": { "$ref": "#/$defs/family" } },
-        "living_conditions": { "type": "object", "description": "Seção do dicionário do 24a (§15): chaves e domínios do api, não deste esquema (K-2)." }
+        "living_conditions": { "type": "object", "description": "Seção do dicionário do 24a (§15): chaves e domínios do api, não deste esquema (K-2)." },
+        "vector": { "anyOf": [{ "$ref": "#/$defs/household_vector" }, { "type": "null" }], "description": "Perfil de vigilância (35a), só leitura, na forma de GET /vector_control/households/:id. Acrescentado pelo FieldSync; o TerritoryRegistry::Json.household do 24a não muda (Q8). Ausente = gate vector_control não utilizável; null = sem perfil (Q6, CV-10). Nunca vai no item household." }
+      }
+    },
+    "household_vector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["city_block_id", "risk_class", "risk_assessed_on", "last_worked_on", "last_situation"],
+      "properties": {
+        "city_block_id": { "$ref": "#/$defs/uuid_or_null" },
+        "risk_class": { "enum": ["green", "yellow", "red", "gray", "purple", null] },
+        "risk_assessed_on": { "$ref": "#/$defs/date_or_null" },
+        "last_worked_on": { "$ref": "#/$defs/date_or_null" },
+        "last_situation": { "enum": ["worked", "closed", "refused", "vacant", null] }
       }
     },
     "family": {
@@ -198,8 +211,9 @@
       "properties": {
         "client_uuid": { "$ref": "#/$defs/uuid_or_null" },
         "status": { "enum": ["accepted", "duplicate", "rejected", "stale_version"], "description": "stale_version só para domicílio, família ou cadastro individual (versão esperada vencida); na família, nova ou existente, a versão é a do domicílio e id é o domicílio (Q4). Cadastro individual novo cujo domicílio citado mudou volta rejected household_changed (path household_id). Exceção inesperada num item volta rejected internal_error, sem path (Q63)." },
-        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "family", "individual_registration", null] },
-        "id": { "$ref": "#/$defs/uuid", "description": "accepted e duplicate: o id gravado. stale_version: o id do domicílio (também para family) ou do cadastro existente. rejected: só em already_registered (Q63), o registration_id do cadastro existente, e só quando ele está dentro do escopo do aparelho (6A); fora do escopo não há id. Proibido em qualquer outro rejected." },
+        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "family", "individual_registration", "ovitrap_installation", "ovitrap_collection", null] },
+        "id": { "$ref": "#/$defs/uuid", "description": "accepted e duplicate: o id gravado. stale_version: o id do domicílio (também para family) ou do cadastro existente. rejected: só em already_registered (Q63), o registration_id do cadastro existente, e só quando ele está dentro do escopo do aparelho (6A); fora do escopo não há id. Proibido em qualquer outro rejected. Em ovitrap_installation e ovitrap_collection (35a), o id é o da ovitrampa (CV-3)." },
+        "vector_inspection_id": { "$ref": "#/$defs/uuid", "description": "Só no accepted/duplicate de home_visit com boletim (opcional)." },
         "error": { "$ref": "#/$defs/error_code" },
         "path": { "type": "string", "minLength": 1, "description": "Notação pontilhada/colchetes do contrato, relativa ao body do item para campos do body (occurred_at, reasons[0], participants[1].new_patient); chave nua para as chaves do próprio item fora do body (client_uuid, type); body quando o body não é objeto. Campo obrigatório ausente: o caminho do campo que falta (occurred_at, participants[1].patient_id). Falha do próprio objeto (pares um-ou-outro do Q27, local da atividade, par de medida): o caminho do objeto (body para o corpo, measurements, participants[i]). Nunca vazio. Nenhum *_body declara type, client_uuid ou body, para o path não ser ambíguo." },
         "candidates": { "type": "array", "maxItems": 10, "items": { "$ref": "#/$defs/candidate" } },
@@ -213,6 +227,8 @@
           "else": { "required": ["client_uuid", "type"], "properties": { "client_uuid": { "$ref": "#/$defs/uuid" }, "type": { "type": "string" } } } },
         { "if": { "required": ["status"], "properties": { "status": { "enum": ["accepted", "duplicate"] } } },
           "then": { "required": ["id"], "properties": { "error": false, "path": false, "candidates": false, "current_version": false, "current": false } } },
+        { "if": { "required": ["status", "type"], "properties": { "status": { "enum": ["accepted", "duplicate"] }, "type": { "const": "home_visit" } } },
+          "else": { "properties": { "vector_inspection_id": false } } },
         { "if": { "required": ["status"], "properties": { "status": { "const": "rejected" } } },
           "then": { "required": ["error"], "properties": { "current_version": false, "current": false } } },
         { "if": { "required": ["error"], "properties": { "error": { "const": "already_registered" } } },

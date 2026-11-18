@@ -117,4 +117,45 @@ RSpec.describe FieldSync::Reference, type: :model do
       expect(key).not_to include(team.id)
     end
   end
+
+  # Módulo 35a, Task 15 (contrato §13; Q6, Q8, Q15): vector_control_domains só
+  # com o gate utilizável, o mesmo serializador do GET /vector_control/domains
+  # (VectorControl::Json.domains); o estado do gate entra no reference_version
+  # e na chave do cache.
+  describe "vector_control_domains (v1.3.0)" do
+    def gate!(enabled)
+      Platform::Features.set!(city: Current.city, key: VectorControl::Gate::KEY, enabled: enabled, maintainer: ledi_maintainer!)
+      CityCatalog.reset_cache!
+    end
+
+    it "só com o gate, válido contra reference-response-v1; produto inativo fora; ligar o gate muda o reference_version" do
+      vector_product!(code: "PYR", name: "Pyriproxyfen 0,5% G", unit: "g", charge_size: "12.50")
+      vector_product!(code: "OLD").update!(active: false)
+      off = build
+      expect(off).not_to have_key("vector_control_domains")
+
+      gate!(true)
+      on = build
+      expect(FieldSync::Schemas.errors("reference-response-v1", on)).to eq([])
+      expect(on.fetch("vector_control_domains")).to eq(JSON.parse(VectorControl::Json.domains.to_json))
+      expect(on.dig("vector_control_domains", "products").map { [ _1["code"], _1["charge_size"] ] }).to eq([ [ "PYR", "12.50" ] ])
+      expect(on.dig("vector_control_domains", "limits")).to eq("deposit_count_max" => 999, "charges_max" => 999, "samples_max" => 99,
+                                                               "larvae_collected_max" => 10, "measures_max" => 20)
+      expect(on["reference_version"]).not_to eq(off["reference_version"])
+      expect(described_class.version(user: acs, city: Current.city)).to eq(on["reference_version"])
+
+      gate!(false)
+      expect(build["reference_version"]).to eq(off["reference_version"])
+    end
+
+    it "a chave do cache leva o estado do gate" do
+      keys = []
+      allow(Rails.cache).to receive(:fetch) { |cache_key, **_options, &block| keys << cache_key && block.call }
+      described_class.version(user: acs, city: Current.city)
+      gate!(true)
+      described_class.version(user: acs, city: Current.city)
+      expect(keys.first).to match(%r{\Afield_sync/reference_version/#{Current.city.id}/[0-9a-f]{64}\z})
+      expect(keys.last).to eq("#{keys.first}/vector_control")
+    end
+  end
 end

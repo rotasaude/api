@@ -37,7 +37,7 @@ module FieldSync
         professional: { id: user.professional.id, cbo: member.cbo_code, has_cns: user.professional.cns.present? },
         teams: field_teams(user).map { |team, role| team_json(user, team, role) },
         features: { home_visits: HomeVisits::Gate.usable?(city), collective_activities: CollectiveActivities::Gate.usable?(city),
-                    territory_registry: TerritoryRegistry::Gate.usable?(city) },
+                    territory_registry: TerritoryRegistry::Gate.usable?(city), vector_control: VectorControl::Gate.usable?(city) },
         min_date: HomeVisits::Rules.min_date(today).iso8601,
         reference_version: Reference.version(user: user, city: city),
         # O arquivo publicado, mesmo com uma geração nova em curso ou falha (Q30).
@@ -64,11 +64,22 @@ module FieldSync
     # TerritoryRegistry::Families.responsible_exited_ids (calculados aqui se
     # não vierem; o download calcula de uma vez para a página). Os
     # responsáveis mostrados (a trilha) são os de `body[:families]`.
-    def household_body(household, families, version: nil, exited: nil)
+    #
+    # Módulo 35a (§13; Q6, CV-10, W-10): com `vector_control:` (o gate
+    # utilizável, lido por quem chama), `vector` = VectorControl::Json.profile
+    # (null = imóvel sem perfil); sem ele, a chave fica ausente. `profiles`:
+    # { household_id => HouseholdVectorProfile } já carregados (o download
+    # carrega a página de uma vez); sem eles, lido aqui. O
+    # TerritoryRegistry::Json.household do dashboard não muda.
+    def household_body(household, families, version: nil, exited: nil, vector_control: false, profiles: nil)
       kept = families.reject { |family| provisional?(family.responsible_patient) }
       version ||= HouseholdVersion.find_by!(household_id: household.id, version: household.version)
       exited ||= TerritoryRegistry::Families.responsible_exited_ids(kept)
-      TerritoryRegistry::Json.household(household, version, families: kept, exited: exited, full: true)
+      body = TerritoryRegistry::Json.household(household, version, families: kept, exited: exited, full: true)
+      return body unless vector_control
+
+      profile = profiles ? profiles[household.id] : HouseholdVectorProfile.find_by(household_id: household.id)
+      body.merge(vector: VectorControl::Json.profile(profile))
     end
 
     # Os responsáveis das famílias de um <household> (a trilha de quem o mostra).

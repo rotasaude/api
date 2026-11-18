@@ -34,6 +34,14 @@
         {
           "file": "invalid-session-map-short-sha.json",
           "expect": "/map/sha256 pattern"
+        },
+        {
+          "file": "session-endemic-agent.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-session-vector-control-string.json",
+          "expect": "/features/vector_control boolean"
         }
       ]
     },
@@ -263,6 +271,102 @@
         {
           "file": "invalid-registration-two-families.json",
           "expect": "/items/0/body not"
+        },
+        {
+          "file": "upload-home-visit-vector-inspection.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-home-visit-vector-inspection-pe.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-home-visit-vector-inspection-closed.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-ovitrap-installation.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-ovitrap-same-batch.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-ovitrap-collection.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-vector-inspection-null.json",
+          "expect": "/items/0/body/vector_inspection object"
+        },
+        {
+          "file": "invalid-vector-inspection-activity-unknown.json",
+          "expect": "/items/0/body/vector_inspection/activity enum"
+        },
+        {
+          "file": "invalid-vector-inspection-recovered-in-body.json",
+          "expect": "/items/0/body/vector_inspection/recovered schema"
+        },
+        {
+          "file": "invalid-vector-inspection-entered-at-without-offset.json",
+          "expect": "/items/0/body/vector_inspection/entered_at pattern"
+        },
+        {
+          "file": "invalid-vector-inspection-risk-class-blue.json",
+          "expect": "/items/0/body/vector_inspection/risk_class enum"
+        },
+        {
+          "file": "invalid-vector-inspection-deposit-group-f.json",
+          "expect": "/items/0/body/vector_inspection/deposits/0/group enum"
+        },
+        {
+          "file": "invalid-vector-inspection-deposit-1000.json",
+          "expect": "/items/0/body/vector_inspection/deposits/0/existing maximum"
+        },
+        {
+          "file": "invalid-vector-inspection-8-deposits.json",
+          "expect": "/items/0/body/vector_inspection/deposits maxItems"
+        },
+        {
+          "file": "invalid-vector-inspection-charges-three-decimals.json",
+          "expect": "/items/0/body/vector_inspection/measures/1/charges multipleOf"
+        },
+        {
+          "file": "invalid-vector-inspection-charges-zero.json",
+          "expect": "/items/0/body/vector_inspection/measures/1/charges exclusiveMinimum"
+        },
+        {
+          "file": "invalid-vector-inspection-sample-label-in-body.json",
+          "expect": "/items/0/body/vector_inspection/samples/0/label schema"
+        },
+        {
+          "file": "invalid-vector-inspection-larvae-11.json",
+          "expect": "/items/0/body/vector_inspection/samples/0/larvae_collected maximum"
+        },
+        {
+          "file": "invalid-ovitrap-installation-two-households.json",
+          "expect": "/items/0/body oneOf"
+        },
+        {
+          "file": "invalid-ovitrap-installation-number-13-chars.json",
+          "expect": "/items/0/body/number pattern"
+        },
+        {
+          "file": "invalid-ovitrap-installation-without-consent.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-ovitrap-collection-two-ovitraps.json",
+          "expect": "/items/0/body oneOf"
+        },
+        {
+          "file": "invalid-ovitrap-collection-condition-wet.json",
+          "expect": "/items/0/body/condition enum"
+        },
+        {
+          "file": "invalid-ovitrap-collection-egg-count.json",
+          "expect": "/items/0/body/egg_count schema"
         }
       ]
     },
@@ -412,6 +516,26 @@
         {
           "file": "invalid-response-stale-household-with-cpf.json",
           "expect": "/results/0/current/families/0/responsible/cpf schema"
+        },
+        {
+          "file": "upload-response-vector-accepted.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-vector-rejected.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-response-vector-inspection-id-on-patient.json",
+          "expect": "/results/0/vector_inspection_id schema"
+        },
+        {
+          "file": "invalid-response-vector-inspection-id-on-rejected.json",
+          "expect": "/results/0/vector_inspection_id schema"
+        },
+        {
+          "file": "invalid-response-ovitrap-id.json",
+          "expect": "/results/0/ovitrap_id schema"
         }
       ]
     },
@@ -489,6 +613,38 @@
         {
           "file": "invalid-changes-cursor-null.json",
           "expect": "/next_cursor string"
+        },
+        {
+          "file": "changes-vector-page.json",
+          "expect": "valid"
+        },
+        {
+          "file": "changes-vector-closed.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-changes-transmission-block-with-case.json",
+          "expect": "/items/4/body/cases schema"
+        },
+        {
+          "file": "invalid-changes-transmission-block-proposed.json",
+          "expect": "/items/4/body/status enum"
+        },
+        {
+          "file": "invalid-changes-ovitrap-without-version.json",
+          "expect": "/items/2 required"
+        },
+        {
+          "file": "invalid-changes-city-block-number-with-space.json",
+          "expect": "/items/1/body/number pattern"
+        },
+        {
+          "file": "invalid-changes-ovitrap-with-resident.json",
+          "expect": "/items/2/body/resident_name schema"
+        },
+        {
+          "file": "invalid-changes-household-vector-risk-blue.json",
+          "expect": "/items/0/body/vector/risk_class enum"
         }
       ]
     },
@@ -518,6 +674,26 @@
         {
           "file": "invalid-reference-without-health-units.json",
           "expect": "(root) required"
+        },
+        {
+          "file": "invalid-reference-activity-rules-old-vocabulary.json",
+          "expect": "/collective_activity_domains/rules required"
+        },
+        {
+          "file": "invalid-reference-activity-by-type-old-value.json",
+          "expect": "/collective_activity_domains/rules/by_type/1/health_topics enum"
+        },
+        {
+          "file": "reference-vector-control.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-reference-product-charge-size-number.json",
+          "expect": "/vector_control_domains/products/0/charge_size string"
+        },
+        {
+          "file": "invalid-reference-product-without-uses.json",
+          "expect": "/vector_control_domains/products/0/uses minItems"
         }
       ]
     }
