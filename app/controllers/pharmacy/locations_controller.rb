@@ -1,6 +1,7 @@
 # GET /pharmacy/locations (contrato §13 H2): meus locais, com os papéis do
-# usuário em cada um. O almoxarife do central vê todos os locais ativos (os
-# alheios vêm com `roles: []`). Quem não tem papel válido recebe lista vazia.
+# usuário em cada um. O almoxarife do central vê todos os locais ativos de
+# medicamento, e o de uma base vector_control, todas as bases ativas (Q40(1)):
+# os alheios vêm com `roles: []`. Quem não tem papel válido recebe lista vazia.
 #
 # Módulo 35a (Q21): o interruptor é o do domínio de cada local (StockGate):
 # saem só os locais de domínio utilizável. Nenhum domínio utilizável → 403

@@ -216,6 +216,55 @@ RSpec.describe "Estoque do insumo de campo pelas rotas do 27a", type: :request d
     expect(response).to have_http_status(:ok)
   end
 
+  # Q40(1): como o almoxarife do central com as unidades, o almoxarife de uma
+  # base de endemias recebe as OUTRAS bases ativas com `roles: []` (destinos
+  # da transferência). Só a lista muda: ler ou mexer no estoque alheio segue
+  # pedindo vínculo, e receber, o vínculo no destino.
+  it "Q40(1): o almoxarife da base A lista a base B com roles [] (não a inativa C), transfere de A para B, não lê B; só o de B recebe" do
+    other = vector_location!(name: "Base B — insumos")
+    closed = vector_location!(name: "Base C — insumos")
+    closed.update!(active: false)
+    other_keeper = vector_keeper!(other)
+    lot = vector_lot!(location, product: product, quantity: "10")
+    other_lot = vector_lot!(other, product: product, quantity: "3")
+
+    sign_in_as(keeper)
+    get "/pharmacy/locations"
+    expect(response).to have_http_status(:ok)
+    rows = json_body["locations"].to_h { |row| [ row["id"], row["roles"] ] }
+    expect(rows).to eq(location.id => [ "stock_keeper" ], other.id => [])
+
+    json_post "/pharmacy/transfers", from_location_id: location.id, to_location_id: other.id, items: [ { lot_id: lot.id, quantity: "4" } ]
+    expect(response).to have_http_status(:created)
+    transfer = StockTransfer.find(json_body["id"])
+
+    get "/pharmacy/positions", params: { location_id: other.id }
+    expect(response).to have_http_status(:forbidden)
+    get "/pharmacy/lots/#{other_lot.id}/movements", params: { location_id: other.id }
+    expect(response).to have_http_status(:forbidden)
+    json_post "/pharmacy/transfers/#{transfer.id}/receive", { items: [ { lot_id: lot.id, quantity_received: "4" } ] }
+    expect(response).to have_http_status(:forbidden)
+    expect(transfer.reload.status).to eq("sent")
+
+    sign_in_as(other_keeper)
+    json_post "/pharmacy/transfers/#{transfer.id}/receive", { items: [ { lot_id: lot.id, quantity_received: "4" } ] }
+    expect(response).to have_http_status(:ok)
+    expect(Pharmacy::Ledger.balance(location_id: other.id, lot_id: lot.id)).to eq(BigDecimal("4"))
+  end
+
+  it "Q40(1): quem não é almoxarife de base nenhuma não recebe base alguma; o almoxarife só de farmácia segue sem as bases" do
+    location
+    pharmacy_city!
+    farmacia = unit_location!
+    sign_in_as(pharmacy_staff!(farmacia, "stock_keeper"))
+    get "/pharmacy/locations"
+    expect(json_body["locations"].map { |row| row["id"] }).to eq([ farmacia.id ])
+
+    sign_in_as(staff_with("ninguem-#{SecureRandom.hex(2)}@cidade.gov.br", "stock_keeper"))
+    get "/pharmacy/locations"
+    expect(json_body.fetch("locations", [])).to be_empty
+  end
+
   it "a dispensação não lista o local: GET /pharmacy/locations traz o local só como estoque, e a dispensação nele → 403" do
     pharmacy_city!
     sign_in_as(keeper)

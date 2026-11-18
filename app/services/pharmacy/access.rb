@@ -33,28 +33,29 @@ module Pharmacy
 
     # Almoxarife do local central ATIVO: lê a posição de todos os locais. Central
     # desativado não dá leitura global a ninguém.
-    def central_keeper?(user)
-      central_ids = StockLocation.active_locations.where(kind: "central").select(:id)
-      linked = StockLocationStaff.active.where(user_id: user.id, role: "stock_keeper", stock_location_id: central_ids).exists?
-      linked && granted(user, %w[stock_keeper]).any?
-    end
+    def central_keeper?(user) = keeper_at?(user, "central")
 
     # Almoxarife da rede de frio ATIVA: lê a posição de todos os locais de vacina.
-    def cold_chain_keeper?(user)
-      central_ids = StockLocation.active_locations.where(kind: "cold_chain_central").select(:id)
-      linked = StockLocationStaff.active.where(user_id: user.id, role: "stock_keeper", stock_location_id: central_ids).exists?
-      linked && granted(user, %w[stock_keeper]).any?
-    end
+    def cold_chain_keeper?(user) = keeper_at?(user, "cold_chain_central")
+
+    # Almoxarife de algum local vector_control ATIVO (módulo 35a, Q40(1)): só
+    # LISTA as outras bases (destinos da transferência). Ler ou mexer no
+    # estoque delas segue pedindo vínculo (LocationReading não usa isto).
+    def vector_control_keeper?(user) = keeper_at?(user, Stock::Domain::VECTOR_CONTROL_LOCATION_KINDS)
 
     # Locais ativos de MEDICAMENTO (central e unidades) e da vigilância
     # ambiental (vector_control, módulo 35a, A-12) onde o usuário tem algum
-    # papel; o almoxarife do central vê todos os de medicamento ativos (o
-    # vector_control, só com vínculo nele). Ordem estável: nome, id. Os locais
-    # de vacina saem por /vaccination/my_locations.
+    # papel; o almoxarife do central vê todos os de medicamento ativos e o de
+    # uma base vector_control, todas as bases ativas (Q40(1)); os alheios saem
+    # com `roles: []` em /pharmacy/locations. Ordem estável: nome, id. Os
+    # locais de vacina saem por /vaccination/my_locations.
     def locations_for(user)
       scope = StockLocation.active_locations.where(kind: Catalog::STOCK_LOCATION_KINDS).includes(:health_unit).order(:name, :id)
       ids = roles_by_location(user).keys
-      return scope.where(kind: Catalog::LOCATION_KINDS).or(scope.where(id: ids)).to_a if central_keeper?(user)
+      kinds = []
+      kinds += Catalog::LOCATION_KINDS if central_keeper?(user)
+      kinds += Stock::Domain::VECTOR_CONTROL_LOCATION_KINDS if vector_control_keeper?(user)
+      return scope.where(kind: kinds).or(scope.where(id: ids)).to_a if kinds.any?
       return [] if ids.empty?
 
       scope.where(id: ids).to_a
@@ -80,6 +81,15 @@ module Pharmacy
       Set.new(Vaccination::Access.room_roles(user: user, room: room).map { |role| ROOM_ROLE_MAP.fetch(role) })
     end
     private_class_method :room_roles_at
+
+    # `stock_keeper` com vínculo ativo num local ATIVO do tipo (ou tipos) e a
+    # Membership ativa do papel. Local desativado não dá nada a ninguém.
+    def keeper_at?(user, kinds)
+      location_ids = StockLocation.active_locations.where(kind: kinds).select(:id)
+      linked = StockLocationStaff.active.where(user_id: user.id, role: "stock_keeper", stock_location_id: location_ids).exists?
+      linked && granted(user, %w[stock_keeper]).any?
+    end
+    private_class_method :keeper_at?
 
     # Dos papéis pedidos, os que o usuário tem como Membership ativa (a mesma
     # conta de User#has_role?, numa consulta só).

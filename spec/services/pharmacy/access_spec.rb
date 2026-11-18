@@ -141,6 +141,27 @@ RSpec.describe Pharmacy::Access do
       expect(described_class.locations_for(pharmacist)).to eq([ unit ])
     end
 
+    it "Q40(1): o almoxarife de um local vector_control ativo vê os outros vector_control ativos; sem Membership, só nada" do
+      own = vector_location!
+      other = vector_location!
+      closed = vector_location!
+      closed.update!(active: false)
+      keeper = vector_keeper!(own)
+      expect(described_class.locations_for(keeper)).to match_array([ own, other ])
+      expect(described_class.locations_for(keeper)).not_to include(central, unit)
+
+      keeper.memberships.active.find_by!(role: "stock_keeper").revoke!
+      expect(described_class.locations_for(keeper)).to be_empty
+    end
+
+    it "o almoxarife de local vector_control inativo não recebe os outros" do
+      own = vector_location!
+      other = vector_location!
+      keeper = vector_keeper!(own)
+      own.update!(active: false)
+      expect(described_class.locations_for(keeper)).not_to include(other)
+    end
+
     it "papel sem Membership não lista o local; sem vínculo, lista vazia" do
       pharmacist = pharmacy_staff!(unit, "pharmacist")
       pharmacist.memberships.active.find_by!(role: "pharmacist").revoke!
