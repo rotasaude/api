@@ -257,6 +257,38 @@ RSpec.describe VectorControlCrew, type: :model do
     expect(overdue_visit).to have_attributes(household_id: acacias.id, subject: "family_responsible", family_id: other.payload[:family].id)
   end
 
+  def liraa_visit = HomeVisit.find_by(client_uuid: described_class.client_uuid("curitiba", "home_visit", :liraa))
+
+  it "o responsável da única família ativa saiu do cadastro: o LIRAa vai como morador sem família (Q51), sem pessoa" do
+    ipe_1180 = household_at("1180")
+    registration = IndividualRegistration.active_registrations.find_by!(patient_id: patient(:sebastiao).id, household_id: ipe_1180.id)
+    exited = TerritoryRegistry::ExitRegistration.call(registration: registration, params: { "reason" => "moved", "on" => (today - 3).iso8601 },
+                                                      by: User.find_by!(email_address: "acs@curitiba.demo"))
+    expect(exited).to be_ok
+    families = ipe_1180.families.active_families.to_a
+    expect(families.size).to eq(1)
+    expect(TerritoryRegistry::Families.responsible_exited_ids(families)).to include(families.first.id)
+
+    expect { seed }.not_to raise_error
+    expect(liraa_visit).to have_attributes(household_id: ipe_1180.id, subject: "none", family_id: nil, patient_id: nil)
+    expect(liraa_visit.reasons).to include(34, 35, 36)
+    expect(LiraaDrawItem.find_by!(household_id: ipe_1180.id).status).to eq("inspected")
+    expect { seed }.not_to change(HomeVisit, :count)
+  end
+
+  it "sem pessoa válida para a visita, a semente pula só ela com um aviso sem dado de paciente" do
+    allow(described_class).to receive(:person_of).and_call_original
+    ipe_1180 = household_at("1180")
+    allow(described_class).to receive(:person_of).with(having_attributes(id: ipe_1180.id), anything).and_return(nil)
+
+    result = nil
+    expect { result = seed }.to output(/\[seeds\] controle vetorial: visita liraa não semeada/).to_stderr
+    expect(liraa_visit).to be_nil
+    expect(LiraaDrawItem.find_by!(household_id: ipe_1180.id).status).to eq("pending")
+    expect(result[:liraa]).to eq("drawn (census): 0/2 inspecionados")
+    expect(overdue_visit).to be_present
+  end
+
   it "o código do produto reescrito em outra caixa na tela não quebra a semente de novo" do
     seed
     product = VectorProduct.find_by!(code: "PPF05")

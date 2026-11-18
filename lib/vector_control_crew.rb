@@ -127,6 +127,9 @@ class VectorControlCrew
   CLOSED_DAYS = 2
   DENGUE = { patient: :daniela, suspected_days: 3, symptoms_days: 5 }.freeze
 
+  # Visita sem pessoa (imóvel não residencial; residencial sem família ativa, Q44).
+  NO_PERSON = { "subject" => "none" }.freeze
+
   NAMESPACE = Digest::UUID.uuid_v5(Digest::UUID::URL_NAMESPACE, "https://rotasaude.app/seeds/vector_control_crew")
 
   class << self
@@ -401,24 +404,57 @@ class VectorControlCrew
 
     # A visita do ACE pelo caminho real (HomeVisits::Record com o boletim). O
     # client_uuid fixo devolve a gravada (replayed) sem conferir de novo.
-    def visit!(slug, key, ace, team, household, time, report, usable:, family: nil, outcome: 1)
-      params = { "client_uuid" => client_uuid(slug, "home_visit", key), "team_id" => team.id, "occurred_at" => time.change(usec: 0).iso8601,
+    # `person`: o sujeito do corpo (person_of); nil = nenhum sujeito válido sem
+    # mudar dado → a visita não é semeada (aviso só com a chave do cenário).
+    def visit!(slug, key, ace, team, household, time, report, usable:, person: NO_PERSON, outcome: 1)
+      uuid = client_uuid(slug, "home_visit", key)
+      if person.nil?
+        recorded = HomeVisit.find_by(client_uuid: uuid)
+        warn "[seeds] controle vetorial: visita #{key} não semeada (domicílio sem sujeito válido para a visita)" unless recorded
+        return recorded
+      end
+      params = { "client_uuid" => uuid, "team_id" => team.id, "occurred_at" => time.change(usec: 0).iso8601,
                  "household_id" => household.id, "outcome" => outcome, "reasons" => [], "shared" => false, "vector_inspection" => report }
-      params.merge!(family ? { "subject" => "family_responsible", "family_id" => family.id } : { "subject" => "none" })
-      check!(HomeVisits::Record.call(params: params, by: ace, vector_control: usable), "visita #{key}").payload[:visit]
+      check!(HomeVisits::Record.call(params: params.merge(person), by: ace, vector_control: usable), "visita #{key}").payload[:visit]
     end
 
-    # A família ativa do responsável esperado. O dev deriva (provas manuais
-    # mudam famílias): sem ela, a família ativa mais antiga do domicílio
-    # (created_at, id); sem nenhuma, nil — a visita vai sem pessoa, que a Q44
-    # aceita com os motivos 34–37 só quando o domicílio não tem família ativa.
-    # Família com o responsável saído (family_without_responsible) não serve.
-    # Só lê: nunca muda as famílias.
-    def family_of(household, responsible)
+    # O sujeito da visita no domicílio residencial (o boletim deriva 34–37, os
+    # motivos do documento do responsável). O dev deriva (provas manuais mudam
+    # famílias e cadastros); só lê, nunca muda família nem cadastro:
+    #  1. a família ativa do responsável esperado; senão a ativa mais antiga
+    #     (created_at, id) — família com o responsável saído não serve
+    #     (family_without_responsible);
+    #  2. domicílio sem família ativa → sem pessoa (Q44);
+    #  3. só famílias com o responsável saído → o morador sem família ativa
+    #     dele ali (Q51: o Record converte para sem pessoa, sem paciente): o
+    #     responsável esperado, senão o cadastro ativo mais antigo do domicílio;
+    #  4. nenhum → nil (visit! pula).
+    def person_of(household, responsible)
       families = Family.active_families.where(household_id: household.id).order(:created_at, :id).to_a
+      return NO_PERSON if families.empty?
+
       exited = TerritoryRegistry::Families.responsible_exited_ids(families)
       usable = families.reject { |family| exited.include?(family.id) }
-      usable.detect { |family| family.responsible_patient_id == responsible.id } || usable.first
+      family = usable.detect { |row| row.responsible_patient_id == responsible.id } || usable.first
+      return { "subject" => "family_responsible", "family_id" => family.id } if family
+
+      residents = [ responsible ] + IndividualRegistration.active_registrations.where(household_id: household.id)
+                                                          .order(:created_at, :id).includes(:patient).map(&:patient)
+      resident = residents.uniq.detect { |patient| without_family_here?(household, patient) }
+      resident && { "subject" => "resident", "patient_id" => resident.id }
+    end
+
+    # Q51 como o HomeVisits::Record#family_visit decide: identificado, sem
+    # cadastro ativo em outro domicílio e sem família ativa dele neste.
+    def without_family_here?(household, patient)
+      return false if patient.unidentified || patient.no_cpf_reason == "unidentified"
+
+      registration = IndividualRegistration.active_registrations.find_by(patient_id: patient.id)
+      return true if registration.nil?
+      return false if registration.household_id && registration.household_id != household.id
+
+      own = registration.family_id && Family.find_by(id: registration.family_id)
+      !(own && !own.moved_out && own.household_id == household.id)
     end
 
     # O produto pelo código sem diferenciar caixa, como o stock! o acha (a
@@ -443,7 +479,7 @@ class VectorControlCrew
                  "measures" => [ { "method" => "mechanical" }, { "method" => "focal", "vector_product_id" => product.id, "charges" => 2 } ],
                  "samples" => [ { "number" => 1, "deposit_group" => "A2", "larvae_collected" => 6 } ] }
       visit!(slug, :overdue_li, ace, place[:team], household, time, report, usable: usable,
-             family: family_of(household, place[:people].fetch(:jose)))
+             person: person_of(household, place[:people].fetch(:jose)))
     end
 
     # Roteiro 3: a borracharia (PE) fechada há 2 dias — fica na pendência.
@@ -517,7 +553,7 @@ class VectorControlCrew
                    "measures" => [ { "method" => "mechanical" } ],
                    "samples" => [ { "number" => 1, "deposit_group" => "B", "larvae_collected" => 4 } ] }
         visit!(slug, :liraa, staff[:ace], place[:team], household, today_at(3.hours), report, usable: usable,
-               family: family_of(household, place[:people].fetch(:sebastiao)))
+               person: person_of(household, place[:people].fetch(:sebastiao)))
       end
       survey.reload
     end
@@ -579,7 +615,7 @@ class VectorControlCrew
                  "deposits" => [ { "group" => "A2", "existing" => 2, "with_water" => 2, "with_larvae" => 1, "eliminated" => 0, "treated" => 1 } ],
                  "measures" => [ { "method" => "focal", "vector_product_id" => product.id, "charges" => 3 } ] }
       visit!(slug, :transmission_block, ace, place[:team], household, today_at(1.hour), report, usable: usable,
-             family: family_of(household, place[:people].fetch(DENGUE[:patient])))
+             person: person_of(household, place[:people].fetch(DENGUE[:patient])))
     end
 
     # --- resumo -----------------------------------------------------------------
