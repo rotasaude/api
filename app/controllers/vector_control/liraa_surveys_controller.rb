@@ -15,6 +15,8 @@ module VectorControl
     LIMIT = 100
 
     before_action(only: %i[create update draw close]) { query_only! }
+    # A query antes de ler o levantamento (Task 17).
+    before_action(only: :items) { query_only!(:before) }
     before_action :coordinator!
     before_action :require_step_up!, only: %i[draw close]
     before_action :load_survey, only: %i[update draw close items]
@@ -58,8 +60,6 @@ module VectorControl
     end
 
     def items
-      return unless query_only!(:before)
-
       position = cursor
       return if performed?
 

@@ -8,7 +8,8 @@ module VectorControl
   class CyclesController < BaseController
     YEAR = /\A\d{4}\z/
 
-    before_action(only: %i[create update]) { query_only! }
+    # A query antes de ler o ciclo (Task 17): id que não existe com query também é 422.
+    before_action(only: %i[show create update]) { query_only! }
     before_action :coordinator!
     before_action :load_cycle, only: %i[show update]
 
@@ -24,8 +25,6 @@ module VectorControl
     end
 
     def show
-      return unless query_only!
-
       render json: Json.cycle_summary(@cycle, Neighborhood.active_neighborhoods.order(:name, :id).to_a)
     end
 

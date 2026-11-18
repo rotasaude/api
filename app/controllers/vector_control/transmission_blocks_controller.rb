@@ -19,7 +19,8 @@ module VectorControl
   class TransmissionBlocksController < BaseController
     LIMIT = 50
 
-    before_action(only: %i[confirm dismiss close add_cycle move]) { query_only! }
+    # A query antes de ler o bloqueio e o caso (Task 17).
+    before_action(only: %i[show confirm dismiss close add_cycle move address]) { query_only! }
     before_action :coordinator!
     before_action :require_step_up!, only: %i[confirm address]
     before_action :load_block, except: :index
@@ -43,8 +44,6 @@ module VectorControl
     end
 
     def show
-      return unless query_only!
-
       render json: Json.transmission_block(@block)
     end
 
@@ -81,8 +80,6 @@ module VectorControl
     end
 
     def address
-      return unless query_only!
-
       result = Blocks::CaseAddress.call(block: @block, block_case: @block_case, by: Current.user)
       return render_failure(result) if result.failure?
 
