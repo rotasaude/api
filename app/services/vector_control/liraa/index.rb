@@ -13,7 +13,8 @@
 #   - planned = itens do sorteio; substitutions = substitutos; missing =
 #     substituídos sem substituto (quarteirão com um a menos, W-13).
 # Levantamento fechado: o conjunto de inspeções congela em closed_at (criadas
-# até lá; a retirada depois do fechamento não tira a inspeção). Os resultados
+# até lá; a retirada depois do fechamento não tira a inspeção): o retrato
+# oficial do levantamento (Q30). Os resultados
 # de laboratório das amostras dessas inspeções seguem valendo.
 module VectorControl
   module Liraa

@@ -16,8 +16,9 @@
 #     e nenhuma outra válida que o muda o usa (o substituto, inspecionado ou
 #     não, fica como está, W-13). Levantamento já fechado: o item fica (o
 #     trigger não deixa mudá-lo) e a retirada passa assim mesmo (a inspeção
-#     fica marcada pela visita retirada; o Liraa::Index do fechado segue
-#     congelado em closed_at).
+#     fica marcada pela visita retirada; o Liraa::Index do fechado é o
+#     retrato oficial em closed_at, Q30: a visita retirada depois segue
+#     contando).
 #   - o estorno (Task 7; A-1, W-5, W-6): cada `vector_application` das
 #     medidas ganha um `vector_application_reversal` (positivo) no mesmo lote e
 #     local, uma vez (medida já estornada fica; a segunda retirada nem chega

@@ -135,5 +135,30 @@ RSpec.describe VectorControl::Liraa::Index, type: :model do
       inspect!(b, hour: 11)
       expect(described_class.for(survey)).to eq(before)
     end
+
+    # Q30 (coordenação): o índice do levantamento fechado é o retrato oficial
+    # em closed_at. Pelo caminho real (Liraa::Close e HomeVisits::Withdraw, com
+    # o WithdrawInspection): a visita retirada depois do fechamento segue
+    # contando, o item fica e inspecionados e positivos não mudam.
+    it "Q30: a visita retirada depois do fechamento segue no índice; inspecionados e positivos não mudam" do
+      a, b, = item_list
+      positive = inspect!(a)
+      sample!(positive, "A2", aegypti: 2)
+      sample!(inspect!(b), "B", aegypti: 0)
+      a.update!(status: "inspected", version: a.version + 1)
+      b.update!(status: "inspected", version: b.version + 1)
+      expect(VectorControl::Liraa::Close.call(survey: survey, by: endemic_coordinator!)).to be_ok
+      before = described_class.for(survey.reload)
+      expect(before[:strata].first).to include(inspected: 2, positive_households: 1, positive_containers: 1, iip: "50.0", ib: "50.0")
+      sleep 0.01 # a retirada depois do closed_at
+
+      withdrawal = HomeVisits::Withdraw.call(positive.home_visit, by: day.user, expected_state: "recorded",
+                                             reason: "registrada no imóvel errado")
+
+      expect(withdrawal).to be_ok
+      expect(positive.home_visit.reload.withdrawn_at).to be > survey.closed_at
+      expect(a.reload).to have_attributes(status: "inspected", version: 2)
+      expect(described_class.for(survey.reload)).to eq(before)
+    end
   end
 end
