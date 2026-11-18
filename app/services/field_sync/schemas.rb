@@ -6,9 +6,8 @@
 # `#/$defs/item`, Task 20). Os erros saem só com ponteiro e palavra-chave do
 # esquema, nunca com o valor (o corpo traz pessoa, motivo e medida).
 #
-# Os SHA são os da v1.3.0 do rotasaude/contracts (módulo 35a, ADR 0054; §13),
-# ainda sem tag: o worktree contracts-mod35a no commit 2b1c24c. A Task 18 do
-# plano do api prende os da tag field-sync-v1.3.0.
+# Os SHA são os da tag field-sync-v1.3.0 do rotasaude/contracts (módulo 35a,
+# ADR 0054; §13), conferidos na tag publicada em 2026-11-18 (contracts c022e80).
 module FieldSync
   module Schemas
     DIR = Rails.root.join("config/field_sync")
