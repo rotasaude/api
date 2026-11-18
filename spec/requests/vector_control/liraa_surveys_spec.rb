@@ -100,8 +100,63 @@ RSpec.describe "Vigilância ambiental — LIRAa", type: :request do
     expect(LiraaSurvey.find(id).status).to eq("draft")
 
     sign_in_as(vector_lab!)
-    get "/vector_control/liraa_surveys"
+    json_post "/vector_control/liraa_surveys", body
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+  end
+
+  # Q31: a lista abre a quem lê o relatório liraa (o filtro survey_id:
+  # coordenação, municipal_admin e vector_lab), pela mesma regra do relatório
+  # (Access.reads_report?). O resto segue só da coordenação.
+  it "Q31: vector_lab e municipal_admin listam os levantamentos; o resto segue da coordenação" do
+    homes = liraa_households!(block, 1, micro_area: area)
+    survey = LiraaSurvey.create!(name: "LIRAa outubro", starts_on: today, ends_on: today + 6)
+    stratum = LiraaStratum.create!(liraa_survey: survey, name: "Estrato 1", mode: "census")
+    LiraaDrawItem.create!(liraa_stratum: stratum, city_block: block, household: homes.first, position: 1)
+    survey.update!(status: "drawn", drawn_at: Time.current, parameters_version: 0)
+    sign_in_as(coordinator)
+    get "/vector_control/liraa_surveys"
+    listed = json_body
+
+    [ vector_lab!, municipal_admin! ].each do |reader|
+      sign_in_as(reader)
+      get "/vector_control/liraa_surveys"
+      expect([ response.status, json_body ]).to eq([ 200, listed ])
+      expect(json_body["items"].map { |row| row["id"] }).to eq([ survey.id ])
+      get "/vector_control/liraa_surveys", params: { status: "drawn" }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+    end
+
+    # A coordenação antes do step-up: sem papel é 403, nunca 401 mfa_required.
+    sign_in_as(municipal_admin!)
+    json_post "/vector_control/liraa_surveys", body
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    json_patch "/vector_control/liraa_surveys/#{survey.id}", name: "Outro"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    json_post "/vector_control/liraa_surveys/#{survey.id}/draw", {}
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    json_post "/vector_control/liraa_surveys/#{survey.id}/close", {}
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    get "/vector_control/liraa_surveys/#{survey.id}/items"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    expect(LiraaSurvey.sole).to have_attributes(name: "LIRAa outubro", status: "drawn")
+  end
+
+  it "Q31: ACE (515140) e TACS (322255) não listam os levantamentos (403 missing_role)" do
+    team = registry_team!
+    tacs = field_agent!(cbo: "322255", team: team)
+    [ endemic_agent!(team: team), tacs ].each do |user|
+      sign_in_as(user)
+      get "/vector_control/liraa_surveys"
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    end
+  end
+
+  it "Q31: desligada, a lista do vector_lab → 403 feature_disabled" do
+    Platform::Features.set!(city: city, key: VectorControl::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    sign_in_as(vector_lab!)
+    get "/vector_control/liraa_surveys"
+    expect([ response.status, json_body["error"] ]).to eq([ 403, "feature_disabled" ])
   end
 
   it "PATCH troca a lista de estratos na ordem dada; 404 de id desconhecido" do

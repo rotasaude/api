@@ -1,6 +1,8 @@
 # /vector_control/liraa_surveys (módulo 35a, ADR 0054; contrato §7, §12; Q8,
 # Q9): o LIRAa da coordenação (403 missing_role para os outros).
-#   - GET /liraa_surveys → `{ items }` de LiraaSurvey, mais recente primeiro;
+#   - GET /liraa_surveys → `{ items }` de LiraaSurvey, mais recente primeiro.
+#     Q31: também para quem lê o relatório liraa (o filtro survey_id: o
+#     municipal_admin e o vector_lab), pela regra dele (Access.reads_report?);
 #   - POST /liraa_surveys e PATCH /liraa_surveys/:id → LiraaSurvey
 #     (Liraa::SaveSurvey; fora do rascunho → 409 survey_not_draft);
 #   - POST /liraa_surveys/:id/draw (step-up; Liraa::Draw) e /close (step-up;
@@ -17,7 +19,8 @@ module VectorControl
     before_action(only: %i[create update draw close]) { query_only! }
     # A query antes de ler o levantamento (Task 17).
     before_action(only: :items) { query_only!(:before) }
-    before_action :coordinator!
+    before_action :coordinator!, except: :index
+    before_action(only: :index) { report_reader!("liraa") }
     before_action :require_step_up!, only: %i[draw close]
     before_action :load_survey, only: %i[update draw close items]
 

@@ -114,4 +114,45 @@ RSpec.describe "Vigilância ambiental — ciclos", type: :request do
     get "/vector_control/cycles/#{cycle.id}"
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
   end
+
+  # Q31: a lista abre a quem lê situations ou strategic_points (o filtro
+  # cycle_id do relatório: coordenação e municipal_admin), pela mesma regra do
+  # relatório (Access.reads_report?). O resto segue só da coordenação.
+  it "Q31: municipal_admin lista os ciclos; show, POST e PATCH seguem da coordenação" do
+    cycle = VectorCycle.create!(year: year, number: 1, starts_on: Date.new(year, 1, 5), ends_on: Date.new(year, 2, 28))
+    sign_in_as(municipal_admin!)
+
+    get "/vector_control/cycles", params: { year: year }
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to eq("items" => [ { "id" => cycle.id, "year" => year, "number" => 1, "starts_on" => "#{year}-01-05",
+                                           "ends_on" => "#{year}-02-28" } ])
+    get "/vector_control/cycles", params: { owner: "x" }
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+
+    get "/vector_control/cycles/#{cycle.id}"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    create_cycle(year: year, number: 2, starts_on: "#{year}-03-01", ends_on: "#{year}-04-30")
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    json_patch "/vector_control/cycles/#{cycle.id}", ends_on: "#{year}-02-20"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    expect(VectorCycle.sole).to have_attributes(ends_on: Date.new(year, 2, 28), version: 1)
+  end
+
+  it "Q31: vector_lab, ACE (515140) e TACS (322255) não listam os ciclos (403 missing_role)" do
+    team = registry_team!
+    tacs = field_agent!(cbo: "322255", team: team)
+    [ vector_lab!, endemic_agent!(team: team), tacs ].each do |user|
+      sign_in_as(user)
+      get "/vector_control/cycles"
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    end
+  end
+
+  it "Q31: desligada, a lista do municipal_admin → 403 feature_disabled" do
+    Platform::Features.set!(city: city, key: VectorControl::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    sign_in_as(municipal_admin!)
+    get "/vector_control/cycles"
+    expect([ response.status, json_body["error"] ]).to eq([ 403, "feature_disabled" ])
+  end
 end

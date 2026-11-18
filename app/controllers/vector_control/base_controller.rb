@@ -75,6 +75,16 @@ module VectorControl
       [ shown, rows.size > limit ? CareLines::Cursor.encode(shown.last.public_send(column), shown.last.id) : nil ]
     end
 
+    # Quem lê algum dos relatórios `names` (Access.reads_report?, a regra do
+    # ReportsController); senão 403 missing_role (false). Q31: as listas que
+    # preenchem o filtro do relatório.
+    def report_reader!(*names)
+      return true if names.any? { |name| Access.reads_report?(Current.user, name) }
+
+      forbid
+      false
+    end
+
     # Só a endemic_coordinator; senão 403 missing_role (false).
     def coordinator!
       return true if Access.coordinator?(Current.user)

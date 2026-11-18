@@ -1,6 +1,8 @@
 # /vector_control/cycles (módulo 35a, ADR 0054; contrato §5, §12; Q8, D-6):
 # ciclos de trabalho da coordenação (403 missing_role para os outros).
-#   - GET /cycles?year= → `{ items }` de VectorCycle, por (ano, número);
+#   - GET /cycles?year= → `{ items }` de VectorCycle, por (ano, número). Q31:
+#     também para quem lê situations ou strategic_points (o filtro cycle_id:
+#     o municipal_admin), pela regra do relatório (Access.reads_report?);
 #   - POST /cycles e PATCH /cycles/:id → VectorCycle (VectorControl::SaveCycle);
 #   - GET /cycles/:id → CycleSummary: o ciclo e, por bairro ativo (por nome),
 #     os números do VectorControl::CycleStats. Só contagens: sem trilha.
@@ -10,7 +12,8 @@ module VectorControl
 
     # A query antes de ler o ciclo (Task 17): id que não existe com query também é 422.
     before_action(only: %i[show create update]) { query_only! }
-    before_action :coordinator!
+    before_action :coordinator!, except: :index
+    before_action(only: :index) { report_reader!("situations", "strategic_points") }
     before_action :load_cycle, only: %i[show update]
 
     def index

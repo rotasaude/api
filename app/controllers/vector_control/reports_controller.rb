@@ -3,7 +3,7 @@
 # (`.csv`, VectorControl::Csv) e, só o `liraa`, em PDF (`.pdf`,
 # Liraa::Pdf). Nome desconhecido, outra extensão ou `.pdf` de outro → 404.
 # Leem a coordenação e o municipal_admin (todos) e o vector_lab (só
-# Reports::LAB_REPORTS); os outros → 403 missing_role. A query só com as
+# Reports::LAB_REPORTS; Access.reads_report?); os outros → 403 missing_role. A query só com as
 # chaves do relatório (Reports::FILTERS); filtro inválido → 422
 # invalid_request com path. CSV e PDF com Content-Disposition attachment, sem
 # cache e sem pessoa no nome do arquivo. Só contagens: sem trilha.
@@ -14,7 +14,7 @@ module VectorControl
     def show
       name = params[:name]
       return not_found unless Catalog::REPORTS.include?(name)
-      return forbid unless readable?(name)
+      return forbid unless Access.reads_report?(Current.user, name)
 
       format = params[:format]
       return not_found unless format.nil? || FORMATS.include?(format)
@@ -35,13 +35,6 @@ module VectorControl
     end
 
     private
-
-    def readable?(name)
-      user = Current.user
-      return true if Access.coordinator?(user) || user&.has_role?("municipal_admin")
-
-      Access.lab?(user) && Reports::LAB_REPORTS.include?(name)
-    end
 
     def filename(name, extension) = "#{name}-#{Time.zone.today.iso8601}.#{extension}"
 

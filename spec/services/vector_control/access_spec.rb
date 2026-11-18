@@ -47,4 +47,27 @@ RSpec.describe VectorControl::Access, type: :model do
     expect(described_class.coordinator?(coordinator)).to be(false)
     expect(described_class.reader?(coordinator)).to be(false)
   end
+
+  # Q31: a regra de leitura dos relatórios (ReportsController) e das listas que
+  # preenchem o filtro deles (ciclos, levantamentos LIRAa).
+  it "reads_report?: coordenação e municipal_admin leem todos; o laboratório só LAB_REPORTS; o resto nenhum" do
+    coordinator = endemic_coordinator!
+    admin = municipal_admin!
+    lab = vector_lab!
+    viewer = staff_with("leitor-#{SecureRandom.hex(4)}@cidade.gov.br", "viewer")
+    team = registry_team!
+    ace = endemic_agent!(team: team)
+    tacs = field_agent!(cbo: "322255", team: team)
+
+    VectorControl::Catalog::REPORTS.each do |name|
+      readers = [ coordinator, admin, lab, viewer, ace, tacs, nil ].map { |user| described_class.reads_report?(user, name) }
+      lab_reads = VectorControl::Reports::LAB_REPORTS.include?(name)
+      expect(readers).to eq([ true, true, lab_reads, false, false, false, false ]), name
+    end
+    expect(VectorControl::Reports::LAB_REPORTS).to contain_exactly("ovitraps", "liraa")
+    expect(%w[situations strategic_points].map { |name| described_class.reads_report?(lab, name) }).to eq([ false, false ])
+
+    admin.memberships.active.find_by!(role: "municipal_admin").revoke!
+    expect(described_class.reads_report?(admin, "situations")).to be(false)
+  end
 end

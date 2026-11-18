@@ -4,6 +4,9 @@
 #   - coordinator? → endemic_coordinator;
 #   - lab? → vector_lab;
 #   - reader? → um dos dois, ou municipal_admin (lê os relatórios, não escreve);
+#   - reads_report?(user, name) → a coordenação e o municipal_admin leem todos
+#     os relatórios; o vector_lab só Reports::LAB_REPORTS (Q31: a mesma regra
+#     abre as listas que preenchem o filtro do relatório);
 #   - field_agent?(user, team) → o agente de combate às endemias (CBO 515140)
 #     com papel :field na equipe (HomeVisits::Access: Tabela 7 não ACS, vínculo
 #     ativo em equipe ativa 70/76). O escopo de microárea é o da visita
@@ -19,6 +22,12 @@ module VectorControl
     def coordinator?(user) = role?(user, COORDINATOR)
 
     def lab?(user) = role?(user, LAB)
+
+    def reads_report?(user, name)
+      return true if coordinator?(user) || role?(user, "municipal_admin")
+
+      lab?(user) && Reports::LAB_REPORTS.include?(name)
+    end
 
     def reader?(user) = !user.nil? && user.memberships.active.exists?(role: READER_ROLES)
 
