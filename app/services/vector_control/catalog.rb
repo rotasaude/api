@@ -46,6 +46,9 @@ module VectorControl
     # Q17: o intervalo dos imóveis do LIRAa é round(1 ÷ fração) do modo
     # (Liraa::Sample.interval), nunca constante: sem HOUSEHOLD_INTERVAL.
     BLOCK_STATUSES = %w[proposed active closed dismissed].freeze
+    # Q38: o rótulo de cada grupo de TransmissionBlock::DISEASE_GROUPS (o
+    # catalog_spec exige um por código, sem sobra). O módulo 25 não tem grupo.
+    DISEASE_GROUP_LABELS = { "arbovirus" => "Arboviroses (dengue, chikungunya, zika)" }.freeze
     UBV_NUMBERS = (1..3)
     # Classe do imóvel no boletim pelo tipo de imóvel do 24a
     # (TerritoryRegistry::Catalog::PROPERTY_TYPES, todos, sem sobra).

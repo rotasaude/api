@@ -1037,6 +1037,7 @@ Rails.application.routes.draw do
   scope "/vector_control", module: :vector_control, as: :vector_control do
     member_id = { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
     get    "domains",                         to: "domains#show"
+    get    "diseases",                        to: "diseases#index"
     get    "blocks",                          to: "blocks#index"
     post   "blocks",                          to: "blocks#create"
     patch  "blocks/:id",                      to: "blocks#update", constraints: member_id

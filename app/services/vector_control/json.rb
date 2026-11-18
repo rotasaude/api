@@ -44,6 +44,9 @@
 #     as cadências, os quatro parâmetros vigentes e Catalog::LIMITS. Um
 #     serializador só: GET /vector_control/domains e a referência do field-sync
 #     (Task 15) chamam este método.
+#   - diseases → VectorControlDiseases (Q38): `items` de
+#     Surveillance::Diseases.all (código e nome, na ordem do módulo 25) e
+#     `groups` de Catalog::DISEASE_GROUP_LABELS. Só rótulo, sem pessoa.
 module VectorControl
   module Json
     DOMAINS_PATH = Rails.root.join("config/vector_control/domains.yml")
@@ -230,6 +233,13 @@ module VectorControl
         parameters: DOMAIN_PARAMETERS.to_h { |key| [ key.to_sym, values.fetch(key) ] },
         limits: Catalog::LIMITS
       )
+    end
+
+    # Q38: `diseases` = a lista da cidade do módulo 25, na ordem dela, só com
+    # código e nome; `groups` = Catalog::DISEASE_GROUP_LABELS.
+    def diseases(diseases)
+      { items: diseases.map { |disease| { code: disease.code, name: disease.name } },
+        groups: Catalog::DISEASE_GROUP_LABELS.map { |code, label| { code: code, label: label } } }
     end
 
     def cycle(cycle)

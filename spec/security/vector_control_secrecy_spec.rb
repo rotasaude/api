@@ -239,6 +239,7 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       # Coordenação: quarteirões, vizinhos, imóveis.
       stepped_up!(coordinator)
       req.(:get, "#{base}/domains")
+      ids[:diseases] = req.(:get, "#{base}/diseases")
       ids[:b1] = req.(:post, "#{base}/blocks", { neighborhood_id: neighborhood.id, number: "001" }).fetch("id")
       ids[:b2] = req.(:post, "#{base}/blocks", { neighborhood_id: neighborhood.id, number: "002" }).fetch("id")
       ids[:b3] = req.(:post, "#{base}/blocks", { neighborhood_id: neighborhood.id, number: "003" }).fetch("id")
@@ -475,6 +476,11 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
         .to eq([ %w[home_visit accepted], %w[ovitrap_installation accepted], %w[ovitrap_collection accepted], %w[ovitrap_collection accepted] ])
       expect(ids[:changes]).to include("reset" => false)
       expect(scenario[:refusals].map { |r| r[:label] }).to eq(%i[stratum_out_of_range inconsistent_report damaged_count short_note])
+      # Q38: os rótulos das doenças, sem dado de pessoa (só código e nome; grupo e rótulo).
+      expect(ids[:diseases].keys).to eq(%w[items groups])
+      expect(ids[:diseases]["items"]).to include("code" => "dengue", "name" => "Dengue (casos)")
+      expect(ids[:diseases]["items"].map(&:keys).uniq).to eq([ %w[code name] ])
+      expect(ids[:diseases]["groups"].map(&:keys).uniq).to eq([ %w[code label] ])
 
       # O endereço do caso: a única resposta com o endereço da paciente, sem cache.
       expect(ids[:address]).to eq("patient_address" => "#{secrecy::PATIENT[:street]}, #{secrecy::PATIENT[:number]}, #{secrecy::PATIENT[:district]}",
@@ -683,8 +689,8 @@ RSpec.describe "Sigilo da vigilância ambiental (35a) — query de toda rota", t
     end.uniq
   end
 
-  it "o módulo tem as 51 rotas do contrato" do
-    expect(module_routes.size).to eq(51)
+  it "o módulo tem as 52 rotas do contrato (Q38: GET /vector_control/diseases)" do
+    expect(module_routes.size).to eq(52)
   end
 
   it "toda rota recusa cpf e note na query (422 invalid_request, sem o valor)" do

@@ -39,6 +39,14 @@ RSpec.describe VectorControl::Catalog, type: :model do
     expect(described_class::SITUATIONS).to eq(AddVectorControlTerritory::SITUATIONS)
   end
 
+  # Q38: grupo novo em TransmissionBlock::DISEASE_GROUPS sem rótulo falha aqui.
+  it "DISEASE_GROUP_LABELS rotula cada código de TransmissionBlock::DISEASE_GROUPS, sem sobra" do
+    labels = described_class::DISEASE_GROUP_LABELS
+    expect(labels.keys).to eq(TransmissionBlock::DISEASE_GROUPS)
+    expect(labels.values).to all(be_a(String).and(be_present))
+    expect(labels["arbovirus"]).to eq("Arboviroses (dengue, chikungunya, zika)")
+  end
+
   it "o filtro de log mascara count_note, result_note, closed_note, dismissed_reason, reconciliation_note" do
     filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
     keys = %w[count_note result_note closed_note dismissed_reason reconciliation_note]
