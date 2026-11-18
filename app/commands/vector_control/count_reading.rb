@@ -13,6 +13,16 @@
 #     count_note. A comparação é em TEXTO CLARO: a cifra não determinística
 #     muda a cada gravação, então o trigger (que compara a cifra) não pega a
 #     repetição.
+# Concorrência otimista (Q36, docs e7720b6; a forma do SaveParameters/Q34):
+# a correção leva `expected_version`, a version da leitura que a tela leu.
+# Fora de inteiro >= 0 → invalid_request path expected_version (antes da
+# trava). Sob a trava, numa correção: ausente → expected_version_required,
+# diferente da version da linha travada → reading_changed (409), nada
+# gravado e nenhum evento; a tela relê. Na primeira contagem não há versão a
+# conferir: mandá-la → invalid_request path expected_version (a mesma regra
+# da nota na primeira contagem: nada some calado). Esta conferência vem antes
+# das recusas do conteúdo da correção. Toda escrita da leitura sobe a
+# version (instalação = 1, coleta, contagem e correção = + 1).
 # Grava egg_count, counted_at, quem contou, a nota (cifrada com a chave da
 # cidade) e version + 1; `ovitrap_reading.counted` com `corrected`. Contagem
 # ≥ ovitrap_alert_eggs (Parameters.current) abre a tarefa
@@ -30,20 +40,29 @@ module VectorControl
     module_function
 
     # -> Result.ok(reading:, task:) (task = a tarefa aberta agora, ou nil) | fail(<código>, details: { path: })
-    def call(reading:, egg_count:, note:, by:, now: Time.current)
+    #    | fail(:expected_version_required, details: { path: "expected_version" }) | fail(:reading_changed)
+    def call(reading:, egg_count:, note:, by:, expected_version: nil, now: Time.current)
       return Result.fail(:missing_role) unless Access.coordinator?(by) || Access.lab?(by)
       return invalid("egg_count") unless egg_count.is_a?(Integer) && Catalog::EGGS.cover?(egg_count)
       return invalid("count_note") unless note.nil? || note.is_a?(String)
+      return invalid("expected_version") unless expected_version.nil? || (expected_version.is_a?(Integer) && expected_version >= 0)
 
-      OvitrapReading.transaction(requires_new: true) { write(reading, egg_count, note&.strip, by, now) }
+      OvitrapReading.transaction(requires_new: true) { write(reading, egg_count, note&.strip, by, now, expected_version) }
     end
 
-    def write(reading, egg_count, note, by, now)
+    def write(reading, egg_count, note, by, now, expected_version)
       ovitrap = Ovitrap.lock.find(reading.ovitrap_id)
       reading.lock!
       return Result.fail(:reading_not_countable) unless reading.collected_on && reading.condition == "ok"
 
       corrected = !reading.egg_count.nil?
+      if corrected
+        return Result.fail(:expected_version_required, details: { path: "expected_version" }) if expected_version.nil?
+        return Result.fail(:reading_changed) unless expected_version == reading.version
+      elsif !expected_version.nil?
+        return invalid("expected_version")
+      end
+
       refusal = corrected ? correction_refusal(reading, egg_count, note) : (note.nil? ? nil : "count_note")
       return invalid(refusal) if refusal
 

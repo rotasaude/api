@@ -11,14 +11,18 @@ require "base64"
 #     chave de ordem do último item (base64url de "pending|dia|label" ou
 #     "done|instante|id"); adulterado ou da outra aba → 422 invalid_cursor;
 #   - POST /samples/:id/result `{ examined_larvae, aegypti_larvae,
-#     albopictus_larvae, result_note? }` (VectorControl::RecordSampleResult)
-#     → VectorSample. Amostra inexistente ou de visita retirada → 404.
+#     albopictus_larvae, result_note?, expected_version? }`
+#     (VectorControl::RecordSampleResult) → VectorSample. Amostra inexistente
+#     ou de visita retirada → 404. Q36: a correção leva expected_version (a
+#     version lida): ausente → 422 expected_version_required, divergente →
+#     409 sample_changed; no primeiro resultado → 422 invalid_request path
+#     expected_version.
 # Sem imóvel nem pessoa: a etiqueta, o dia, o grupo e o quarteirão. A nota
 # nunca sai; `result.corrected` diz se houve correção.
 module VectorControl
   class SamplesController < BaseController
     STATES = %w[pending done].freeze
-    BODY_KEYS = %w[examined_larvae aegypti_larvae albopictus_larvae result_note].freeze
+    BODY_KEYS = %w[examined_larvae aegypti_larvae albopictus_larvae result_note expected_version].freeze
     LIMIT = 50
     CURSORS = {
       "pending" => /\Apending\|(\d{4}-\d{2}-\d{2})\|([0-9A-F]{8}-\d{2})\z/,

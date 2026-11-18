@@ -33,7 +33,8 @@ RSpec.describe VectorControl::CountReading, type: :model do
     @readings ||= [ today - 10, today - 5, today ].map { |day| ovitrap_collected!(ovitrap, agent: agent, collected_on: day) }
   end
 
-  def count(reading, eggs, note: nil, by: lab) = described_class.call(reading: reading, egg_count: eggs, note: note, by: by)
+  def count(reading, eggs, note: nil, by: lab, expected_version: nil) =
+    described_class.call(reading: reading, egg_count: eggs, note: note, by: by, expected_version: expected_version)
   def refusal(result) = [ result.reason, result.details ]
   def opened = DomainEvent.where(name: "vector_task.opened")
 
@@ -64,7 +65,7 @@ RSpec.describe VectorControl::CountReading, type: :model do
     expect(opened.count).to eq(1)
 
     task.update!(state: "done", closed_by_user: endemic_coordinator!, closed_note: "Quarteirões vistoriados")
-    fixed = count(third, 310, note: "Recontagem na lupa estereoscópica")
+    fixed = count(third, 310, note: "Recontagem na lupa estereoscópica", expected_version: third.reload.version)
     expect(fixed.payload[:task]).to have_attributes(ovitrap_reading_id: third.id, state: "open")
     expect(opened.count).to eq(2)
   end
@@ -83,17 +84,52 @@ RSpec.describe VectorControl::CountReading, type: :model do
     first = readings.first
     expect(refusal(count(first, 0, note: "Contagem inicial anotada"))).to eq([ :invalid_request, { path: "count_note" } ])
     expect(count(first, 0)).to be_ok
+    expect(first.reload.version).to eq(3)
 
-    expect(refusal(count(first, 4))).to eq([ :invalid_request, { path: "count_note" } ])
-    expect(refusal(count(first, 4, note: "curta"))).to eq([ :invalid_request, { path: "count_note" } ])
-    expect(refusal(count(first, 4, note: "x" * 501))).to eq([ :invalid_request, { path: "count_note" } ])
-    expect(count(first, 4, note: "  Recontagem com lupa estereoscópica  ")).to be_ok
+    expect(refusal(count(first, 4, expected_version: 3))).to eq([ :invalid_request, { path: "count_note" } ])
+    expect(refusal(count(first, 4, note: "curta", expected_version: 3))).to eq([ :invalid_request, { path: "count_note" } ])
+    expect(refusal(count(first, 4, note: "x" * 501, expected_version: 3))).to eq([ :invalid_request, { path: "count_note" } ])
+    expect(count(first, 4, note: "  Recontagem com lupa estereoscópica  ", expected_version: 3)).to be_ok
     expect(first.reload).to have_attributes(egg_count: 4, count_note: "Recontagem com lupa estereoscópica")
     event = DomainEvent.where(name: "ovitrap_reading.counted").order(:created_at, :id).last
     expect(event.payload).to eq("ovitrap_reading_id" => first.id, "user_id" => lab.id, "corrected" => true)
 
-    expect(refusal(count(first, 5, note: "Recontagem com lupa estereoscópica"))).to eq([ :invalid_request, { path: "count_note" } ])
-    expect(refusal(count(first, 4, note: "Só a nota mudou nesta correção"))).to eq([ :invalid_request, { path: "egg_count" } ])
+    expect(refusal(count(first, 5, note: "Recontagem com lupa estereoscópica", expected_version: 4))).to eq([ :invalid_request, { path: "count_note" } ])
+    expect(refusal(count(first, 4, note: "Só a nota mudou nesta correção", expected_version: 4))).to eq([ :invalid_request, { path: "egg_count" } ])
     expect(first.reload).to have_attributes(egg_count: 4, version: 4)
+  end
+
+  # Q36 (docs e7720b6): a correção leva a versão lida; a primeira contagem não.
+  it "duas correções com a mesma expected_version: a segunda → reading_changed, nada gravado e nenhum evento" do
+    first = readings.first
+    expect(count(first, 0)).to be_ok
+    read = first.reload.version
+    expect(count(first, 4, note: "Recontagem com lupa estereoscópica", expected_version: read)).to be_ok
+    events = DomainEvent.where(name: "ovitrap_reading.counted").count
+
+    stale = count(first, 7, note: "Outra recontagem feita na bancada", expected_version: read, by: endemic_coordinator!)
+    expect(refusal(stale)).to eq([ :reading_changed, {} ])
+    expect(first.reload).to have_attributes(egg_count: 4, count_note: "Recontagem com lupa estereoscópica", counted_by_user_id: lab.id,
+                                            version: read + 1)
+    expect(DomainEvent.where(name: "ovitrap_reading.counted").count).to eq(events)
+  end
+
+  it "correção sem expected_version → expected_version_required; fora de inteiro >= 0 → invalid_request; nada gravado" do
+    first = readings.first
+    expect(count(first, 0)).to be_ok
+    note = "Recontagem com lupa estereoscópica"
+    expect(refusal(count(first, 4, note: note))).to eq([ :expected_version_required, { path: "expected_version" } ])
+    expect(refusal(count(first, 4, note: note, expected_version: "3"))).to eq([ :invalid_request, { path: "expected_version" } ])
+    expect(refusal(count(first, 4, note: note, expected_version: -1))).to eq([ :invalid_request, { path: "expected_version" } ])
+    expect(refusal(count(first, 4, note: note, expected_version: 3.0))).to eq([ :invalid_request, { path: "expected_version" } ])
+    expect(first.reload).to have_attributes(egg_count: 0, count_note: nil, version: 3)
+  end
+
+  it "primeira contagem sem versão passa; com expected_version → invalid_request path expected_version (como a nota)" do
+    first, second = readings
+    expect(refusal(count(first, 2, expected_version: first.reload.version))).to eq([ :invalid_request, { path: "expected_version" } ])
+    expect(first.reload).to have_attributes(egg_count: nil, version: 2)
+    expect(count(second, 2)).to be_ok
+    expect(second.reload).to have_attributes(egg_count: 2, version: 3)
   end
 end

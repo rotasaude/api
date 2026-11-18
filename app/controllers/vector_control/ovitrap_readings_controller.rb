@@ -4,8 +4,11 @@
 #   - GET /ovitrap_readings?state=to_count|counted&before= (padrão to_count):
 #     `{ items, next_before }` de OvitrapReading, mais recente primeiro.
 #     to_count = coletada boa sem contagem; counted = com contagem;
-#   - POST /ovitrap_readings/:id/count `{ egg_count, count_note? }`
-#     (VectorControl::CountReading) → OvitrapReading.
+#   - POST /ovitrap_readings/:id/count `{ egg_count, count_note?,
+#     expected_version? }` (VectorControl::CountReading) → OvitrapReading.
+#     Q36: a correção leva expected_version (a version lida): ausente → 422
+#     expected_version_required, divergente → 409 reading_changed; na
+#     primeira contagem → 422 invalid_request path expected_version.
 # Sem domicílio nem pessoa: a ovitrampa, o quarteirão e o bairro. A nota nunca
 # sai; `corrected` diz se houve correção.
 module VectorControl
@@ -34,10 +37,11 @@ module VectorControl
       reading = OvitrapReading.find_by(id: params[:id])
       return not_found unless reading
 
-      unknown = (body.keys - %w[egg_count count_note]).first
+      unknown = (body.keys - %w[egg_count count_note expected_version]).first
       return render_refusal("invalid_request", path: unknown) if unknown
 
-      result = CountReading.call(reading: reading, egg_count: body_param("egg_count"), note: body_param("count_note"), by: Current.user)
+      result = CountReading.call(reading: reading, egg_count: body_param("egg_count"), note: body_param("count_note"), by: Current.user,
+                                 expected_version: body_param("expected_version"))
       return render_failure(result) if result.failure?
 
       render json: Json.ovitrap_readings([ result.payload[:reading] ]).sole

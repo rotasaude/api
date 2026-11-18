@@ -367,14 +367,16 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       stepped_up!(lab)
       to_count = req.(:get, "#{base}/ovitrap_readings?state=to_count").fetch("items")
       ids[:reading] = to_count.sole.fetch("id")
-      req.(:post, "#{base}/ovitrap_readings/#{ids[:reading]}/count", { egg_count: 142 })
-      req.(:post, "#{base}/ovitrap_readings/#{ids[:reading]}/count", { egg_count: 150, count_note: s::TEXTS[:count_note] })
+      counted = req.(:post, "#{base}/ovitrap_readings/#{ids[:reading]}/count", { egg_count: 142 })
+      req.(:post, "#{base}/ovitrap_readings/#{ids[:reading]}/count",
+           { egg_count: 150, count_note: s::TEXTS[:count_note], expected_version: counted.fetch("version") })
       damaged = OvitrapReading.find_by!(condition: "damaged").id
       refuse.(:damaged_count, "#{base}/ovitrap_readings/#{damaged}/count", { egg_count: 12 }, status: 422, sent: [])
       ids[:sample] = req.(:get, "#{base}/samples").fetch("items").sole.fetch("id")
-      req.(:post, "#{base}/samples/#{ids[:sample]}/result", { examined_larvae: 4, aegypti_larvae: 3, albopictus_larvae: 0 })
+      resulted = req.(:post, "#{base}/samples/#{ids[:sample]}/result", { examined_larvae: 4, aegypti_larvae: 3, albopictus_larvae: 0 })
       req.(:post, "#{base}/samples/#{ids[:sample]}/result",
-           { examined_larvae: 4, aegypti_larvae: 2, albopictus_larvae: 1, result_note: s::TEXTS[:result_note] })
+           { examined_larvae: 4, aegypti_larvae: 2, albopictus_larvae: 1, result_note: s::TEXTS[:result_note],
+             expected_version: resulted.fetch("version") })
 
       # Coordenação: listas, tarefas, conciliação, fechamentos, relatórios, mapa.
       stepped_up!(coordinator)

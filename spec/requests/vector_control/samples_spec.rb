@@ -51,9 +51,9 @@ RSpec.describe "Vigilância ambiental — amostras", type: :request do
     VectorSample.create!(vector_inspection_id: inspection.id, number: 1, deposit_group: "C", larvae_collected: 4, label: label)
   end
 
-  def item(sample, visit_on:, city_block: nil, result: nil)
+  def item(sample, visit_on:, city_block: nil, result: nil, version: 1)
     { "id" => sample.id, "label" => sample.label, "visit_on" => visit_on.iso8601, "deposit_group" => sample.deposit_group,
-      "larvae_collected" => sample.larvae_collected, "city_block" => city_block, "result" => result }
+      "larvae_collected" => sample.larvae_collected, "city_block" => city_block, "result" => result, "version" => version }
   end
 
   it "a fila não traz imóvel nem morador; ACE → 403" do
@@ -104,14 +104,28 @@ RSpec.describe "Vigilância ambiental — amostras", type: :request do
     sample = VectorSample.find_by!(number: 1)
 
     sign_in_as(lab)
+    json_post "/vector_control/samples/#{sample.id}/result", examined_larvae: 8, aegypti_larvae: 5, albopictus_larvae: 0, expected_version: 1
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "expected_version" } ])
     json_post "/vector_control/samples/#{sample.id}/result", examined_larvae: 8, aegypti_larvae: 5, albopictus_larvae: 0
     expect(response).to have_http_status(:ok)
-    json_post "/vector_control/samples/#{sample.id}/result", examined_larvae: 8, aegypti_larvae: 4, albopictus_larvae: 1
+    expect(json_body["version"]).to eq(2)
+    json_post "/vector_control/samples/#{sample.id}/result", examined_larvae: 8, aegypti_larvae: 4, albopictus_larvae: 1, expected_version: 2
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "result_note" } ])
+    # Q36 (docs e7720b6): a correção sem a versão lida → 422; com ela → 200 e version + 1.
     json_post "/vector_control/samples/#{sample.id}/result", examined_larvae: 8, aegypti_larvae: 4, albopictus_larvae: 1,
                                                              result_note: "Revisão na lupa: uma larva era albopictus"
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "expected_version_required", "path" => "expected_version" } ])
+    json_post "/vector_control/samples/#{sample.id}/result", examined_larvae: 8, aegypti_larvae: 4, albopictus_larvae: 1,
+                                                             result_note: "Revisão na lupa: uma larva era albopictus", expected_version: 2
     expect(response).to have_http_status(:ok)
+    expect(json_body["version"]).to eq(3)
     corrected = json_body["result"]
+    # A segunda correção com a mesma versão lida → 409, nada muda.
+    json_post "/vector_control/samples/#{sample.id}/result", examined_larvae: 8, aegypti_larvae: 3, albopictus_larvae: 2,
+                                                             result_note: "Outra revisão feita na bancada", expected_version: 2
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "sample_changed" } ])
+    expect(sample.reload).to have_attributes(aegypti_larvae: 4, albopictus_larvae: 1,
+                                             result_note: "Revisão na lupa: uma larva era albopictus", version: 3)
     expect(corrected).to include("aegypti_larvae" => 4, "albopictus_larvae" => 1, "corrected" => true)
     expect(response.body).not_to include("lupa")
 
@@ -148,9 +162,10 @@ RSpec.describe "Vigilância ambiental — amostras", type: :request do
 
   def ids = json_body["items"].map { |row| row["id"] }
 
-  def result!(sample, aegypti: 1, note: nil)
+  def result!(sample, aegypti: 1, note: nil, version: nil)
     body = { examined_larvae: 4, aegypti_larvae: aegypti, albopictus_larvae: 0 }
-    json_post "/vector_control/samples/#{sample.id}/result", note ? body.merge(result_note: note) : body
+    body = body.merge(result_note: note, expected_version: version) if note
+    json_post "/vector_control/samples/#{sample.id}/result", body
     expect(response).to have_http_status(:ok)
   end
 
@@ -180,7 +195,7 @@ RSpec.describe "Vigilância ambiental — amostras", type: :request do
 
     get "/vector_control/samples", params: { state: "done" }
     expect(ids).to eq([ three.id, two.id ])
-    result!(one, aegypti: 2, note: "Revisão na lupa: duas larvas eram aegypti")
+    result!(one, aegypti: 2, note: "Revisão na lupa: duas larvas eram aegypti", version: 2)
     get "/vector_control/samples", params: { state: "done" }
     expect(ids).to eq([ one.id, three.id ])
     expect(json_body["items"].first["result"]).to include("aegypti_larvae" => 2, "corrected" => true)

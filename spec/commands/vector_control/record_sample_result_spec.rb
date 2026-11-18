@@ -27,9 +27,9 @@ RSpec.describe VectorControl::RecordSampleResult, type: :model do
                          label: "#{SecureRandom.hex(4).upcase}-#{format('%02d', number)}")
   end
 
-  def result(examined, aegypti, albopictus, note: nil) =
+  def result(examined, aegypti, albopictus, note: nil, version: nil) =
     { "examined_larvae" => examined, "aegypti_larvae" => aegypti, "albopictus_larvae" => albopictus }
-      .merge(note.nil? ? {} : { "result_note" => note })
+      .merge(note.nil? ? {} : { "result_note" => note }).merge(version.nil? ? {} : { "expected_version" => version })
 
   def record(sample, params, by: lab) = described_class.call(sample: sample, params: params, by: by)
   def refusal(outcome) = [ outcome.reason, outcome.details ]
@@ -70,10 +70,10 @@ RSpec.describe VectorControl::RecordSampleResult, type: :model do
     coordinator = endemic_coordinator!
     expect(record(sample, result(8, 5, 0))).to be_ok
 
-    expect(refusal(record(sample, result(8, 4, 1)))).to eq([ :invalid_request, { path: "result_note" } ])
-    expect(refusal(record(sample, result(8, 4, 1, note: "curta")))).to eq([ :invalid_request, { path: "result_note" } ])
-    expect(refusal(record(sample, result(8, 4, 1, note: "x" * 501)))).to eq([ :invalid_request, { path: "result_note" } ])
-    expect(record(sample, result(8, 4, 1, note: "  Revisão na lupa: uma larva era albopictus  "), by: coordinator)).to be_ok
+    expect(refusal(record(sample, result(8, 4, 1, version: 2)))).to eq([ :invalid_request, { path: "result_note" } ])
+    expect(refusal(record(sample, result(8, 4, 1, note: "curta", version: 2)))).to eq([ :invalid_request, { path: "result_note" } ])
+    expect(refusal(record(sample, result(8, 4, 1, note: "x" * 501, version: 2)))).to eq([ :invalid_request, { path: "result_note" } ])
+    expect(record(sample, result(8, 4, 1, note: "  Revisão na lupa: uma larva era albopictus  ", version: 2), by: coordinator)).to be_ok
     expect(sample.reload).to have_attributes(aegypti_larvae: 4, albopictus_larvae: 1, result_by_user_id: coordinator.id,
                                              result_note: "Revisão na lupa: uma larva era albopictus", version: 3)
     expect(events.last.payload).to eq("vector_sample_id" => sample.id, "user_id" => coordinator.id, "corrected" => true)
@@ -82,14 +82,44 @@ RSpec.describe VectorControl::RecordSampleResult, type: :model do
 
   it "correção que só troca a nota → path examined_larvae; nota repetida (texto claro) → path result_note" do
     record(sample, result(8, 5, 0))
-    record(sample, result(8, 4, 1, note: "Revisão na lupa: uma larva era albopictus"))
+    record(sample, result(8, 4, 1, note: "Revisão na lupa: uma larva era albopictus", version: 2))
 
-    only_note = record(sample, result(8, 4, 1, note: "Só a nota mudaria nesta correção"))
+    only_note = record(sample, result(8, 4, 1, note: "Só a nota mudaria nesta correção", version: 3))
     expect(refusal(only_note)).to eq([ :invalid_request, { path: "examined_larvae" } ])
-    same_note = record(sample, result(7, 4, 1, note: "Revisão na lupa: uma larva era albopictus"))
+    same_note = record(sample, result(7, 4, 1, note: "Revisão na lupa: uma larva era albopictus", version: 3))
     expect(refusal(same_note)).to eq([ :invalid_request, { path: "result_note" } ])
     expect(sample.reload).to have_attributes(examined_larvae: 8, aegypti_larvae: 4, version: 3)
     expect(events.count).to eq(2)
+  end
+
+  # Q36 (docs e7720b6): a correção leva a versão lida; o primeiro resultado não.
+  it "duas correções com a mesma expected_version: a segunda → sample_changed, nada gravado e nenhum evento" do
+    expect(record(sample, result(8, 5, 0))).to be_ok
+    read = sample.reload.version
+    expect(record(sample, result(8, 4, 1, note: "Revisão na lupa: uma larva era albopictus", version: read))).to be_ok
+
+    stale = record(sample, result(8, 3, 2, note: "Outra revisão feita na bancada", version: read), by: endemic_coordinator!)
+    expect(refusal(stale)).to eq([ :sample_changed, {} ])
+    expect(sample.reload).to have_attributes(examined_larvae: 8, aegypti_larvae: 4, albopictus_larvae: 1, result_by_user_id: lab.id,
+                                             result_note: "Revisão na lupa: uma larva era albopictus", version: read + 1)
+    expect(events.count).to eq(2)
+  end
+
+  it "correção sem expected_version → expected_version_required; fora de inteiro >= 0 → invalid_request; nada gravado" do
+    expect(record(sample, result(8, 5, 0))).to be_ok
+    note = "Revisão na lupa: uma larva era albopictus"
+    expect(refusal(record(sample, result(8, 4, 1, note: note)))).to eq([ :expected_version_required, { path: "expected_version" } ])
+    expect(refusal(record(sample, result(8, 4, 1, note: note, version: "2")))).to eq([ :invalid_request, { path: "expected_version" } ])
+    expect(refusal(record(sample, result(8, 4, 1, note: note, version: -1)))).to eq([ :invalid_request, { path: "expected_version" } ])
+    expect(sample.reload).to have_attributes(aegypti_larvae: 5, result_note: nil, version: 2)
+    expect(events.count).to eq(1)
+  end
+
+  it "primeiro resultado sem versão passa; com expected_version → invalid_request path expected_version (como a nota)" do
+    expect(refusal(record(sample, result(8, 5, 0, version: 1)))).to eq([ :invalid_request, { path: "expected_version" } ])
+    expect(sample.reload).to have_attributes(result_at: nil, version: 1)
+    expect(record(sample, result(8, 5, 0))).to be_ok
+    expect(sample.reload.version).to eq(2)
   end
 
   it "ACE ou outro papel → missing_role; amostra de visita retirada → not_found" do

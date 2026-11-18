@@ -21,7 +21,8 @@
 #     nunca sai;
 #   - cadences → VectorCadence[] (cidade primeiro); cycle → VectorCycle;
 #     cycle_summary → CycleSummary (VectorControl::CycleStats por bairro);
-#   - ovitraps → Ovitrap[]; ovitrap_readings → OvitrapReading[]; tasks →
+#   - ovitraps → Ovitrap[]; ovitrap_readings → OvitrapReading[] (com
+#     version, que a correção devolve como expected_version, Q36); tasks →
 #     VectorTask[] (Task 9; semana em "YYYY-WW", A-9; notas nunca saem).
 #   - liraa_surveys → LiraaSurvey[] (Task 10: estratos na ordem do
 #     levantamento, block_ids na ordem gravada; no rascunho, N sem ponto
@@ -31,7 +32,8 @@
 #   - transmission_blocks → TransmissionBlock[] (Task 11: o caso só como
 #     doença, data e número; nunca paciente nem notificação).
 #   - samples → VectorSample[] (Task 12: dia da visita, quarteirão congelado
-#     e resultado; nunca imóvel nem morador; a nota nunca sai).
+#     e resultado; nunca imóvel nem morador; a nota nunca sai; version para
+#     a correção, Q36. A amostra no boletim, `sample`, fica sem version).
 #   - parameters → VectorParameterVersion (Task 14; versão 0 com created_at
 #     null, A-4/Q13(8); as 20 chaves, que Parameters já completa com o
 #     padrão de fábrica);
@@ -153,7 +155,7 @@ module VectorControl
         block = inspection.city_block
         { id: sample.id, label: sample.label, visit_on: inspection.home_visit.occurred_at.in_time_zone.to_date.iso8601,
           deposit_group: sample.deposit_group, larvae_collected: sample.larvae_collected,
-          city_block: block && { id: block.id, number: block.number }, result: sample(sample)[:result] }
+          city_block: block && { id: block.id, number: block.number }, result: sample(sample)[:result], version: sample.version }
       end
     end
 
@@ -282,7 +284,7 @@ module VectorControl
           neighborhood: { id: block.neighborhood.id, name: block.neighborhood.name }, installed_on: reading.installed_on.iso8601,
           collected_on: reading.collected_on&.iso8601, condition: reading.condition, epi_week: OvitrapIndex.week_text(reading.epi_week),
           egg_count: reading.egg_count, counted_at: reading.counted_at&.utc&.iso8601,
-          corrected: !reading.read_attribute_before_type_cast("count_note").nil? }
+          corrected: !reading.read_attribute_before_type_cast("count_note").nil?, version: reading.version }
       end
     end
 

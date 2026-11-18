@@ -57,17 +57,29 @@ RSpec.describe "Vigilância ambiental — ovitrampas", type: :request do
                                            "city_block" => { "id" => block.id, "number" => "12" },
                                            "neighborhood" => { "id" => neighborhood.id, "name" => neighborhood.name },
                                            "installed_on" => (today - 5).iso8601, "collected_on" => today.iso8601, "condition" => "ok",
-                                           "epi_week" => week, "egg_count" => nil, "counted_at" => nil, "corrected" => false } ],
+                                           "epi_week" => week, "egg_count" => nil, "counted_at" => nil, "corrected" => false,
+                                           "version" => 2 } ],
                             "next_before" => nil)
+    json_post "/vector_control/ovitrap_readings/#{reading.id}/count", egg_count: 0, expected_version: 2
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "expected_version" } ])
     json_post "/vector_control/ovitrap_readings/#{reading.id}/count", egg_count: 0
     expect(response).to have_http_status(:ok)
-    expect(json_body).to include("id" => reading.id, "egg_count" => 0, "corrected" => false)
+    expect(json_body).to include("id" => reading.id, "egg_count" => 0, "corrected" => false, "version" => 3)
     expect(json_body["counted_at"]).to be_present
-    json_post "/vector_control/ovitrap_readings/#{reading.id}/count", egg_count: 4
+    json_post "/vector_control/ovitrap_readings/#{reading.id}/count", egg_count: 4, expected_version: 3
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "count_note" } ])
+    # Q36 (docs e7720b6): a correção sem a versão lida → 422; com ela → 200 e version + 1.
     json_post "/vector_control/ovitrap_readings/#{reading.id}/count", egg_count: 4, count_note: "Recontagem com lupa estereoscópica"
-    expect(json_body).to include("egg_count" => 4, "corrected" => true)
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "expected_version_required", "path" => "expected_version" } ])
+    json_post "/vector_control/ovitrap_readings/#{reading.id}/count", egg_count: 4, count_note: "Recontagem com lupa estereoscópica",
+                                                                      expected_version: 3
+    expect(json_body).to include("egg_count" => 4, "corrected" => true, "version" => 4)
     expect(json_body.to_s).not_to include("lupa")
+    # A segunda correção com a mesma versão lida → 409, nada muda.
+    json_post "/vector_control/ovitrap_readings/#{reading.id}/count", egg_count: 9, count_note: "Outra recontagem feita na bancada",
+                                                                      expected_version: 3
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "reading_changed" } ])
+    expect(reading.reload).to have_attributes(egg_count: 4, count_note: "Recontagem com lupa estereoscópica", version: 4)
 
     get "/vector_control/ovitrap_readings", params: { state: "to_count" }
     expect(json_body["items"]).to be_empty
