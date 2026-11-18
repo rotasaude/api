@@ -111,6 +111,21 @@ RSpec.describe VectorControl::SaveParameters, type: :model do
     expect(survey.reload.parameters_version).to eq(0)
   end
 
+  it "a validação roda depois do advisory lock, dentro da transação" do
+    calls = []
+    connection = VectorParameterVersion.connection
+    allow(connection).to receive(:execute).and_wrap_original do |m, sql, *rest|
+      calls << :lock if sql.to_s.include?("pg_advisory_xact_lock")
+      m.call(sql, *rest)
+    end
+    allow(VectorControl::Parameters).to receive(:validate).and_wrap_original { |m, *args| calls << :validate; m.call(*args) }
+
+    expect(save(default_days: 45)).to be_ok
+    expect(refused_path(save(default_days: 1))).to eq("values.default_days")
+    expect(calls).to eq(%i[lock validate lock validate])
+    expect(VectorParameterVersion.pluck(:version)).to eq([ 1 ])
+  end
+
   it "recusa não publica evento" do
     expect(DomainEvents).not_to receive(:publish)
     save(default_days: 1)
