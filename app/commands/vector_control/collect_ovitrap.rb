@@ -2,14 +2,14 @@
 # Q7(2), Q7(5), Q13(2)). Pelo agente de endemias com o domicílio da ovitrampa
 # numa microárea atribuída a ele, no dashboard ou no app (Task 15: `origin:
 # "field_app"` com o aparelho; a idempotência do item é a do livro do app).
-# Corpo `{ collected_on, condition, reinstall?, remove? }` (remove padrão
-# false, reinstall padrão !remove). Recusas (só a primeira), nesta ordem:
+# Corpo `{ collected_on, condition, reinstall?, remove? }` (reinstall padrão
+# true, remove padrão false). Recusas (só a primeira), nesta ordem:
 #   - chave desconhecida ou faltando, collected_on que não é AAAA-MM-DD ou
 #     depois de hoje, condition fora de CONDITIONS, reinstall/remove não
-#     boolean → invalid_request com o path; reinstall == remove depois dos
-#     padrões (false/false, true/true, reinstall false sozinho) →
-#     invalid_request path reinstall (Q33: a coleta reinstala ou tira, nunca
-#     deixa a ovitrampa ativa sem leitura aberta; tirar é sempre explícito);
+#     boolean → invalid_request com o path; reinstall false sem remove
+#     (false ou ausente) → invalid_request path reinstall (Q33: a coleta
+#     reinstala ou tira, nunca deixa a ovitrampa ativa sem leitura aberta;
+#     tirar é sempre explícito);
 #   - escopo (VectorControl::Access.agent_refusal);
 #   - sob a trava da ovitrampa: não ativa → ovitrap_not_active; sem leitura
 #     aberta → reading_not_open (os dois com path ovitrap_id);
@@ -17,8 +17,8 @@
 #     (Parameters.current) → collection_out_of_range path collected_on.
 # Fecha a leitura aberta com a data e a condição. `remove: true` tira a
 # ovitrampa (`removed`; `lost` com condition lost), com removed_on =
-# collected_on; senão, reinstall abre a leitura seguinte com installed_on =
-# collected_on (Q7(5), Q33). version + 1 e
+# collected_on, e o reinstall é ignorado (Q7(5), CV-9); senão, reinstall abre
+# a leitura seguinte com installed_on = collected_on (Q33). version + 1 e
 # `ovitrap.collected` só com ids. Ordem de trava: ovitrampa → leitura (a
 # mesma do VectorControl::CountReading).
 module VectorControl
@@ -81,11 +81,12 @@ module VectorControl
       return invalid("collected_on") unless collected_on && collected_on <= today
       return invalid("condition") unless Catalog::CONDITIONS.include?(params["condition"])
 
+      reinstall = params.fetch("reinstall", true)
+      return invalid("reinstall") unless [ true, false ].include?(reinstall)
+
       remove = params.fetch("remove", false)
       return invalid("remove") unless [ true, false ].include?(remove)
-
-      reinstall = params.fetch("reinstall", !remove)
-      return invalid("reinstall") unless [ true, false ].include?(reinstall) && reinstall != remove
+      return invalid("reinstall") unless reinstall || remove
 
       { collected_on: collected_on, condition: params["condition"], reinstall: reinstall, remove: remove }
     end

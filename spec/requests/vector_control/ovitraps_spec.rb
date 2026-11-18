@@ -101,13 +101,14 @@ RSpec.describe "Vigilância ambiental — ovitrampas", type: :request do
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "client_uuid_conflict", "path" => "client_uuid" } ])
   end
 
-  it "coleta: reinstall == remove depois dos padrões → 422 path reinstall; sem as chaves reinstala; remove sozinho tira (Q33)" do
+  it "coleta: reinstall false sem remove → 422 path reinstall; sem as chaves reinstala; remove tira, com reinstall true também (Q33, CV-9)" do
     ovitrap = ovitrap_installed!(agent: agent, household: household, number: "OV-1")
     gone = ovitrap_installed!(agent: agent, household: household, number: "OV-2")
+    both = ovitrap_installed!(agent: agent, household: household, number: "OV-3")
     sign_in_as(agent)
     collect = ->(target, **flags) { json_post "/vector_control/ovitraps/#{target.id}/collect", { collected_on: today.iso8601, condition: "ok" }.merge(flags) }
 
-    [ { reinstall: false, remove: false }, { reinstall: true, remove: true }, { reinstall: false } ].each do |flags|
+    [ { reinstall: false, remove: false }, { reinstall: false } ].each do |flags|
       collect.call(ovitrap, **flags)
       expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "reinstall" } ])
     end
@@ -119,6 +120,10 @@ RSpec.describe "Vigilância ambiental — ovitrampas", type: :request do
     expect(json_body["open_reading"]).to include("installed_on" => today.iso8601)
 
     collect.call(gone, remove: true)
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to include("status" => "removed", "removed_on" => today.iso8601, "open_reading" => nil)
+
+    collect.call(both, reinstall: true, remove: true)
     expect(response).to have_http_status(:ok)
     expect(json_body).to include("status" => "removed", "removed_on" => today.iso8601, "open_reading" => nil)
   end

@@ -118,12 +118,11 @@ module VectorControlHelpers
   end
 
   # Coleta pelo caminho real (VectorControl::CollectOvitrap); devolve a
-  # leitura coletada. reinstall/remove só vão quando dados (os padrões do
-  # comando: remove false, reinstall !remove; Q33).
-  def ovitrap_collected!(ovitrap, agent:, condition: "ok", collected_on: nil, reinstall: nil, remove: nil)
+  # leitura coletada.
+  def ovitrap_collected!(ovitrap, agent:, condition: "ok", collected_on: nil, reinstall: true, remove: false)
     reading = ovitrap.readings.open_readings.sole
     collected_on ||= reading.installed_on + 5
-    params = { "collected_on" => collected_on.iso8601, "condition" => condition, "reinstall" => reinstall, "remove" => remove }.compact
+    params = { "collected_on" => collected_on.iso8601, "condition" => condition, "reinstall" => reinstall, "remove" => remove }
     result = VectorControl::CollectOvitrap.call(ovitrap: ovitrap, params: params, by: agent)
     raise ArgumentError, "ovitrap_collected!: #{result.reason} #{result.details.inspect}" if result.failure?
 

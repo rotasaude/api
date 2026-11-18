@@ -118,11 +118,11 @@ RSpec.describe "FieldSync::Upload — vigilância ambiental (v1.3.0)", type: :mo
     expect(replay).to include("status" => "duplicate", "id" => ovitrap.id)
   end
 
-  it "coleta com remove true (sem reinstall) → removida, sem leitura nova; com lost → perdida (CV-9)" do
+  it "coleta com remove true e reinstall true → removida, sem leitura nova; com lost → perdida (CV-9)" do
     removed = ovitrap_installed!(agent: agent, household: ovitrap_household!(agent, block: block), number: "OV-1")
     lost = ovitrap_installed!(agent: agent, household: ovitrap_household!(agent, block: block), number: "OV-2")
     body = ->(ovitrap, condition) { { "ovitrap_id" => ovitrap.id, "collected_on" => Time.zone.today.iso8601, "condition" => condition,
-                                      "remove" => true } }
+                                      "reinstall" => true, "remove" => true } }
     results = upload(item("ovitrap_collection", body.call(removed, "dry")), item("ovitrap_collection", body.call(lost, "lost")))
     valid_response!(results)
     expect(results.map { _1.slice("status", "id") }).to eq([ { "status" => "accepted", "id" => removed.id }, { "status" => "accepted", "id" => lost.id } ])
@@ -130,14 +130,13 @@ RSpec.describe "FieldSync::Upload — vigilância ambiental (v1.3.0)", type: :mo
     expect([ lost.reload.status, lost.readings.open_readings.count ]).to eq([ "lost", 0 ])
   end
 
-  it "coleta com reinstall == remove depois dos padrões → rejected invalid_request path reinstall (Q33)" do
+  it "coleta com reinstall false sem remove → rejected invalid_request path reinstall (Q33)" do
     ovitrap = ovitrap_installed!(agent: agent, household: ovitrap_household!(agent, block: block), number: "OV-3")
     body = ->(**flags) { { "ovitrap_id" => ovitrap.id, "collected_on" => Time.zone.today.iso8601, "condition" => "ok" }.merge(flags.stringify_keys) }
     results = upload(item("ovitrap_collection", body.call(reinstall: false, remove: false)),
-                     item("ovitrap_collection", body.call(reinstall: true, remove: true)),
                      item("ovitrap_collection", body.call(reinstall: false)))
     valid_response!(results)
-    expect(results.map { failure(_1) }).to eq([ { "status" => "rejected", "error" => "invalid_request", "path" => "reinstall" } ] * 3)
+    expect(results.map { failure(_1) }).to eq([ { "status" => "rejected", "error" => "invalid_request", "path" => "reinstall" } ] * 2)
     expect(ovitrap.reload).to have_attributes(status: "active", version: 1)
     expect(ovitrap.readings.open_readings.count).to eq(1)
     expect(FieldSyncReceipt.count).to eq(0)

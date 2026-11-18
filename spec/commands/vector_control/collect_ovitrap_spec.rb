@@ -3,9 +3,9 @@ require "rails_helper"
 # Módulo 35a, Task 9 (ADR 0054; contrato §6, §11, §17; Q7(5), Q13(2)): a
 # coleta da palheta pelo agente de endemias. Janela collected_on −
 # installed_on em [ovitrap_collection_days_min, _max] (3 e 10); reinstall
-# (padrão !remove) abre a leitura seguinte; remove (padrão false) tira a
-# ovitrampa (perdida com condition lost). reinstall == remove depois dos
-# padrões → invalid_request path reinstall (Q33).
+# (padrão true) abre a leitura seguinte; remove (padrão false) tira a
+# ovitrampa (perdida com condition lost) e ignora o reinstall (CV-9);
+# reinstall false sem remove → invalid_request path reinstall (Q33).
 RSpec.describe VectorControl::CollectOvitrap, type: :model do
   let!(:city) { vector_city! }
   let(:agent) { endemic_agent! }
@@ -36,7 +36,7 @@ RSpec.describe VectorControl::CollectOvitrap, type: :model do
     expect(third.readings.open_readings.count).to eq(1)
   end
 
-  it "reinstall (padrão) abre a leitura seguinte; remove sozinho tira e não reabre" do
+  it "reinstall abre a leitura seguinte; remove com reinstall true não reabre (ignorado)" do
     ovitrap = install!(installed_on: today - 10)
     result = collect(ovitrap, collected_on: (today - 5).iso8601, condition: "dry")
     expect(result).to be_ok
@@ -48,7 +48,7 @@ RSpec.describe VectorControl::CollectOvitrap, type: :model do
     event = DomainEvent.where(name: "ovitrap.collected").sole
     expect(event.payload).to eq("ovitrap_id" => ovitrap.id, "user_id" => agent.id)
 
-    expect(collect(ovitrap, remove: true)).to be_ok
+    expect(collect(ovitrap, remove: true, reinstall: true)).to be_ok
     expect(ovitrap.reload).to have_attributes(status: "removed", removed_on: today, version: 3)
     expect(ovitrap.readings.open_readings).to be_empty
     expect(ovitrap.readings.count).to eq(2)
@@ -87,10 +87,9 @@ RSpec.describe VectorControl::CollectOvitrap, type: :model do
     expect(refusal(collect(removed))).to eq([ :ovitrap_not_active, { path: "ovitrap_id" } ])
   end
 
-  it "reinstall == remove depois dos padrões → invalid_request path reinstall, antes de reading_not_open (Q33)" do
+  it "reinstall false sem remove (ausente ou false) → invalid_request path reinstall, antes de reading_not_open (Q33)" do
     ovitrap = install!(installed_on: today - 5)
     expect(refusal(collect(ovitrap, reinstall: false, remove: false))).to eq([ :invalid_request, { path: "reinstall" } ])
-    expect(refusal(collect(ovitrap, reinstall: true, remove: true))).to eq([ :invalid_request, { path: "reinstall" } ])
     expect(refusal(collect(ovitrap, reinstall: false))).to eq([ :invalid_request, { path: "reinstall" } ])
     expect(ovitrap.reload).to have_attributes(status: "active", version: 1)
     expect(ovitrap.readings.open_readings.count).to eq(1)
@@ -105,6 +104,13 @@ RSpec.describe VectorControl::CollectOvitrap, type: :model do
     gone = install!(installed_on: today - 5)
     expect(collect(gone, reinstall: false, remove: true)).to be_ok
     expect(gone.reload.status).to eq("removed")
+    both = install!(installed_on: today - 5)
+    expect(collect(both, reinstall: true, remove: true)).to be_ok
+    expect(both.reload).to have_attributes(status: "removed", removed_on: today)
+    expect(both.readings.open_readings).to be_empty
+    alone = install!(installed_on: today - 5)
+    expect(collect(alone, reinstall: true)).to be_ok
+    expect(alone.reload.readings.open_readings.count).to eq(1)
     stays = install!(installed_on: today - 5)
     expect(collect(stays, remove: false)).to be_ok
     expect(stays.reload).to have_attributes(status: "active")
