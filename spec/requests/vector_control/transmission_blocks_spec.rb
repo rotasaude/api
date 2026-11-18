@@ -119,6 +119,35 @@ RSpec.describe "Vigilância ambiental — bloqueio de transmissão", type: :requ
     expect(second.reload.transmission_block_id).to eq(other.id)
   end
 
+  # Revisão final (fix 2): o id chega em qualquer caixa e é comparado em
+  # minúsculas. O próprio bloqueio em maiúsculas é a mesma recusa do próprio
+  # bloqueio (não um UPDATE sem mudar o bloqueio, que o trigger recusa: 500);
+  # o confirm aceita os ids em maiúsculas e não conta "a" e "A" como dois.
+  it "ids em maiúsculas: o próprio bloqueio no mover → invalid_request; o confirm compara em minúsculas" do
+    first = proposed_case!(patient: block_case_patient!(block: center))
+    second = proposed_case!(patient: block_case_patient!(block: neighbor))
+    block = first.transmission_block
+    expect(second).to have_attributes(transmission_block_id: block.id, added_by: "job")
+    version = second.version
+
+    sign_in_as(coordinator)
+    json_post "#{base}/#{block.id}/cases/#{second.id}/move", to_transmission_block_id: block.id.upcase
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "to_transmission_block_id" } ])
+    expect(second.reload).to have_attributes(transmission_block_id: block.id, added_by: "job", version: version)
+    expect(DomainEvent.where(name: "transmission_block_case.moved")).to be_empty
+
+    stepped_up!(coordinator)
+    repeated = { center_block_id: center.id, block_ids: [ center.id ], seen_case_ids: [ first.id.upcase, first.id, second.id ] }
+    json_post "#{base}/#{block.id}/confirm", repeated
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "seen_case_ids" } ])
+
+    upper = { center_block_id: center.id.upcase, block_ids: [ center.id.upcase, neighbor.id.upcase ], seen_case_ids: seen(block).map(&:upcase) }
+    json_post "#{base}/#{block.id}/confirm", upper
+    expect(response).to have_http_status(:ok)
+    expect(json_body["area"].map { |row| row["id"] }).to contain_exactly(center.id, neighbor.id)
+    expect(block.reload).to have_attributes(status: "active", center_block_id: center.id)
+  end
+
   it "lista e detalhe sem nome, CPF, CNS, endereço nem notification_id; has_place: false no caso sem quarteirão" do
     patient = block_case_patient!(block: center)
     placed = proposed_case!(patient: patient)

@@ -190,9 +190,12 @@ end
 # recusas do mesmo item → um substituto só; duas recusas de itens vizinhos ao
 # mesmo tempo → a segunda espera a trava do estrato e não escolhe o mesmo
 # imóvel; o fechamento espera a visita do LIRAa em curso (o levantamento FOR
-# SHARE na visita), e a visita depois dele é recusada. Contra TEST_CITY_A, sem
-# fixture transacional.
-RSpec.describe VectorControl::Liraa::Items, "× substituições e fechamento ao mesmo tempo" do
+# SHARE na visita), e a visita depois dele é recusada. A retirada também: o
+# fechamento espera a retirada em curso (o levantamento FOR SHARE no
+# WithdrawInspection.lock!), e a retirada depois do fechamento passa sem
+# mudar o item (o trigger não deixa). Contra TEST_CITY_A, sem fixture
+# transacional.
+RSpec.describe VectorControl::Liraa::Items, "× substituições e fechamento ao mesmo tempo", type: :model do
   self.use_transactional_tests = false
 
   let(:release) { Queue.new }
@@ -272,16 +275,26 @@ RSpec.describe VectorControl::Liraa::Items, "× substituições e fechamento ao 
 
   def refusal(item_id, agent_id) = -> { visit_in_city(item_id, agent_id) }
 
-  # A primeira (uma visita) grava e fica parada antes do commit (no
-  # home_visit.recorded, depois do substituto); a segunda começa e espera numa
-  # trava. Com `before_release`, roda com a segunda ainda parada.
-  def race(first_action, second_action, before_release: nil)
+  def withdrawal(visit_id, agent_id)
+    lambda do
+      HomeVisits::Withdraw.call(HomeVisit.find(visit_id), by: User.find(agent_id), expected_state: "recorded",
+                                reason: "registrada no imóvel errado")
+    end
+  end
+
+  def close_survey = -> { VectorControl::Liraa::Close.call(survey: LiraaSurvey.find(@ids[:survey]), by: User.find(@ids[:coordinator])) }
+
+  # A primeira grava e fica parada antes do commit (no evento `hold_on`: o
+  # home_visit.recorded, depois do substituto, ou o home_visit.withdrawn,
+  # depois do item devolvido); a segunda começa e espera numa trava. Com
+  # `before_release`, roda com a segunda ainda parada.
+  def race(first_action, second_action, before_release: nil, hold_on: "home_visit.recorded")
     holder = nil
     holding = Queue.new
     original = DomainEvents.method(:publish)
     allow(DomainEvents).to receive(:publish) do |*args, **kwargs, &blk|
       result = original.call(*args, **kwargs, &blk)
-      if Thread.current == holder && args.first == "home_visit.recorded"
+      if Thread.current == holder && args.first == hold_on
         holding << true
         release.pop(timeout: 10) or raise "timeout esperando release"
       end
@@ -331,9 +344,8 @@ RSpec.describe VectorControl::Liraa::Items, "× substituições e fechamento ao 
 
   it "o fechamento espera a visita do LIRAa em curso; a inspeção conta; a visita depois do fechamento → liraa_item_not_found" do
     worked = -> { visit_in_city(@ids[:first], @ids[:agents][0], "worked") }
-    close = -> { VectorControl::Liraa::Close.call(survey: LiraaSurvey.find(@ids[:survey]), by: User.find(@ids[:coordinator])) }
     still_waiting = nil
-    visit, closing = race(worked, close, before_release: ->(closer) { still_waiting = closer.join(0.3).nil? })
+    visit, closing = race(worked, close_survey, before_release: ->(closer) { still_waiting = closer.join(0.3).nil? })
 
     expect(still_waiting).to be(true) # o Close parado na trava do levantamento
     expect([ visit, closing ]).to all(be_a(Result))
@@ -349,6 +361,49 @@ RSpec.describe VectorControl::Liraa::Items, "× substituições e fechamento ao 
       late = visit_in_city(@ids[:third], @ids[:agents][1])
       expect([ late.reason, late.details ]).to eq([ :liraa_item_not_found, { path: "vector_inspection.liraa_draw_item_id" } ])
       expect(LiraaDrawItem.find(@ids[:third]).status).to eq("pending")
+    end
+  end
+
+  # Revisão final (fix 1): a retirada lê o levantamento FOR SHARE logo depois
+  # de travar o item. Sem isso o fechamento passava no meio da retirada e o
+  # item.update! num levantamento já fechado batia no trigger (500).
+  it "o fechamento espera a retirada da visita do LIRAa em curso; a retirada devolve o item e commita antes" do
+    recorded = in_city { visit_in_city(@ids[:first], @ids[:agents][0], "worked") }
+    expect(recorded).to be_ok
+    visit_id = recorded.payload[:visit].id
+    in_city { expect(LiraaDrawItem.find(@ids[:first]).status).to eq("inspected") }
+
+    still_waiting = nil
+    waiting = ->(closer) { still_waiting = closer.join(0.3).nil? }
+    withdrawn, closing = race(withdrawal(visit_id, @ids[:agents][0]), close_survey, hold_on: "home_visit.withdrawn", before_release: waiting)
+
+    expect(still_waiting).to be(true) # o Close parado na trava do levantamento
+    expect([ withdrawn, closing ]).to all(be_a(Result)) # nenhuma exceção (trigger, deadlock)
+    expect([ withdrawn, closing ]).to all(be_ok)
+    in_city do
+      survey = LiraaSurvey.find(@ids[:survey])
+      expect(survey.status).to eq("closed")
+      expect(HomeVisit.find(visit_id).withdrawn_at).to be <= survey.closed_at
+      expect(LiraaDrawItem.find(@ids[:first]).status).to eq("pending")
+      expect(VectorControl::Liraa::Index.for(survey)[:strata].sole).to include(inspected: 0)
+    end
+  end
+
+  it "o fechamento commitado antes da retirada: a retirada passa (sem 500) e o item fica como está" do
+    recorded = in_city { visit_in_city(@ids[:first], @ids[:agents][0], "worked") }
+    expect(recorded).to be_ok
+    visit_id = recorded.payload[:visit].id
+    expect(in_city { close_survey.call }).to be_ok
+    before = in_city { LiraaDrawItem.find(@ids[:first]).attributes.slice("status", "version", "updated_at") }
+    expect(before["status"]).to eq("inspected")
+
+    result = in_city { withdrawal(visit_id, @ids[:agents][0]).call } # uma exceção (trigger) falha o exemplo
+
+    expect(result).to be_ok
+    in_city do
+      expect(HomeVisit.find(visit_id).withdrawn_at).to be_present
+      expect(LiraaDrawItem.find(@ids[:first]).attributes.slice("status", "version", "updated_at")).to eq(before)
+      expect(VectorInspection.find_by!(liraa_draw_item_id: @ids[:first]).home_visit_id).to eq(visit_id)
     end
   end
 end

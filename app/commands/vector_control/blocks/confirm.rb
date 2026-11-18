@@ -18,8 +18,10 @@
 #     lista nova passa. Os casos são lidos sob a mesma trava consultiva da
 #     proposta (Propose e MoveCase escrevem sob ela). A área não é conferida
 #     contra o quarteirão dos casos.
-# A área é block_ids mais o centro (só acréscimo); vira active com
-# confirmed_at/by e version + 1. `transmission_block.confirmed` só com ids.
+# Os ids chegam em qualquer caixa e são comparados em minúsculas (como o
+# banco guarda). A área é block_ids mais o centro (só acréscimo); vira
+# active com confirmed_at/by e version + 1. `transmission_block.confirmed`
+# só com ids.
 module VectorControl
   module Blocks
     module Confirm
@@ -36,9 +38,13 @@ module VectorControl
           return Support.invalid("block_ids")
         end
         unless seen_case_ids.is_a?(Array) && seen_case_ids.size <= CASES_MAX && seen_case_ids.all? { |id| Support.uuid?(id) } &&
-               seen_case_ids.uniq.size == seen_case_ids.size
+               seen_case_ids.map(&:downcase).uniq.size == seen_case_ids.size
           return Support.invalid("seen_case_ids")
         end
+
+        center_block_id = center_block_id.downcase
+        block_ids = block_ids.map(&:downcase)
+        seen_case_ids = seen_case_ids.map(&:downcase)
 
         TransmissionBlock.transaction(requires_new: true) do
           Support.serialize!

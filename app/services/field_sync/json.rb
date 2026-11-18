@@ -32,12 +32,17 @@ module FieldSync
     # que o dono tem papel de campo (ACS ou outro CBO da Tabela 7), com as
     # microáreas ATIVAS do escopo (responsible | assigned; Q26). `member` é o
     # vínculo que autenticou (HomeVisits::Access.device_owner?).
+    # `features.vector_control` (35a, v1.3.0) só sai `true`: com o gate
+    # desligado a chave fica ausente (ausente = false), e a sessão é a mesma
+    # da v1.2.0 (features com additionalProperties: false).
     def session(user:, member:, city:, today: Time.zone.today, now: Time.current)
+      features = { home_visits: HomeVisits::Gate.usable?(city), collective_activities: CollectiveActivities::Gate.usable?(city),
+                   territory_registry: TerritoryRegistry::Gate.usable?(city) }
+      features[:vector_control] = true if VectorControl::Gate.usable?(city)
       { contract: Catalog::CONTRACT, server_time: now.iso8601, user: { id: user.id, name: user.professional.professional_name },
         professional: { id: user.professional.id, cbo: member.cbo_code, has_cns: user.professional.cns.present? },
         teams: field_teams(user).map { |team, role| team_json(user, team, role) },
-        features: { home_visits: HomeVisits::Gate.usable?(city), collective_activities: CollectiveActivities::Gate.usable?(city),
-                    territory_registry: TerritoryRegistry::Gate.usable?(city), vector_control: VectorControl::Gate.usable?(city) },
+        features: features,
         min_date: HomeVisits::Rules.min_date(today).iso8601,
         reference_version: Reference.version(user: user, city: city),
         # O arquivo publicado, mesmo com uma geração nova em curso ou falha (Q30).

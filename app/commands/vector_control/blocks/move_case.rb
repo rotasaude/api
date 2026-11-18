@@ -1,7 +1,8 @@
 # Move o caso para outro bloqueio (módulo 35a, ADR 0054; contrato §8; Q8, Q9,
 # Q13(9)). Só a coordenação (quem chama confere). Corpo
 # `{ to_transmission_block_id }` (Q8). Recusas (só a primeira):
-#   - destino que não é UUID, é o próprio bloqueio ou não existe →
+#   - destino que não é UUID, é o próprio bloqueio (o id em qualquer caixa:
+#     comparado em minúsculas, como o banco guarda) ou não existe →
 #     invalid_request path to_transmission_block_id;
 #   - sob a trava, os dois bloqueios travados em ordem de id e o caso
 #     travado: o caso já saiu deste bloqueio → not_found; origem ou destino
@@ -19,7 +20,10 @@ module VectorControl
       # -> Result.ok(block: <destino>) | fail(:invalid_request | :not_found | :invalid_transition, details: { path: })
       def call(block:, block_case:, to_transmission_block_id:, by:)
         path = "to_transmission_block_id"
-        return Support.invalid(path) unless Support.uuid?(to_transmission_block_id) && to_transmission_block_id != block.id
+        return Support.invalid(path) unless Support.uuid?(to_transmission_block_id)
+
+        to_transmission_block_id = to_transmission_block_id.downcase
+        return Support.invalid(path) if to_transmission_block_id == block.id
 
         TransmissionBlock.transaction(requires_new: true) do
           Support.serialize!

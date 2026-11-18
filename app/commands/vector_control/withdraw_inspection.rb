@@ -2,16 +2,22 @@
 # contrato §3; plano, W-5, W-13, Review Focus 4). A inspeção fica (só
 # acréscimo), marcada pela visita retirada; o resto volta, na transação do
 # HomeVisits::Withdraw:
-#   - lock! (antes da folha): perfil FOR UPDATE e item do LIRAa FOR UPDATE,
-#     na ordem do registro (perfil → item → folha → visita), para a retirada
-#     e o registro no mesmo imóvel não se travarem;
+#   - lock! (antes da folha): perfil FOR UPDATE, item do LIRAa FOR UPDATE e
+#     o levantamento dele FOR SHARE, na ordem do registro (perfil → item →
+#     levantamento → folha → visita; RecordInspection#liraa_item), para a
+#     retirada e o registro no mesmo imóvel não se travarem. O fechamento
+#     (Liraa::Close, FOR UPDATE no levantamento) espera a retirada em curso, e
+#     a decisão de devolver o item usa o estado lido sob a trava;
 #   - call (depois do update! da visita): o perfil volta à inspeção válida
 #     anterior (ou fica sem last_*), com version + 1 e
 #     household_vector_profile.changed; o quarteirão e o risco ficam (Q20(2):
 #     a retirada desfaz só o que é da visita); o item volta a pending
 #     (Liraa::Items.released!) quando a inspeção retirada é das que o mudaram
 #     e nenhuma outra válida que o muda o usa (o substituto, inspecionado ou
-#     não, fica como está, W-13).
+#     não, fica como está, W-13). Levantamento já fechado: o item fica (o
+#     trigger não deixa mudá-lo) e a retirada passa assim mesmo (a inspeção
+#     fica marcada pela visita retirada; o Liraa::Index do fechado segue
+#     congelado em closed_at).
 #   - o estorno (Task 7; A-1, W-5, W-6): cada `vector_application` das
 #     medidas ganha um `vector_application_reversal` (positivo) no mesmo lote e
 #     local, uma vez (medida já estornada fica; a segunda retirada nem chega
@@ -24,14 +30,17 @@ module VectorControl
   module WithdrawInspection
     module_function
 
-    # -> [perfil | nil, item | nil] travados (nada sem inspeção).
+    # -> [perfil | nil, item | nil, status do levantamento | nil] travados
+    # (nada sem inspeção).
     def lock!(visit)
       inspection = VectorInspection.find_by(home_visit_id: visit.id)
-      return [ nil, nil ] unless inspection
+      return [ nil, nil, nil ] unless inspection
 
       profile = HouseholdVectorProfile.lock.find_by(household_id: inspection.household_id)
       item = inspection.liraa_draw_item_id && LiraaDrawItem.lock.find_by(id: inspection.liraa_draw_item_id)
-      [ profile, item ]
+      survey_status = item && LiraaSurvey.joins(:strata).where(liraa_strata: { id: item.liraa_stratum_id })
+                                         .lock("FOR SHARE OF liraa_surveys").pick(:status)
+      [ profile, item, survey_status ]
     end
 
     # -> VectorInspection | nil. A visita já está retirada (update! antes).
@@ -39,9 +48,9 @@ module VectorControl
       inspection = VectorInspection.find_by(home_visit_id: visit.id)
       return nil unless inspection
 
-      profile, item = lock!(visit)
+      profile, item, survey_status = lock!(visit)
       reverse_stock!(inspection, by)
-      Liraa::Items.released!(item) if item && releases?(inspection, item)
+      Liraa::Items.released!(item, survey_status: survey_status) if item && releases?(inspection, item)
       SaveProfile.write!(profile, RecordInspection.last_attributes(inspection.household_id), by, created: false) if profile
       inspection
     end

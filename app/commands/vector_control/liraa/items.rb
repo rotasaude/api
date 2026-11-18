@@ -22,7 +22,8 @@
 #     (o quarteirão fica com um a menos: `missing` no Liraa::Index);
 #   - released!: a visita retirada devolve o item a pending; o substituto,
 #     inspecionado ou não, fica como está (W-13). Levantamento fechado não
-#     muda (trigger): o item fica.
+#     muda (trigger): o item fica, sem recusa. `survey_status` é o lido por
+#     quem chama com o levantamento FOR SHARE (WithdrawInspection.lock!).
 # version + 1 a cada mudança (o feed do app segue updated_at).
 module VectorControl
   module Liraa
@@ -67,14 +68,12 @@ module VectorControl
                               position: candidate + 1, status: "pending", substitute_of_id: item.id)
       end
 
-      def released!(item)
-        return item if item.status == "pending" || survey_status(item) == "closed"
+      def released!(item, survey_status:)
+        return item if item.status == "pending" || survey_status == "closed"
 
         item.update!(status: "pending", version: item.version + 1)
         item
       end
-
-      def survey_status(item) = LiraaStratum.joins(:liraa_survey).where(id: item.liraa_stratum_id).pick("liraa_surveys.status")
     end
   end
 end
