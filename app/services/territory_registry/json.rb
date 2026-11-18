@@ -33,6 +33,15 @@ module TerritoryRegistry
       json
     end
 
+    # Módulo 35a (Q41, minimização da Q13(1)): o <household> que o agente de
+    # endemias (515140) lê no 24a, sem morador. `families` vazia (nenhum
+    # responsável nem id de família ou paciente) e só `families_count`, as
+    # famílias que ainda moram (moved_out false, a conta do mapa). O resto do
+    # domicílio é o mesmo; as outras rotas e o app de campo não passam por aqui.
+    def household_without_people(household, version, families_count:, full: true)
+      household(household, version, families: [], exited: Set.new, full: full).merge(families_count: families_count)
+    end
+
     # Endereço com as chaves do TerritoryRegistry::Address (vazio com recusa sem endereço).
     def address(values)
       values = values.to_h
