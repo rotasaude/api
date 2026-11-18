@@ -1,5 +1,6 @@
 require "rails_helper"
 require "prism"
+require "pdf/reader"
 
 # Módulo 35a (ADR 0054; contrato §8, §17; Q26, Q28; plano, Task 17): o sigilo
 # da vigilância ambiental de endemias de ponta a ponta. Um cenário completo
@@ -111,11 +112,13 @@ module VectorControlSecrecy
   # A rota da resposta com os UUIDs no lugar de :id.
   def self.route(path) = path.gsub(UUID_IN_PATH, ":id")
 
-  # Onde procurar (bytes, sem caixa): o corpo inteiro e, no PDF, também o
-  # texto extraído (o Prawn quebra o texto com kerning em arrays TJ).
+  # O texto que o PDF imprime (o Prawn quebra o texto com kerning em arrays TJ).
+  def self.pdf_text(raw) = PDF::Reader.new(StringIO.new(raw)).pages.map(&:text).join(" ").gsub(/\s+/, " ")
+
+  # Onde procurar (bytes, sem caixa): o corpo inteiro e, no PDF, também o texto extraído.
   def self.haystack(raw, media_type)
     text = raw.to_s.b
-    text += " #{PDF::Reader.new(StringIO.new(raw)).pages.map(&:text).join(' ').gsub(/\s+/, ' ')}".b if media_type == "application/pdf"
+    text += " #{pdf_text(raw)}".b if media_type == "application/pdf"
     text.downcase
   end
 
@@ -198,6 +201,7 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       end
       responses << { verb: verb, path: request.path, route: s.route(request.path), status: response.status, raw: response.body.dup,
                      haystack: s.haystack(response.body, response.media_type), media_type: response.media_type,
+                     pdf_text: (s.pdf_text(response.body) if response.media_type == "application/pdf"),
                      cache_control: response.headers["Cache-Control"] }
     end
     req = lambda do |verb, path, payload = {}, headers: {}|
@@ -531,6 +535,27 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
     # §17 e §8: a paciente só na rota do endereço do caso (varredura do corpo
     # inteiro, JSON, CSV e PDF); o domicílio do caso só nela e na lista de
     # domicílios, que não diz qual tem caso.
+    # §8 (CaseAddress): o endereço do caso só traz `{ patient_address,
+    # household_address }`. Lá podem sair logradouro, número, bairro e CEP da
+    # paciente e do domicílio; todo outro marcador fica de fora.
+    it "a resposta do endereço do caso só traz as partes do endereço" do
+      p = secrecy::PATIENT
+      allowed = [ p[:street], p[:district], "#{p[:street]}, #{p[:number]}", "Xylandria", "Quixabeira", *secrecy::ZIP_FORMS,
+                  secrecy::CASE_STREET, case_street ]
+      expect(allowed - people - [ secrecy::CASE_STREET, case_street ]).to be_empty # só tira o que é endereço
+      forbidden = (people - allowed) + texts +
+                  [ patient.id, other.id, *ids[:notifications], ids[:case], ids[:other_case], scenario[:case_home].id ]
+      expect(forbidden).to include(p[:full_name], p[:mother_name], "Doralice", "Zambrotti", patient.cns, *secrecy::PHONE_FORMS,
+                                   *secrecy.cpf_forms(patient.cpf), secrecy::OTHER[:full_name], secrecy::OTHER[:mother_name],
+                                   *secrecy.cpf_forms(other.cpf))
+      expect(JSON.parse(address_response[:raw]).keys).to eq(%w[patient_address household_address])
+      forbidden.each do |secret|
+        expect(secrecy.contains?(address_response[:haystack], secret)).to be(false), "o endereço do caso contém #{secret.inspect}"
+      end
+      allowed.first(3).each { |part| expect(secrecy.contains?(address_response[:haystack], part)).to be(true) } # controle
+      expect(secrecy.contains?(address_response[:haystack], case_street)).to be(true)
+    end
+
     it "nenhuma resposta, salvo a do endereço do caso, traz nome, CPF, CNS, telefone ou endereço da paciente" do
       expect(responses.size).to be > 90
       expect(responses.map { |r| r[:route] }).to include("/vector_control/reports/liraa.pdf", "/vector_control/reports/production.csv",
@@ -539,9 +564,10 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
         people.each { |secret| expect(secrecy.contains?(r[:haystack], secret)).to be(false), "#{r[:verb]} #{r[:path]} contém #{secret.inspect}" }
       end
       expect(secrecy.contains?(address_response[:haystack], secrecy::PATIENT[:street])).to be(true) # controle
-      # Controle do PDF: o texto extraído tem o que o relatório imprime (o nome do levantamento).
+      # Controle do PDF: o texto extraído, sozinho, tem o que o relatório imprime (o nome do levantamento).
       pdf = responses.find { |r| r[:media_type] == "application/pdf" }
-      expect(pdf[:haystack]).to include("liraa sigilo")
+      expect(pdf[:pdf_text]).to be_present
+      expect(pdf[:pdf_text].downcase).to include("liraa sigilo")
       expect(responses.select { |r| secrecy.contains?(r[:haystack], case_street) }.map { |r| r[:route] }.uniq)
         .to contain_exactly("/vector_control/households", secrecy::ADDRESS_ROUTE)
     end
@@ -725,9 +751,15 @@ RSpec.describe "Sigilo da vigilância ambiental (35a) — DomainEvents.publish n
   def shared_files = VectorControlSecrecy::SHARED_FILES.map { |path| Rails.root.join(path).to_s }.to_set
 
   # `**payload` (ou um hash com splat) esconde as chaves da varredura.
+  # Em qualquer ponto da árvore dos argumentos (também `payload: { **x }`).
   def splats(call)
-    call.arguments.arguments.grep(Prism::KeywordHashNode).flat_map(&:elements).grep(Prism::AssocSplatNode) +
-      call.arguments.arguments.grep(Prism::HashNode).flat_map(&:elements).grep(Prism::AssocSplatNode)
+    found = []
+    walk = lambda do |node|
+      found << node if node.is_a?(Prism::AssocSplatNode)
+      node.compact_child_nodes.each { |child| walk.call(child) }
+    end
+    walk.call(call.arguments) if call.arguments
+    found
   end
 
   def where(file, call) = "#{file.delete_prefix("#{Rails.root}/")}:#{call.location.start_line}"
