@@ -17,7 +17,9 @@ require_relative "home_visit_crew"
 #   UVZ Curitiba (environmental_surveillance) com o local vector_control, que
 #   o vector_control_settings aponta; três produtos com cargas de catálogo
 #   (dois larvicidas focais e um adulticida espacial) e um lote de cada, com
-#   saldo pela abertura do 27a (o do espinosade, curto: 2 un).
+#   saldo pela abertura do 27a (o do espinosade, curto: 2 un), lançada pelo
+#   almoxarife da UVZ (almoxarifado-uvz@, stock_keeper vinculado ao local pelo
+#   Pharmacy::LinkStaff): o caminho local → almoxarife → entrada → baixa (Q21).
 #
 #   quarteirão         bairro         imóveis (perfil)                         risco
 #   001                Butiatuvinha   R. das Acácias 245; borracharia (PE)     vermelho; —
@@ -66,7 +68,11 @@ class VectorControlCrew
     coordinator: { email_prefix: "endemias", role: VectorControl::Access::COORDINATOR, secret_env: "DEV_ENDEMIC_COORDINATOR_OTP_SECRET",
                    default_secret: "COORDENACAOENDEMIASSEMENTEVETORX" },
     lab: { email_prefix: "entomologia", role: VectorControl::Access::LAB, secret_env: "DEV_VECTOR_LAB_OTP_SECRET",
-           default_secret: "ENTOMOLOGIALABORATORIOSEMENTETRE" }
+           default_secret: "ENTOMOLOGIALABORATORIOSEMENTETRE" },
+    # O almoxarife do local vector_control da UVZ (27a: stock_keeper com vínculo
+    # ao local): é quem dá entrada nos lotes e pode conciliar a falta (Q21).
+    keeper: { email_prefix: "almoxarifado-uvz", role: "stock_keeper", secret_env: "DEV_UVZ_STOCK_KEEPER_OTP_SECRET",
+              default_secret: "ALMOXARIFADOUVZSEMENTEVETORIALQT" }
   }.freeze
 
   # Cargas de catálogo (o produto fixa unidade e carga; a baixa é cargas × carga).
@@ -140,7 +146,7 @@ class VectorControlCrew
       raise "semente do controle vetorial: vector_control ligado mas não utilizável — rode o HomeVisitCrew (db:seed) antes" unless usable
 
       staff = staff!(slug, ddd, password, place)
-      location = stock!(staff)
+      location = stock!(staff, place[:admin])
       place[:households].merge!(strategic_points!(place, staff[:ace], usable))
       blocks = territory!(place, staff[:coordinator])
       check!(VectorControl::SaveCadences.call(items: CADENCES, by: staff[:coordinator]), "cadências") unless VectorCadence.exists?
@@ -283,13 +289,15 @@ class VectorControlCrew
     # --- estoque ----------------------------------------------------------------
 
     # A UVZ (sem comando de unidade: o cadastro é do controlador, como nas outras
-    # sementes), o local vector_control, a configuração, os produtos e os lotes.
-    def stock!(staff)
+    # sementes), o local vector_control, o almoxarife vinculado a ele, a
+    # configuração, os produtos e os lotes (a entrada é do almoxarife).
+    def stock!(staff, admin)
       coordinator = staff[:coordinator]
       uvz = HealthUnit.find_or_create_by!(name: UVZ) { |unit| unit.kind = Pharmacy::Catalog::VECTOR_CONTROL_UNIT_KIND }
       location = StockLocation.find_by(health_unit_id: uvz.id, kind: "vector_control")
       location ||= check!(Pharmacy::SaveLocation.call(attrs: { "kind" => "vector_control", "name" => LOCATION_NAME, "health_unit_id" => uvz.id },
                                                        by: coordinator), "local de insumos").payload[:location]
+      keeper!(location, staff[:keeper], admin)
       VectorControlSetting.ensure_defaults!
       unless VectorControlSetting.find(1).stock_location_id == location.id
         check!(VectorControl::SaveSettings.call(stock_location_id: location.id, by: coordinator), "local da baixa")
@@ -298,8 +306,15 @@ class VectorControlCrew
         VectorProduct.find_by("lower(code) = lower(?)", params["code"]) ||
           check!(VectorControl::SaveProduct.call(params: params, by: coordinator), "produto #{params['code']}").payload[:product]
       end
-      lots!(location, products, coordinator)
+      lots!(location, products, staff[:keeper])
       location
+    end
+
+    # O almoxarife no local, pela administradora (como o PharmacyCrew): uma vez.
+    def keeper!(location, keeper, admin)
+      return if StockLocationStaff.active.exists?(stock_location_id: location.id, user_id: keeper.id, role: "stock_keeper")
+
+      check!(Pharmacy::LinkStaff.add(location: location, user_id: keeper.id, role: "stock_keeper", by: admin), "vínculo do almoxarife ao local")
     end
 
     # Abertura do local (uma por produto): só os produtos ainda sem abertura nele.

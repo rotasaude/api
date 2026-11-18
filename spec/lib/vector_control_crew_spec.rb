@@ -24,6 +24,7 @@ RSpec.describe VectorControlCrew, type: :model do
   let(:ace) { User.find_by!(email_address: "ace@curitiba.demo") }
   let(:coordinator) { User.find_by!(email_address: "endemias@curitiba.demo") }
   let(:lab) { User.find_by!(email_address: "entomologia@curitiba.demo") }
+  let(:keeper) { User.find_by!(email_address: "almoxarifado-uvz@curitiba.demo") }
   let(:nurse) { User.find_by!(email_address: "enfermeira@curitiba.demo") }
 
   # A cadeia anterior do db/seeds.rb, uma vez por arquivo (api#159).
@@ -77,7 +78,7 @@ RSpec.describe VectorControlCrew, type: :model do
 
   it "semear duas vezes não duplica quarteirão, ovitrampa, levantamento nem bloqueio" do
     first = seed
-    tables = [ User, Membership, Professional, ProfessionalLink, HealthTeamMember, MicroAreaFieldAssignment, HealthUnit, StockLocation,
+    tables = [ User, Membership, StockLocationStaff, Professional, ProfessionalLink, HealthTeamMember, MicroAreaFieldAssignment, HealthUnit, StockLocation,
                VectorControlSetting, VectorProduct, StockLot, StockMovement, StockEntry, CityBlock, CityBlockNeighbor, Household,
                HouseholdVersion, HouseholdVectorProfile, VectorCadence, VectorCycle, HomeVisitDay, HomeVisit, VectorInspection,
                VectorSample, VectorStockShortfall, Ovitrap, OvitrapReading, VectorTask, LiraaSurvey, LiraaStratum, LiraaDrawItem,
@@ -102,7 +103,7 @@ RSpec.describe VectorControlCrew, type: :model do
       expect(result[:switch]).to eq("ligado (vector_control)")
       expect(VectorControl::Access.coordinator?(coordinator)).to be(true)
       expect(VectorControl::Access.lab?(lab)).to be(true)
-      expect([ ace, coordinator, lab ]).to all(be_mfa_enrolled)
+      expect([ ace, coordinator, lab, keeper ]).to all(be_mfa_enrolled)
       expect(HealthTeamMember.active.where(health_team: team, professional: ace.professional).pluck(:cbo_code)).to eq([ "515140" ])
       expect(VectorControl::Access.field_agent?(ace, team)).to be(true)
       assignments = MicroAreaFieldAssignment.active.where(professional: ace.professional)
@@ -119,6 +120,14 @@ RSpec.describe VectorControlCrew, type: :model do
       balances = Pharmacy::Ledger.balances(location_id: location.id, lot_ids: StockLot.where(vector_product_id: products.map(&:id)).pluck(:id))
       expect(balances.size).to eq(3)
       expect(balances.values).to all(be_positive)
+      # Q21: o almoxarife da UVZ, vinculado ao local, é o autor das entradas dos lotes.
+      expect(keeper).to be_mfa_enrolled
+      expect(keeper.has_role?("stock_keeper")).to be(true)
+      expect(StockLocationStaff.active.where(stock_location: location, user: keeper).pluck(:role)).to eq([ "stock_keeper" ])
+      expect(Pharmacy::Access.allowed?(user: keeper, location: location, roles: %w[stock_keeper])).to be(true)
+      entries = StockEntry.where(stock_location_id: location.id)
+      expect(entries).to exist
+      expect(entries.pluck(:recorded_by_user_id).uniq).to eq([ keeper.id ])
 
       # Território: quarteirões com vizinhos em dois bairros, todos os imóveis
       # das duas microáreas com perfil e quarteirão, risco variado, dois PE.
@@ -194,7 +203,7 @@ RSpec.describe VectorControlCrew, type: :model do
       expect([ scope[:kind], scope[:micro_area_ids].sort ]).to eq([ "assigned", areas.map(&:id).sort ])
 
       # Saída: e-mail, papel e otpauth; nenhum CPF.
-      expect(result[:users].map { |user| user[:email] }).to eq(%w[ace@curitiba.demo endemias@curitiba.demo entomologia@curitiba.demo])
+      expect(result[:users].map { |user| user[:email] }).to eq(%w[ace@curitiba.demo endemias@curitiba.demo entomologia@curitiba.demo almoxarifado-uvz@curitiba.demo])
       lines = described_class.summary_lines(result, password: "dev-password").join("\n")
       cpfs = Patient.where.not(cpf: nil).pluck(:cpf) + Professional.where.not(cpf: nil).pluck(:cpf)
       expect(cpfs.select { |cpf| lines.include?(cpf) || result.inspect.include?(cpf) }).to be_empty
