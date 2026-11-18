@@ -71,6 +71,7 @@ else
   require Rails.root.join("lib/urgency_crew").to_s
   require Rails.root.join("lib/ombudsman_crew").to_s
   require Rails.root.join("lib/home_visit_crew").to_s
+  require Rails.root.join("lib/vector_control_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -458,6 +459,14 @@ else
         # papel e otpauth: nunca dado de paciente nem token de aparelho.
         home_visits = HomeVisitCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         HomeVisitCrew.summary_lines(home_visits, password: password).each { |line| puts line }
+
+        # ── Vigilância ambiental de endemias (módulo 35a, ADR 0054) ──────────
+        # Depois do HomeVisitCrew (a visita domiciliar ligada, as microáreas 01 e
+        # 02, os domicílios e a enfermeira) e do SurveillanceCrew (a vigilante
+        # que notifica a dengue). Só e-mail, papel e otpauth: nunca dado de
+        # paciente nem endereço de caso.
+        vector_control = VectorControlCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        VectorControlCrew.summary_lines(vector_control, password: password).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
