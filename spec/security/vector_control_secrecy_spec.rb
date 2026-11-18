@@ -266,8 +266,10 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       end
       req.(:put, "#{base}/settings", { stock_location_id: location.id })
       req.(:get, "#{base}/settings")
+      cadences = req.(:get, "#{base}/cadences")
       req.(:put, "#{base}/cadences", { items: [ { neighborhood_id: nil, risk_class: "red", strategic_point: false, days: 7 },
-                                                { neighborhood_id: nil, risk_class: nil, strategic_point: true, days: 15 } ] })
+                                                { neighborhood_id: nil, risk_class: nil, strategic_point: true, days: 15 } ],
+                                       expected_digest: cadences.fetch("digest") })
       req.(:get, "#{base}/cadences")
       number = (today.month + 1) / 2
       starts_on = Date.new(today.year, (number * 2) - 1, 1)

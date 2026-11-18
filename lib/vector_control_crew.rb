@@ -155,7 +155,11 @@ class VectorControlCrew
       location = stock!(staff, place[:admin])
       place[:households].merge!(strategic_points!(place, staff[:ace], usable))
       blocks = territory!(place, staff[:coordinator])
-      check!(VectorControl::SaveCadences.call(items: CADENCES, by: staff[:coordinator]), "cadências") unless VectorCadence.exists?
+      unless VectorCadence.exists?
+        # Sem leitura: o digest da lista atual (vazia).
+        check!(VectorControl::SaveCadences.call(items: CADENCES, by: staff[:coordinator], expected_digest: VectorControl::SaveCadences.digest),
+               "cadências")
+      end
       work_cycle!(staff[:coordinator])
 
       overdue!(slug, place, staff[:ace], usable)
