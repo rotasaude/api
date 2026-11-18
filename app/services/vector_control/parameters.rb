@@ -9,7 +9,10 @@
 # confere que as chaves são as mesmas. `validate` confere um PUT inteiro: as
 # chaves exatas, os tipos (inteiro onde é inteiro; número com até duas casas
 # nas frações), a faixa de cada chave e só depois as desigualdades entre
-# chaves (o path é a chave de baixo). Só o primeiro erro.
+# chaves (o path é a chave de baixo). Só o primeiro erro. Em block_diseases,
+# só o código novo em relação à versão vigente precisa estar na lista de
+# doenças (Surveillance::Diseases). `current`/`at` sempre trazem as 20 chaves:
+# a linha gravada antes de uma chave existir é completada pelo defaults.yml.
 module VectorControl
   module Parameters
     DEFAULTS_PATH = Rails.root.join("config/vector_control/defaults.yml")
@@ -100,7 +103,11 @@ module VectorControl
     def diseases?(value)
       return false unless value.is_a?(Array) && value.any? && value.all?(String) && value.uniq.size == value.size
 
-      (value - Surveillance::Diseases.all.map(&:code)).empty?
+      # Só os códigos novos em relação à versão vigente passam pela lista de
+      # doenças: o PUT reenvia as 20 chaves, e um código já gravado (inclusive
+      # o de fábrica, ou um que saiu da lista depois) não trava a edição.
+      added = value - Array(current.values["block_diseases"])
+      added.empty? || (added - Surveillance::Diseases.all.map(&:code)).empty?
     end
 
     def bands?(value)
@@ -119,7 +126,8 @@ module VectorControl
     def snapshot(row)
       return Snapshot.new(version: 0, values: defaults) unless row
 
-      Snapshot.new(version: row.version, values: row.values, created_at: row.created_at)
+      # Versão gravada antes de uma chave nova: o padrão de fábrica completa.
+      Snapshot.new(version: row.version, values: defaults.merge(row.values), created_at: row.created_at)
     end
     private_class_method :fits?, :diseases?, :bands?, :fraction?, :number?, :snapshot
   end

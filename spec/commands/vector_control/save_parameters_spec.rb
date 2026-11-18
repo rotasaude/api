@@ -115,4 +115,26 @@ RSpec.describe VectorControl::SaveParameters, type: :model do
     expect(DomainEvents).not_to receive(:publish)
     save(default_days: 1)
   end
+
+  context "block_diseases contra a versão vigente (lista de doenças vazia)" do
+    let!(:city) { vector_city! } # sem surveillance_city!: nenhuma lista em vigor
+
+    it "PUT com block_diseases sem mudança passa; código novo fora da lista → path values.block_diseases" do
+      expect(Surveillance::Diseases.all).to be_empty
+      expect(save(default_days: 45)).to be_ok
+      expect(refused_path(save(block_diseases: %w[dengue chikungunya zika febre_amarela]))).to eq("values.block_diseases")
+      expect(save(block_diseases: %w[zika dengue])).to be_ok # tirar e reordenar não pede a lista
+      expect(VectorParameterVersion.order(:version).pluck(:version)).to eq([ 1, 2 ])
+    end
+
+    it "código gravado que saiu da lista (inativo) continua aceito sem mudança" do
+      VectorParameterVersion.create!(version: 1, values: factory.merge("block_diseases" => %w[dengue doenca_local_inativa]),
+                                     created_by_user: coordinator)
+      expect(Surveillance::Diseases.all.map(&:code)).not_to include("doenca_local_inativa")
+      result = save(block_diseases: %w[dengue doenca_local_inativa], ovitrap_alert_eggs: 150)
+      expect(result).to be_ok
+      expect(result.payload.fetch(:version)).to have_attributes(version: 2)
+      expect(refused_path(save(block_diseases: %w[dengue doenca_local_inativa outra]))).to eq("values.block_diseases")
+    end
+  end
 end

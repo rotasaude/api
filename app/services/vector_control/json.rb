@@ -33,7 +33,7 @@
 #   - samples → VectorSample[] (Task 12: dia da visita, quarteirão congelado
 #     e resultado; nunca imóvel nem morador; a nota nunca sai).
 #   - parameters → VectorParameterVersion (Task 14; versão 0 com created_at
-#     null, A-4/Q13(8); versão gravada antes de uma chave nova completa com o
+#     null, A-4/Q13(8); as 20 chaves, que Parameters já completa com o
 #     padrão de fábrica);
 #   - domains → VectorControlDomains = o `vector_control_domains` da
 #     referência do app (§13; Q7(3), Q8, Q15): os rótulos de
@@ -208,7 +208,7 @@ module VectorControl
     end
 
     def parameters(snapshot)
-      { version: snapshot.version, values: Parameters.defaults.merge(snapshot.values),
+      { version: snapshot.version, values: snapshot.values,
         created_at: snapshot.created_at&.utc&.iso8601(6) }
     end
 
@@ -217,7 +217,7 @@ module VectorControl
       lists = DOMAIN_LISTS.to_h do |list|
         [ list.to_sym, labels.fetch(list).map { |row| { code: row.fetch("code").to_s, label: row.fetch("label") } } ]
       end
-      values = Parameters.defaults.merge(Parameters.current.values)
+      values = Parameters.current.values
       lists.merge(
         products: VectorProduct.active_products.order(:code, :id).map do |product|
           { id: product.id, code: product.code, name: product.name, unit: product.unit,

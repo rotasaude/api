@@ -27,8 +27,11 @@ RSpec.describe VectorControl::Parameters, type: :model do
     expect(factory.size).to eq(20)
   end
 
-  it "validate: o padrão de fábrica passa (com a lista de doenças); sem ela, block_diseases não passa" do
-    expect(described_class.validate(factory)).to eq(path: "block_diseases")
+  it "validate: sem lista de doenças, block_diseases sem mudança passa; código novo fora da lista não" do
+    expect(Surveillance::Diseases.all).to be_empty
+    expect(described_class.validate(factory)).to be_nil
+    expect(described_class.validate(factory.merge("block_diseases" => %w[dengue]))).to be_nil
+    expect(described_class.validate(factory.merge("block_diseases" => %w[dengue febre_amarela]))).to eq(path: "block_diseases")
     surveillance_city!
     expect(described_class.validate(factory)).to be_nil
     expect(described_class.validate(factory.merge("liraa_half_household_fraction" => 1.01))).to eq(path: "liraa_half_household_fraction")
@@ -38,5 +41,14 @@ RSpec.describe VectorControl::Parameters, type: :model do
     expect(described_class.current.created_at).to be_nil
     row = VectorParameterVersion.create!(version: 1, values: factory, created_by_user: endemic_coordinator!)
     expect(described_class.current.created_at).to eq(row.created_at)
+  end
+
+  it "linha gravada antes de uma chave existir → current/at completam com o padrão de fábrica" do
+    row = VectorParameterVersion.create!(version: 1, values: factory.except("liraa_half_household_fraction").merge("default_days" => 40),
+                                         created_by_user: endemic_coordinator!)
+    expect(row.values).not_to have_key("liraa_half_household_fraction")
+    expect(described_class.current.values["liraa_half_household_fraction"]).to eq(0.5)
+    expect(described_class.at(1).values).to eq(factory.merge("default_days" => 40))
+    expect(described_class.current.values.keys).to match_array(factory.keys)
   end
 end
