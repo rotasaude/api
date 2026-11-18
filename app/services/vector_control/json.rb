@@ -26,7 +26,8 @@
 #     VectorTask[] (Task 9; semana em "YYYY-WW", A-9; notas nunca saem).
 #   - liraa_surveys → LiraaSurvey[] (Task 10: estratos na ordem do
 #     levantamento, block_ids na ordem gravada; no rascunho, N sem ponto
-#     estratégico pela base do sorteio (Q24) e n, intervalo e início nulos);
+#     estratégico pela base do sorteio (Q24) e n, intervalo e início nulos;
+#     version, que o PATCH devolve como expected_version, Q37(2));
 #     liraa_items → LiraaItem[] (o domicílio só com o
 #     endereço curto; quem mostra grava a trilha).
 #   - transmission_blocks → TransmissionBlock[] (Task 11: o caso só como
@@ -316,7 +317,7 @@ module VectorControl
       by_survey = strata.group_by(&:liraa_survey_id)
       surveys.map do |survey|
         { id: survey.id, name: survey.name, starts_on: survey.starts_on.iso8601, ends_on: survey.ends_on.iso8601, status: survey.status,
-          parameters_version: survey.parameters_version, drawn_at: survey.drawn_at&.utc&.iso8601, closed_at: survey.closed_at&.utc&.iso8601,
+          version: survey.version, parameters_version: survey.parameters_version, drawn_at: survey.drawn_at&.utc&.iso8601, closed_at: survey.closed_at&.utc&.iso8601,
           strata: by_survey.fetch(survey.id, []).map do |stratum|
             { id: stratum.id, name: stratum.name, mode: stratum.mode, block_ids: blocks.fetch(stratum.id, []).map(&:last),
               households_count: stratum.households_count, sample_target: stratum.sample_target, block_interval: stratum.block_interval,

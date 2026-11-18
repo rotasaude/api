@@ -17,6 +17,14 @@
 # recontado pela base do sorteio (Liraa::Draw.base: ativos com o quarteirão no
 # perfil, sem ponto estratégico), a mesma consulta do sorteio: o N que o
 # editor mostra é o N que o sorteio confere (o sorteio reconta na hora).
+# Concorrência otimista (Q37(2), docs a1468a9; a forma do SaveParameters/Q34):
+# a edição leva `expected_version`, a version do levantamento que a tela leu.
+# Ausente → expected_version_required; fora de inteiro >= 0 → invalid_request,
+# ambos com o path expected_version e antes de tudo; na criação ela é chave
+# desconhecida (invalid_request). Sob a trava, depois do survey_not_draft:
+# diferente da version da linha travada → survey_changed (409), nada gravado
+# (nem estratos nem recontagem). Toda edição sobe a version (nome, período,
+# estratos e a recontagem do N); o sorteio e o fechamento também.
 # Sem evento (§17).
 module VectorControl
   module Liraa
@@ -33,9 +41,15 @@ module VectorControl
       module_function
 
       # -> Result.ok(survey:) | fail(:invalid_request | :stratum_overlap | :survey_not_draft, details: { path: })
+      #    | fail(:expected_version_required, details: { path: "expected_version" }) | fail(:survey_changed)
       def call(params:, by:, survey: nil)
         _ = by
         params = params.to_h.stringify_keys
+        if survey
+          expected = params.delete("expected_version")
+          return fail_with(:expected_version_required, "expected_version") if expected.nil?
+          return fail_with(:invalid_request, "expected_version") unless expected.is_a?(Integer) && expected >= 0
+        end
         values = parse(params, survey)
         return values if values.is_a?(Result)
 
@@ -44,12 +58,13 @@ module VectorControl
           if survey
             survey.lock!
             next Result.fail(:survey_not_draft) unless survey.status == "draft"
+            next Result.fail(:survey_changed) unless survey.version == expected
 
             starts_on = values.fetch(:starts_on, survey.starts_on)
             next fail_with(:invalid_request, "ends_on") if values.fetch(:ends_on, survey.ends_on) < starts_on
 
             survey.assign_attributes(values)
-            survey.version += 1 if survey.changed? || strata
+            survey.version += 1
             survey.save!
           else
             survey = LiraaSurvey.create!(values)

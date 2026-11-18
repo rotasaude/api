@@ -20,8 +20,9 @@ module VectorControl
     # proposal_changed: a proposta tem caso que a tela não viu (Q26(4)).
     # parameters_changed: a versão dos parâmetros não é a que a tela leu
     # (Q34); reading_changed / sample_changed: a leitura ou a amostra mudou
-    # desde a version que a correção mandou (Q36). expected_version_required
-    # (a tela não mandou a versão) é 422.
+    # desde a version que a correção mandou (Q36); survey_changed: o rascunho
+    # do LIRAa mudou desde a version que o PATCH mandou (Q37(2)).
+    # expected_version_required (a tela não mandou a versão) é 422.
     # cadences_changed: a lista de cadências não é a que a tela leu (Q35);
     # expected_digest_required é 422.
     FAILURE_STATUS = {
@@ -31,7 +32,7 @@ module VectorControl
       block_in_use: :conflict, product_in_use: :conflict, already_reconciled: :conflict, survey_not_draft: :conflict,
       invalid_transition: :conflict, unit_has_vector_control_location: :conflict, visit_changed: :conflict,
       client_uuid_conflict: :conflict, proposal_changed: :conflict, parameters_changed: :conflict,
-      reading_changed: :conflict, sample_changed: :conflict,
+      reading_changed: :conflict, sample_changed: :conflict, survey_changed: :conflict,
       cadences_changed: :conflict
     }.freeze
 

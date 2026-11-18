@@ -27,10 +27,12 @@ RSpec.describe "Vigilância ambiental — LIRAa", type: :request do
     expect(response).to have_http_status(:created)
     survey = json_body
     expect(survey).to eq("id" => survey["id"], "name" => "LIRAa janeiro", "starts_on" => today.iso8601, "ends_on" => (today + 6).iso8601,
-                         "status" => "draft", "parameters_version" => nil, "drawn_at" => nil, "closed_at" => nil, "strata" => [])
+                         "status" => "draft", "version" => 1, "parameters_version" => nil, "drawn_at" => nil, "closed_at" => nil,
+                         "strata" => [])
 
-    json_patch "/vector_control/liraa_surveys/#{survey['id']}", strata: [ stratum ]
+    json_patch "/vector_control/liraa_surveys/#{survey['id']}", strata: [ stratum ], expected_version: 1
     expect(response).to have_http_status(:ok)
+    expect(json_body["version"]).to eq(2)
     expect(json_body["strata"].sole.except("id")).to eq("name" => "Estrato 1", "mode" => "census", "block_ids" => [ block.id ],
                                                        "households_count" => 3, "sample_target" => nil, "block_interval" => nil,
                                                        "random_start" => nil)
@@ -46,10 +48,10 @@ RSpec.describe "Vigilância ambiental — LIRAa", type: :request do
 
     json_post "/vector_control/liraa_surveys/#{survey['id']}/draw", {}
     expect(response).to have_http_status(:ok)
-    expect(json_body).to include("status" => "drawn", "parameters_version" => 0)
+    expect(json_body).to include("status" => "drawn", "parameters_version" => 0, "version" => 3)
     expect(json_body["strata"].sole).to include("households_count" => 3, "sample_target" => 3, "block_interval" => 1, "random_start" => 1)
 
-    json_patch "/vector_control/liraa_surveys/#{survey['id']}", name: "Outro"
+    json_patch "/vector_control/liraa_surveys/#{survey['id']}", name: "Outro", expected_version: 3
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "survey_not_draft" } ])
     json_post "/vector_control/liraa_surveys/#{survey['id']}/draw", {}
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "survey_not_draft" } ])
@@ -70,7 +72,7 @@ RSpec.describe "Vigilância ambiental — LIRAa", type: :request do
 
     json_post "/vector_control/liraa_surveys/#{survey['id']}/close", {}
     expect(response).to have_http_status(:ok)
-    expect(json_body["status"]).to eq("closed")
+    expect(json_body).to include("status" => "closed", "version" => 4)
     expect(json_body["closed_at"]).to be_present
     expect(events.map(&:first)).to include("liraa_survey.closed")
 
@@ -164,12 +166,80 @@ RSpec.describe "Vigilância ambiental — LIRAa", type: :request do
     json_post "/vector_control/liraa_surveys", body(strata: [ stratum ])
     id = json_body["id"]
 
-    json_patch "/vector_control/liraa_surveys/#{id}", strata: [ stratum(blocks: [ other_block ], name: "B"), stratum(mode: "half", name: "A") ]
+    json_patch "/vector_control/liraa_surveys/#{id}", strata: [ stratum(blocks: [ other_block ], name: "B"), stratum(mode: "half", name: "A") ],
+                                                      expected_version: 1
     expect(json_body["strata"].map { |row| [ row["name"], row["mode"], row["block_ids"] ] })
       .to eq([ [ "B", "census", [ other_block.id ] ], [ "A", "half", [ block.id ] ] ])
     expect(LiraaStratum.where(liraa_survey_id: id).count).to eq(2)
 
     json_patch "/vector_control/liraa_surveys/#{SecureRandom.uuid}", name: "x"
     expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
+  end
+
+  # Q37(2): toda escrita do rascunho sobe a version (nome, período, estratos
+  # e a recontagem do N); o PATCH leva expected_version, conferida sob a trava
+  # do levantamento. Divergiu → 409 survey_changed e nada gravado.
+  describe "Q37(2): concorrência otimista do rascunho" do
+    def patch_survey(id, **payload) = json_patch("/vector_control/liraa_surveys/#{id}", payload)
+
+    def strata_of(id) = LiraaStratum.where(liraa_survey_id: id).order(:created_at, :id).pluck(:name, :households_count)
+
+    before { sign_in_as(coordinator) }
+
+    it "sobe a version ao trocar só os estratos, só o nome, só o período e só o N" do
+      liraa_households!(block, 2, micro_area: area)
+      json_post "/vector_control/liraa_surveys", body(strata: [ stratum ])
+      id = json_body["id"]
+      expect(json_body["version"]).to eq(1)
+
+      patch_survey(id, strata: [ stratum(name: "Outro estrato") ], expected_version: 1)
+      expect([ response.status, json_body["version"] ]).to eq([ 200, 2 ])
+      patch_survey(id, name: "Outro nome", expected_version: 2)
+      expect([ response.status, json_body["version"] ]).to eq([ 200, 3 ])
+      patch_survey(id, ends_on: (today + 7).iso8601, expected_version: 3)
+      expect([ response.status, json_body["version"] ]).to eq([ 200, 4 ])
+
+      # Só o N: o mesmo nome, e a recontagem acha um domicílio novo.
+      liraa_households!(block, 1, micro_area: area)
+      patch_survey(id, name: "Outro nome", expected_version: 4)
+      expect([ response.status, json_body["version"] ]).to eq([ 200, 5 ])
+      expect(json_body["strata"].sole["households_count"]).to eq(3)
+      expect(LiraaSurvey.find(id).version).to eq(5)
+    end
+
+    it "dois PATCHes com a mesma expected_version: o segundo → 409 survey_changed, nada gravado" do
+      liraa_households!(block, 2, micro_area: area)
+      json_post "/vector_control/liraa_surveys", body(strata: [ stratum ])
+      id = json_body["id"]
+
+      patch_survey(id, strata: [ stratum(name: "Primeiro") ], expected_version: 1)
+      expect([ response.status, json_body["version"] ]).to eq([ 200, 2 ])
+
+      liraa_households!(block, 1, micro_area: area)
+      events = []
+      allow(DomainEvents).to receive(:publish).and_wrap_original { |m, *args, **kw| events << args.first; m.call(*args, **kw) }
+      patch_survey(id, strata: [ stratum(blocks: [ other_block ], name: "Segundo") ], expected_version: 1)
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "survey_changed" } ])
+      expect(strata_of(id)).to eq([ [ "Primeiro", 2 ] ])
+      expect(LiraaSurvey.find(id)).to have_attributes(version: 2, name: "LIRAa janeiro")
+      expect(events).to be_empty
+    end
+
+    it "expected_version ausente → 422 expected_version_required; malformada → 422 invalid_request; o POST não a aceita" do
+      json_post "/vector_control/liraa_surveys", body(strata: [ stratum ])
+      id = json_body["id"]
+
+      patch_survey(id, name: "Outro")
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "expected_version_required", "path" => "expected_version" } ])
+      [ "1", 1.5, -1, true ].each do |bad|
+        patch_survey(id, name: "Outro", expected_version: bad)
+        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "expected_version" } ])
+      end
+      expect(LiraaSurvey.find(id)).to have_attributes(name: "LIRAa janeiro", version: 1)
+
+      json_post "/vector_control/liraa_surveys", body(expected_version: 1)
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "expected_version" } ])
+      expect(LiraaSurvey.count).to eq(1)
+    end
   end
 end

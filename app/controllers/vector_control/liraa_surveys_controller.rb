@@ -4,7 +4,10 @@
 #     Q31: também para quem lê o relatório liraa (o filtro survey_id: o
 #     municipal_admin e o vector_lab), pela regra dele (Access.reads_report?);
 #   - POST /liraa_surveys e PATCH /liraa_surveys/:id → LiraaSurvey
-#     (Liraa::SaveSurvey; fora do rascunho → 409 survey_not_draft);
+#     (Liraa::SaveSurvey; fora do rascunho → 409 survey_not_draft). Q37(2):
+#     o PATCH leva expected_version (a version lida): ausente → 422
+#     expected_version_required, fora de inteiro >= 0 → 422 invalid_request,
+#     divergente → 409 survey_changed; o POST não a aceita;
 #   - POST /liraa_surveys/:id/draw (step-up; Liraa::Draw) e /close (step-up;
 #     Liraa::Close; fora de drawn → 409 invalid_transition path status) →
 #     LiraaSurvey;

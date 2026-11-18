@@ -287,9 +287,10 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
         { name: "LIRAa Sigilo", starts_on: (today - 1).iso8601, ends_on: (today + 5).iso8601,
           strata: [ { name: "Quarteirao 002", mode: mode, block_ids: [ ids[:b2] ] } ] }
       end
-      ids[:survey] = req.(:post, "#{base}/liraa_surveys", survey_body.("standard")).fetch("id")
+      survey = req.(:post, "#{base}/liraa_surveys", survey_body.("standard"))
+      ids[:survey] = survey.fetch("id")
       refuse.(:stratum_out_of_range, "#{base}/liraa_surveys/#{ids[:survey]}/draw", {}, status: 422, sent: [])
-      req.(:patch, "#{base}/liraa_surveys/#{ids[:survey]}", survey_body.("census"))
+      req.(:patch, "#{base}/liraa_surveys/#{ids[:survey]}", survey_body.("census").merge(expected_version: survey.fetch("version")))
       req.(:post, "#{base}/liraa_surveys/#{ids[:survey]}/draw", {})
       ids[:item] = req.(:get, "#{base}/liraa_surveys/#{ids[:survey]}/items").fetch("items").sole.fetch("id")
       req.(:get, "#{base}/liraa_surveys")
