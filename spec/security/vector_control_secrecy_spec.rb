@@ -28,11 +28,16 @@ require "prism"
 #
 # Constantes do cenário num módulo próprio: dentro de um bloco do RSpec elas
 # cairiam em Object e colidiriam com as de outros specs na suíte. Tudo ASCII:
-# a varredura compara bytes, e o JSON não escapa nada.
+# a varredura compara bytes sem caixa (o PDF também pelo texto extraído), e o
+# JSON não escapa nada. Cada palavra dos nomes e o logradouro são únicos, para
+# a varredura também pegar o nome partido ou só o sobrenome.
 module VectorControlSecrecy
-  PATIENT = { full_name: "Doralice Sigilosa Bloqueio", mother_name: "Iolanda Mae Sigilosa", street: "Travessa Reservada do Caso",
-              number: "77", district: "Vila Sigilo Reservada", zip: "80020300" }.freeze
-  OTHER = { full_name: "Ernesta Reservada Semlugar", mother_name: "Mirtes Mae Reservada" }.freeze
+  PATIENT = { full_name: "Doralice Quintaneiro Zambrotti", mother_name: "Iolanda Mafalda Zambrotti", street: "Travessa Xylandria",
+              number: "77", district: "Vila Quixabeira", zip: "80020300" }.freeze
+  OTHER = { full_name: "Ernesta Valquiria Trombetti", mother_name: "Mirtes Odalia Trombetti" }.freeze
+  # As palavras soltas: nomes, sobrenomes, o logradouro e o bairro.
+  WORDS = %w[Doralice Quintaneiro Zambrotti Iolanda Mafalda Ernesta Valquiria Trombetti Mirtes Odalia Xylandria Quixabeira].freeze
+  ZIP_FORMS = [ PATIENT[:zip], "#{PATIENT[:zip][0, 5]}-#{PATIENT[:zip][5, 3]}" ].freeze
   PHONE = "41987650321".freeze
   PHONE_FORMS = [ PHONE, "(41) 98765-0321", "98765-0321" ].freeze
   # O domicílio do caso (24a): o address_short dele só sai na lista de
@@ -93,14 +98,28 @@ module VectorControlSecrecy
     app/models/ovitrap*.rb app/models/liraa_*.rb app/models/transmission_block*.rb app/controllers/concerns/vector_control_gate.rb
     lib/vector_control_crew.rb
   ].freeze
+  # Arquivos de outros módulos com código do 35a (boletim, app, baixa): nome
+  # de evento sem resolver ou Platform.audit neles também falha. Nenhum nome
+  # dinâmico conhecido (sem allow-list).
+  SHARED_FILES = %w[
+    app/services/field_sync/upload.rb app/services/field_sync/changes.rb app/commands/home_visits/record.rb
+    app/commands/pharmacy/record_entry.rb app/services/stock/domain.rb
+  ].freeze
 
   def self.cpf_forms(cpf) = [ cpf, "#{cpf[0, 3]}.#{cpf[3, 3]}.#{cpf[6, 3]}-#{cpf[9, 2]}" ]
 
   # A rota da resposta com os UUIDs no lugar de :id.
   def self.route(path) = path.gsub(UUID_IN_PATH, ":id")
 
-  # Compara bytes: o PDF é binário e o CSV leva BOM.
-  def self.contains?(raw, secret) = raw.to_s.b.include?(secret.to_s.b)
+  # Onde procurar (bytes, sem caixa): o corpo inteiro e, no PDF, também o
+  # texto extraído (o Prawn quebra o texto com kerning em arrays TJ).
+  def self.haystack(raw, media_type)
+    text = raw.to_s.b
+    text += " #{PDF::Reader.new(StringIO.new(raw)).pages.map(&:text).join(' ').gsub(/\s+/, ' ')}".b if media_type == "application/pdf"
+    text.downcase
+  end
+
+  def self.contains?(haystack, secret) = haystack.include?(secret.to_s.b.downcase)
 end
 
 RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :request do
@@ -178,6 +197,7 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
         public_send(verb, path, params: payload.to_json, headers: { "CONTENT_TYPE" => "application/json" }.merge(headers))
       end
       responses << { verb: verb, path: request.path, route: s.route(request.path), status: response.status, raw: response.body.dup,
+                     haystack: s.haystack(response.body, response.media_type), media_type: response.media_type,
                      cache_control: response.headers["Cache-Control"] }
     end
     req = lambda do |verb, path, payload = {}, headers: {}|
@@ -287,6 +307,10 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       req.(:post, "#{base}/transmission_blocks/#{ids[:tb1]}/cycles", { starts_on: (today - 1).iso8601, ends_on: (today + 3).iso8601 })
       req.(:post, "#{base}/transmission_blocks/#{ids[:tb2]}/cases/#{ids[:other_case]}/move", { to_transmission_block_id: ids[:tb1] })
       req.(:post, "#{base}/transmission_blocks/#{ids[:tb2]}/dismiss", { reason: s::TEXTS[:dismiss_reason] })
+      # Os domicílios de novo, com o caso no bloqueio: a linha do domicílio do caso igual às outras.
+      ids[:households_after] = req.(:get, "#{base}/households?neighborhood_id=#{neighborhood.id}").fetch("items")
+      ids[:case_home_after] = req.(:get, "#{base}/households/#{case_home.id}")
+      ids[:home_after] = req.(:get, "#{base}/households/#{home.id}")
 
       # ACE: leituras, vencidos, visita LIRAa pelo dashboard e a recusada.
       stepped_up!(ace)
@@ -327,6 +351,9 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       ]
       ids[:upload] = req.(:post, "/field/v1/uploads", { items: items }, headers: bearer).fetch("results")
       travel(3.seconds) { ids[:changes] = req.(:get, "/field/v1/changes", headers: bearer) }
+      dashboard = req.(:post, "#{base}/ovitraps", { client_uuid: SecureRandom.uuid, household_id: home.id, number: "OV-0102", consent: true,
+                                                    installed_on: (today - 5).iso8601 })
+      req.(:post, "#{base}/ovitraps/#{dashboard.fetch('id')}/collect", { collected_on: today.iso8601, condition: "lost", remove: true })
       req.(:get, "#{base}/ovitraps?micro_area_id=#{area.id}")
 
       # Laboratório: contagem e correção; a palheta avariada; amostra e correção.
@@ -408,7 +435,7 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
     let(:people) do
       p = secrecy::PATIENT
       [ p[:full_name], p[:mother_name], p[:street], p[:district], "#{p[:street]}, #{p[:number]}", patient.cns,
-        secrecy::OTHER[:full_name], secrecy::OTHER[:mother_name] ] +
+        secrecy::OTHER[:full_name], secrecy::OTHER[:mother_name] ] + secrecy::WORDS + secrecy::ZIP_FORMS +
         secrecy.cpf_forms(patient.cpf) + secrecy.cpf_forms(other.cpf) + secrecy::PHONE_FORMS
     end
     let(:case_street) { "#{secrecy::CASE_STREET}, #{secrecy::CASE_NUMBER}" }
@@ -418,6 +445,7 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
     end
     let(:responses) { scenario[:responses] }
     let(:address_response) { responses.find { |r| r[:route] == secrecy::ADDRESS_ROUTE } }
+    let(:others) { responses.reject { |r| r.equal?(address_response) } }
 
     it "percorreu o cenário inteiro (controle positivo)" do
       expect(TransmissionBlock.find(ids[:tb1])).to have_attributes(status: "closed", center_block_id: ids[:b1])
@@ -480,8 +508,10 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       expect(events.find { |e| e.name == "transmission_block_case.moved" }.payload)
         .to include("transmission_block_id" => ids[:tb1], "from_transmission_block_id" => ids[:tb2])
 
-      payloads = events.map { |e| [ e.name, e.payload ] }.to_json
-      (people + texts + [ case_street ]).each { |secret| expect(payloads).not_to include(secret), "evento contém #{secret.inspect}" }
+      payloads = events.map { |e| [ e.name, e.payload ] }.to_json.downcase
+      (people + texts + [ case_street ]).each do |secret|
+        expect(payloads).not_to include(secret.downcase), "evento contém #{secret.inspect}"
+      end
       expect(events.flat_map { |e| e.payload.keys }.grep(/note|\Areason\z|name|cpf|cns|phone|address/)).to be_empty
     end
 
@@ -490,7 +520,8 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       # Controle: a captura viu as requisições e o filtro agiu.
       expect(log).to include("/vector_control/transmission_blocks", "/vector_control/reports", "/home_visits", "/field/v1/uploads",
                              "[FILTERED]")
-      (people + texts + [ case_street ]).each { |secret| expect(log).not_to include(secret), "log contém #{secret.inspect}" }
+      lowered = log.downcase
+      (people + texts + [ case_street ]).each { |secret| expect(lowered).not_to include(secret.downcase), "log contém #{secret.inspect}" }
 
       logged = log.scan(/"(#{secrecy::LOGGED_KEYS.join('|')})"\s*=>\s*([^,}]+)/)
       expect(logged.map(&:first).uniq).to include("note", "count_note", "result_note", "reason")
@@ -504,11 +535,14 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       expect(responses.size).to be > 90
       expect(responses.map { |r| r[:route] }).to include("/vector_control/reports/liraa.pdf", "/vector_control/reports/production.csv",
                                                          "/field/v1/changes", "/home_visits")
-      responses.reject { |r| r.equal?(address_response) }.each do |r|
-        people.each { |secret| expect(secrecy.contains?(r[:raw], secret)).to be(false), "#{r[:verb]} #{r[:path]} contém #{secret.inspect}" }
+      others.each do |r|
+        people.each { |secret| expect(secrecy.contains?(r[:haystack], secret)).to be(false), "#{r[:verb]} #{r[:path]} contém #{secret.inspect}" }
       end
-      expect(secrecy.contains?(address_response[:raw], secrecy::PATIENT[:street])).to be(true) # controle
-      expect(responses.select { |r| secrecy.contains?(r[:raw], case_street) }.map { |r| r[:route] }.uniq)
+      expect(secrecy.contains?(address_response[:haystack], secrecy::PATIENT[:street])).to be(true) # controle
+      # Controle do PDF: o texto extraído tem o que o relatório imprime (o nome do levantamento).
+      pdf = responses.find { |r| r[:media_type] == "application/pdf" }
+      expect(pdf[:haystack]).to include("liraa sigilo")
+      expect(responses.select { |r| secrecy.contains?(r[:haystack], case_street) }.map { |r| r[:route] }.uniq)
         .to contain_exactly("/vector_control/households", secrecy::ADDRESS_ROUTE)
     end
 
@@ -521,22 +555,35 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       expect(transmission.map { |point| point["id"] }).to contain_exactly(scenario[:case_home].id, scenario[:home].id) # controle
       expect(transmission.map { |point| point.values_at("category", "label") }.uniq).to eq([ %w[area area] ])
       expect(map[:risk].fetch("points").map { |point| point["label"] }.uniq).to match_array(%w[001 002])
-      expect(map[:ovitraps].fetch("points").map { |point| point["id"] }).to match_array(Ovitrap.pluck(:id))
+      expect(map[:ovitraps].fetch("points").map { |point| point["id"] }).to match_array(Ovitrap.active_ovitraps.pluck(:id))
 
-      case_ids = [ patient.id, other.id, *ids[:notifications], ids[:case], ids[:other_case] ]
-      responses.select { |r| r[:route].start_with?("/vector_control/map_points") }.each do |r|
-        case_ids.each { |id| expect(secrecy.contains?(r[:raw], id)).to be(false), "#{r[:path]} liga ponto a #{id}" }
+      # Paciente e notificação: em nenhuma resposta (só o endereço do caso os lê).
+      people_ids = [ patient.id, other.id, *ids[:notifications] ]
+      expect(others.map { |r| r[:route] }).to include("/field/v1/changes", "/vector_control/due", "/vector_control/ovitraps",
+                                                      "/vector_control/samples", "/home_visits", "/vector_control/households")
+      others.each do |r|
+        people_ids.each { |id| expect(secrecy.contains?(r[:haystack], id)).to be(false), "#{r[:verb]} #{r[:path]} contém #{id}" }
       end
-      linked = responses.select do |r|
-        r[:route].start_with?("/vector_control/transmission_blocks", "/vector_control/tasks", "/vector_control/reports") &&
-          r[:route] != secrecy::ADDRESS_ROUTE
+      # O caso ("caso n") só nas respostas do bloqueio; nunca no app, no mapa, nas listas nem nos relatórios.
+      case_ids = [ ids[:case], ids[:other_case] ]
+      others.reject { |r| r[:route].start_with?("/vector_control/transmission_blocks") }.each do |r|
+        case_ids.each { |id| expect(secrecy.contains?(r[:haystack], id)).to be(false), "#{r[:verb]} #{r[:path]} contém o caso #{id}" }
       end
+      # O domicílio do caso: nunca ao lado do bloqueio, das tarefas nem dos relatórios.
+      linked = others.select { |r| r[:route].start_with?("/vector_control/transmission_blocks", "/vector_control/tasks", "/vector_control/reports") }
       expect(linked.size).to be > 20
       linked.each do |r|
-        (case_ids.first(4) + [ scenario[:case_home].id, case_street ]).each do |secret|
-          expect(secrecy.contains?(r[:raw], secret)).to be(false), "#{r[:verb]} #{r[:path]} contém #{secret.inspect}"
+        [ scenario[:case_home].id, case_street ].each do |secret|
+          expect(secrecy.contains?(r[:haystack], secret)).to be(false), "#{r[:verb]} #{r[:path]} contém #{secret.inspect}"
         end
       end
+
+      # Depois da confirmação, o domicílio do caso na lista e no detalhe tem a mesma forma dos outros.
+      rows = ids[:households_after].index_by { |row| row["id"] }
+      expect(rows.keys).to include(scenario[:case_home].id, scenario[:home].id)
+      expect(rows.fetch(scenario[:case_home].id).keys).to eq(rows.fetch(scenario[:home].id).keys)
+      expect(ids[:case_home_after].keys).to eq(ids[:home_after].keys)
+      expect(ids[:case_home_after]["vector"].keys).to eq(ids[:home_after]["vector"].keys)
     end
 
     it "toda recusa 4xx traz só error e path, sem o valor enviado" do
@@ -548,20 +595,22 @@ RSpec.describe "Sigilo da vigilância ambiental de endemias (35a)", type: :reque
       }
       scenario[:refusals].each do |refusal|
         expect(refusal[:json].values_at("error", "path")).to eq(expected.fetch(refusal[:label])), "#{refusal[:label]}: #{refusal[:json]}"
-        refusal[:sent].each { |sent| expect(refusal[:raw]).not_to include(sent), "#{refusal[:label]} ecoa o valor enviado" }
+        refusal[:sent].each do |sent|
+          expect(secrecy.contains?(refusal[:raw].downcase, sent)).to be(false), "#{refusal[:label]} ecoa o valor enviado"
+        end
       end
       failures = responses.select { |r| r[:status].between?(400, 499) }
       expect(failures.size).to eq(scenario[:refusals].size)
       failures.each do |r|
         expect(JSON.parse(r[:raw]).keys - %w[error path]).to be_empty, "#{r[:path]}: #{r[:raw]}"
-        (people + texts).each { |secret| expect(r[:raw]).not_to include(secret), "#{r[:path]} contém #{secret.inspect}" }
+        (people + texts).each { |secret| expect(secrecy.contains?(r[:haystack], secret)).to be(false), "#{r[:path]} contém #{secret.inspect}" }
       end
     end
 
     # §8 e Q26(3): as listas com address_short gravam a trilha do 24a; o
     # endereço do caso grava a do prontuário e a do domicílio.
     it "as listas com address_short gravam households_listed!; o endereço do caso grava as duas trilhas" do
-      listed = responses.filter_map do |r|
+      listed = responses.select { |r| r[:verb] == :get }.filter_map do |r|
         rows = case r[:route]
                when "/vector_control/households" then JSON.parse(r[:raw])["items"].map { |row| row["id"] }
                when "/vector_control/due" then JSON.parse(r[:raw])["items"].map { |row| row["household_id"] }
@@ -619,9 +668,10 @@ RSpec.describe "Sigilo da vigilância ambiental (35a) — query de toda rota", t
         headers = { "CONTENT_TYPE" => "application/json" }
         verb == "GET" ? get(url, headers: headers) : public_send(verb.downcase, url, params: "{}", headers: headers)
         json = JSON.parse(response.body) rescue {}
-        refused = response.status == 422 && json["error"] == "invalid_request" && json["path"].in?([ nil, key ])
+        # query_only! recusa sem path; qualquer outro 422 é de outra regra, que leu a URL antes.
+        refused = response.status == 422 && json["error"] == "invalid_request" && json["path"].nil? && (json.keys - %w[error path]).empty?
         failures << "#{verb} #{route}?#{key} → #{response.status} #{response.body[0, 120]}" unless refused
-        failures << "#{verb} #{route}?#{key} ecoa o valor" if response.body.include?(value)
+        failures << "#{verb} #{route}?#{key} ecoa o valor" if response.body.downcase.include?(value.downcase)
       end
     end
     expect(failures).to be_empty, failures.join("\n")
@@ -672,6 +722,14 @@ RSpec.describe "Sigilo da vigilância ambiental (35a) — DomainEvents.publish n
 
   def module_files = VectorControlSecrecy::MODULE_GLOBS.flat_map { |glob| Dir[Rails.root.join(glob).to_s] }.to_set
 
+  def shared_files = VectorControlSecrecy::SHARED_FILES.map { |path| Rails.root.join(path).to_s }.to_set
+
+  # `**payload` (ou um hash com splat) esconde as chaves da varredura.
+  def splats(call)
+    call.arguments.arguments.grep(Prism::KeywordHashNode).flat_map(&:elements).grep(Prism::AssocSplatNode) +
+      call.arguments.arguments.grep(Prism::HashNode).flat_map(&:elements).grep(Prism::AssocSplatNode)
+  end
+
   def where(file, call) = "#{file.delete_prefix("#{Rails.root}/")}:#{call.location.start_line}"
 
   it "só os 20 nomes do §17, com as chaves exatas do contrato" do
@@ -686,12 +744,24 @@ RSpec.describe "Sigilo da vigilância ambiental (35a) — DomainEvents.publish n
     expect(contracted.map(&:last).uniq).to match_array(VectorControlSecrecy::CONTRACT_EVENTS)
   end
 
-  it "nos arquivos do módulo, todo publish tem nome resolvido e é um dos 20 ou a trilha (só ids)" do
+  it "nos arquivos do módulo e nos compartilhados, todo publish tem nome resolvido e chaves explícitas" do
+    files = module_files
+    shared = shared_files
+    expect(shared.select { |file| File.exist?(file) }.size).to eq(VectorControlSecrecy::SHARED_FILES.size)
+    calls = publish_calls
+    shared_calls = calls.select { |file, _, _| shared.include?(file) }
+    expect(shared_calls.size).to be >= 4 # controle: a trilha do app, home_visit.recorded e o recebimento do 27a
+    (calls.select { |file, _, _| files.include?(file) } + shared_calls).each do |file, call, name|
+      expect(name).to be_present, "#{where(file, call)}: o nome do evento deve ser literal ou constante do arquivo"
+      expect(splats(call)).to be_empty, "#{where(file, call)}: payload com **splat"
+    end
+  end
+
+  it "nos arquivos do módulo, todo publish é um dos 20 ou a trilha (só ids)" do
     files = module_files
     module_calls = publish_calls.select { |file, _, _| files.include?(file) }
     expect(module_calls.size).to be >= 24 # controle: os 20 eventos e a trilha do endereço do caso
     module_calls.each do |file, call, name|
-      expect(name).to be_present, "#{where(file, call)}: o nome do evento deve ser literal ou constante do arquivo"
       expect(VectorControlSecrecy::CONTRACT_EVENTS + [ "clinical_record.viewed" ]).to include(name), "#{where(file, call)}: #{name}"
       next unless name == "clinical_record.viewed"
 
@@ -720,6 +790,7 @@ RSpec.describe "Sigilo da vigilância ambiental (35a) — sem Platform.audit nov
   it "nenhum arquivo do módulo chama Platform.audit e R18 segue sem nome do módulo" do
     files = VectorControlSecrecy::MODULE_GLOBS.flat_map { |glob| Dir[Rails.root.join(glob).to_s] }.uniq
     expect(files.size).to be >= 90
+    files += VectorControlSecrecy::SHARED_FILES.map { |path| Rails.root.join(path).to_s }
     %w[app/commands/vector_control/blocks/case_address.rb app/commands/vector_control/blocks/move_case.rb
        app/commands/vector_control/apply_stock.rb app/controllers/vector_control/transmission_blocks_controller.rb
        app/jobs/vector_control/propose_block_job.rb app/services/vector_control/map_points.rb app/models/transmission_block_case.rb
