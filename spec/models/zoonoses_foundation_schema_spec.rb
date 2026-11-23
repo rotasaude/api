@@ -72,16 +72,28 @@ RSpec.describe "Esquema da fundação do módulo 35b", type: :model do
   it "DELETE recusado; TRUNCATE recusado" do
     animal = animal!
     refused(/animals: DELETE refused/) { animal.delete }
-    refused { Animal.connection.execute("TRUNCATE animals CASCADE") }
+    refused(/animals is append-only: TRUNCATE refused/) { Animal.connection.execute("TRUNCATE animals CASCADE") }
   end
 
-  it "a re-cifra do microchip passa antes das regras" do
-    animal = animal!(microchip: "985112345678902")
-    animal.update_columns(status: "deceased")
-    accepted do
-      Animal.connection.execute("SET LOCAL rota.reencrypting = 'on'")
-      Animal.connection.execute(Animal.sanitize_sql([ "UPDATE animals SET microchip = ? WHERE id = ?", "outro-texto", animal.id ]))
+  # A re-cifra passa antes das regras: o place_address, imutável depois do
+  # registro, só é regravado sob rota.reencrypting (CityEncryption.allowing_reencryption,
+  # que devolve a marca a off no fim do savepoint).
+  it "a re-cifra regrava o place_address imutável; sem a marca, a mesma escrita é recusada" do
+    manifestation = raw_manifestation!(channel: "in_person", place_address: "Rua das Flores, 100, fundos")
+    connection = OmbudsmanManifestation.connection
+    rewrite = lambda do |value|
+      connection.execute(OmbudsmanManifestation.sanitize_sql(
+        [ "UPDATE ombudsman_manifestations SET place_address = ? WHERE id = ?", value, manifestation.id ]
+      ))
     end
+    stored = -> { connection.select_value(OmbudsmanManifestation.sanitize_sql([ "SELECT place_address FROM ombudsman_manifestations WHERE id = ?", manifestation.id ])) }
+
+    refused(/ombudsman_manifestations: the registration columns never change/) { rewrite.call("texto-recifrado") }
+    accepted { CityEncryption.allowing_reencryption { rewrite.call("texto-recifrado") } }
+    expect(stored.call).to eq("texto-recifrado")
+    expect(connection.select_value("SELECT current_setting('rota.reencrypting', true)")).to eq("off")
+    refused(/ombudsman_manifestations: the registration columns never change/) { rewrite.call("outro-texto-recifrado") }
+    expect(stored.call).to eq("texto-recifrado")
   end
 
   it "parâmetros só acréscimo; versão única" do

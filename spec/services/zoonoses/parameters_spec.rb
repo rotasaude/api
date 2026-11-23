@@ -14,10 +14,13 @@ RSpec.describe Zoonoses::Parameters, type: :model do
 
   before do
     zoonoses_city!
-    path = Pathname.new(Dir.mktmpdir("zoonoses-defaults")).join("defaults.yml")
+    @defaults_dir = Dir.mktmpdir("zoonoses-defaults")
+    path = Pathname.new(@defaults_dir).join("defaults.yml")
     File.write(path, factory.to_yaml)
     stub_const("Zoonoses::Parameters::DEFAULTS_PATH", path)
   end
+
+  after { FileUtils.remove_entry(@defaults_dir) if @defaults_dir }
 
   let(:factory) { { "observation_days" => 10, "collar_months" => 6, "dog_population_estimate" => nil } }
 
