@@ -12,7 +12,9 @@
 # un e `charge_size` 1.00 — conferido no produto como fica depois da escrita
 # (no PATCH, as chaves que mudam sobre as gravadas). Fora disso,
 # `invalid_request` path `uses` (o CHECK ck_vector_products_zoonoses_uses é o
-# cinto).
+# cinto). O PATCH nunca troca a família do produto: o `uses` de um produto de
+# zoonoses não muda, e o vetorial nunca ganha finalidade de zoonoses (path
+# `uses`).
 #
 # `unit` e `charge_size` não mudam depois que há lote ou medida do produto →
 # 409 product_in_use (para isso se cria outro produto). A edição trava o
@@ -114,16 +116,24 @@ module VectorControl
     end
 
     # Q11: finalidade de zoonoses só com o zoonoses utilizável (quando a
-    # escrita a traz) e sozinha, em un com carga 1.00 (no produto final).
+    # escrita a traz) e sozinha, em un com carga 1.00 (no produto final). O
+    # PATCH nunca troca a família: o `uses` de um produto de zoonoses não muda,
+    # e um produto vetorial nunca ganha finalidade de zoonoses (senão a vacina
+    # entraria no boletim e no enum da v1.3.0, ou o contrário).
     def zoonoses_rule?(attrs, product, zoonoses)
       uses = attrs.fetch(:uses) { product&.uses } || []
-      return true unless uses.intersect?(Zoonoses::Catalog::PRODUCT_USES)
+      if product && attrs.key?(:uses)
+        return false if zoonoses_product?(product.uses) ? attrs[:uses] != product.uses : zoonoses_product?(uses)
+      end
+      return true unless zoonoses_product?(uses)
       return false if attrs.key?(:uses) && !zoonoses
 
       unit = attrs.fetch(:unit) { product&.unit }
       charge_size = attrs.fetch(:charge_size) { product&.charge_size }
       uses.size == 1 && unit == "un" && charge_size == 1
     end
+
+    def zoonoses_product?(uses) = uses.intersect?(Zoonoses::Catalog::PRODUCT_USES)
 
     def text(value, range)
       return nil unless value.is_a?(String)
@@ -143,6 +153,6 @@ module VectorControl
 
     def invalid(path) = Result.fail(:invalid_request, details: { path: path })
 
-    private_class_method :create, :update, :parse, :parse_value, :zoonoses_rule?, :text, :code_taken?, :in_use?, :invalid
+    private_class_method :create, :update, :parse, :parse_value, :zoonoses_rule?, :zoonoses_product?, :text, :code_taken?, :in_use?, :invalid
   end
 end

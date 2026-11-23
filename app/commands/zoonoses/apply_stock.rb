@@ -15,7 +15,10 @@
 # saldo sob a trava e só escolhe entre os lotes travados.
 #
 # `reverse!` (anulação da dose): o `animal_vaccination` ganha um
-# `animal_vaccination_reversal` (positivo) no mesmo lote e local, uma vez;
+# `animal_vaccination_reversal` (positivo) no mesmo lote e local, uma vez —
+# o "uma vez" depende do chamador (o CancelVaccination da Task 7) travar a
+# dose FOR UPDATE antes: o idx_stock_movements_rabies_vaccination não é
+# único, e duas anulações sem a trava leriam "sem estorno" juntas;
 # a falta aberta da dose é conciliada pelo sistema (`reconciled_at`, sem
 # usuário nem nota; W-6 do 35a). Trava lotes → local → falta. O local
 # desativado depois da baixa recebe o estorno assim mesmo.

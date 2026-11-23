@@ -99,6 +99,29 @@ RSpec.describe "Zoonoses — peças do 35a", type: :request do
     expect(VectorProduct.count).to eq(2)
   end
 
+  it "PATCH nunca troca a família do produto: coleira → focal e focal un/1.00 → rabies_vaccine → 422 path uses; focal → perifocal segue" do
+    switch!(VectorControl::Gate::KEY, true)
+    collar = zoonoses_product!(code: "COL", use: "collar")
+    focal = vector_product!(code: "PYR", unit: "un", charge_size: "1.00", uses: %w[focal])
+    sign_in_as(coordinator)
+    patch_product = ->(product, body) { patch "/vector_control/products/#{product.id}", params: body.to_json, headers: { "CONTENT_TYPE" => "application/json" } }
+
+    patch_product.call(collar, uses: %w[focal])
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "uses" } ])
+    patch_product.call(collar, uses: %w[rabies_vaccine])
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "uses" } ])
+    patch_product.call(collar, uses: %w[collar], unit: "g")
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "uses" } ])
+    patch_product.call(focal, uses: %w[rabies_vaccine])
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "uses" } ])
+    expect([ collar.reload.uses, focal.reload.uses ]).to eq([ %w[collar], %w[focal] ])
+
+    patch_product.call(focal, uses: %w[perifocal])
+    expect([ response.status, json_body["uses"] ]).to eq([ 200, %w[perifocal] ])
+    patch_product.call(collar, uses: %w[collar], name: "Coleira 4%")
+    expect([ response.status, json_body["name"] ]).to eq([ 200, "Coleira 4%" ])
+  end
+
   it "GET /vector_control/domains numa cidade com os dois gates não lista a vacina (o corpo valida contra o reference-response v1.3.0)" do
     switch!(VectorControl::Gate::KEY, true)
     vector = vector_product!(code: "PYR", charge_size: "1.00")
