@@ -6,8 +6,9 @@
 # Na mesma transação:
 #   - o animal vai a deceased com status_on = `on`, version + 1
 #     (`animal.changed` só com o id);
-#   - a coleira ativa (FOR UPDATE) sai com removal_reason death no mesmo dia
-#     (`collar.removed` só com o id).
+#   - a coleira ativa (FOR UPDATE) sai com removal_reason death no mesmo dia,
+#     ou no dia em que foi posta, se for depois (lançamento retroativo da
+#     morte; `collar.removed` só com o id).
 # A estada aberta e a observação aberta não mudam aqui: a estada fecha só pela
 # saída, a observação pelo desfecho (Task 12).
 module Zoonoses
@@ -23,7 +24,7 @@ module Zoonoses
       collar = Collar.active.lock.find_by(animal_id: animal.id)
       return unless collar
 
-      collar.update!(removed_on: on, removal_reason: REMOVAL_REASON)
+      collar.update!(removed_on: [ on, collar.placed_on ].max, removal_reason: REMOVAL_REASON)
       DomainEvents.publish("collar.removed", collar_id: collar.id)
     end
   end

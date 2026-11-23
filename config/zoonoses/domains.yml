@@ -2,7 +2,8 @@
 # do app são os de field-sync/domains-v1.json → zoonoses (contracts v1.4.0),
 # verbatim; os subtipos são os do contrato §4.
 # Os do canil (entrada, saída, motivo de eutanásia, base legal) são os do
-# contrato §7 e da decisão 20 da spec (Task 8).
+# contrato §7 e da decisão 20 da spec, com os rótulos fixados pelo
+# coordenador onde nenhum dos dois tinha texto (Task 8).
 # Incompleto de propósito: os domínios restantes do Valor fixado 3 (desfecho da
 # observação, ELISA, decisão, motivo de remoção) entram com as tasks donas
 # (12, 13, 14).
@@ -53,12 +54,12 @@ exit_kinds:
   - { code: adopted, label: "Adoção" }
   - { code: death, label: "Óbito" }
   - { code: euthanasia, label: "Eutanásia" }
-  - { code: transferred, label: "Transferência" }
+  - { code: transferred, label: "Transferência para outro abrigo ou instituição" }
 euthanasia_reasons:
-  - { code: leishmaniasis, label: "Leishmaniose visceral" }
+  - { code: leishmaniasis, label: "Leishmaniose visceral canina" }
   - { code: rabies_suspect, label: "Suspeita de raiva" }
-  - { code: untreatable_suffering, label: "Sofrimento sem tratamento possível" }
-  - { code: public_health_risk, label: "Risco à saúde pública" }
+  - { code: untreatable_suffering, label: "Sofrimento irreversível, sem controle possível" }
+  - { code: public_health_risk, label: "Ameaça à saúde pública" }
   - { code: other, label: "Outro" }
 legal_bases:
   - { code: cfmv_1000_2012, label: "Resolução CFMV nº 1.000/2012" }

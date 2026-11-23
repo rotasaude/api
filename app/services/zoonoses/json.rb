@@ -5,7 +5,8 @@
 #     `has_tutor` e `community`;
 #   - o detalhe traz o tutor só como `{ id, display_name }` (o mesmo do 24a);
 #   - o histórico (Q2, montado por consulta, sem tabela de eventos) só com
-#     ids, datas, códigos e o nome do veterinário quando houver: nunca nota,
+#     ids, datas, códigos e a veterinária `{ name, crmv }` quando houver (o
+#     mesmo formato da resposta da escrita): nunca nota,
 #     motivo escrito, adotante, contato nem endereço.
 module Zoonoses
   module Json
@@ -115,13 +116,13 @@ module Zoonoses
 
     def neutering(row)
       { id: row.id, performed_on: row.performed_on.iso8601, shelter_stay_id: row.shelter_stay_id,
-        veterinarian_name: row.professional.professional_name }
+        veterinarian: veterinarian(row.professional) }
     end
 
     def euthanasia(row)
       { id: row.id, performed_on: row.performed_on.iso8601, reason: row.reason, legal_basis: row.legal_basis,
         shelter_stay_id: row.shelter_stay_id, bite_observation_id: row.bite_observation_id,
-        veterinarian_name: row.professional.professional_name }
+        veterinarian: veterinarian(row.professional) }
     end
 
     private_class_method :veterinarian, :history, :vaccination, :observation, :leish_test, :collar, :stay, :neutering, :euthanasia

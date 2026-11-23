@@ -24,8 +24,14 @@ RSpec.describe Zoonoses::RecordEuthanasia, type: :model do
   it "Review Focus 4: coleira, estada e observação abertas → deceased, coleira death, estada aberta; saída euthanasia; segunda → already_euthanized" do
     animal = animal!
     collar = collar!(animal: animal, placed_on: today - 40)
-    stay = shelter_stay!(animal: animal, entered_on: today - 5)
-    observation = bite_observation!(animal: animal)
+    # A observação nasce sem animal e é ligada pela entrada observation (Q16).
+    observation = bite_observation!(animal: nil)
+    entered = Zoonoses::EnterShelter.call(params: { "animal_id" => animal.id, "health_unit_id" => uvz_unit!.id, "entry_kind" => "observation",
+                                                    "bite_observation_id" => observation.id, "entered_on" => (today - 5).iso8601 },
+                                          by: zoonoses_team!)
+    expect(entered).to be_ok
+    stay = entered.payload.fetch(:stay)
+    expect(observation.reload).to have_attributes(animal_id: animal.id, place: "shelter")
 
     result = euthanize(animal, performed_on: (today - 1).iso8601, legal_basis: %w[cfmv_1000_2012 law_14228_2021],
                                shelter_stay_id: stay.id, bite_observation_id: observation.id)
@@ -41,14 +47,15 @@ RSpec.describe Zoonoses::RecordEuthanasia, type: :model do
     expect(observation.reload.state).to eq("open")
     expect(DomainEvent.where(name: "euthanasia.recorded").sole.payload).to eq("euthanasia_id" => euthanasia.id)
     expect(DomainEvent.where(name: "collar.removed").sole.payload).to eq("collar_id" => collar.id)
-    expect(DomainEvent.where(name: "animal.changed").sole.payload).to eq("animal_id" => animal.id)
+    expect(DomainEvent.where(name: "animal.changed").pluck(:payload)).to eq([ { "animal_id" => animal.id } ])
     raw = Euthanasia.connection.select_value("SELECT reason_note FROM euthanasias WHERE id = #{Euthanasia.connection.quote(euthanasia.id)}")
     expect(raw).not_to include("Leishmaniose")
 
     closed = Zoonoses::ExitShelter.call(stay: stay, params: { "exit_kind" => "euthanasia", "expected_version" => stay.version },
                                         by: zoonoses_team!)
     expect(closed).to be_ok
-    expect(stay.reload).to have_attributes(exit_kind: "euthanasia", exited_on: today)
+    # Sem exited_on: o dia da eutanásia (não antes da entrada).
+    expect(stay.reload).to have_attributes(exit_kind: "euthanasia", exited_on: today - 1)
 
     expect(refusal(euthanize(animal))).to eq([ :already_euthanized, {} ])
     expect(Euthanasia.where(animal_id: animal.id).count).to eq(1)
@@ -98,8 +105,11 @@ RSpec.describe Zoonoses::RecordEuthanasia, type: :model do
 
   it "Q31: missing → deceased; deceased ou transferred sem eutanásia → animal_not_active" do
     missing = animal!(status: "missing", status_on: today - 20)
+    newer = collar!(animal: missing, placed_on: today)
     expect(euthanize(missing, performed_on: (today - 2).iso8601)).to be_ok
     expect(missing.reload).to have_attributes(status: "deceased", status_on: today - 2)
+    # Coleira posta depois do dia da morte (lançamento retroativo): sai no dia em que foi posta.
+    expect(newer.reload).to have_attributes(removed_on: today, removal_reason: "death")
 
     %w[deceased transferred].each do |status|
       expect(refusal(euthanize(animal!(status: status, status_on: today)))).to eq([ :animal_not_active, {} ])

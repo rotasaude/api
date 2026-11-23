@@ -14,12 +14,14 @@
 #   - `animal_id`: o animal FOR UPDATE (a primeira trava, a mesma ordem das
 #     quatro escritas do canil: animal → estada → coleira → observação);
 #     transferred ou deceased → 409 animal_not_active; missing volta a active
-#     com status_on hoje, na mesma transação (Q31; `animal.changed`).
+#     com status_on = entered_on, na mesma transação (Q31; `animal.changed`).
 #   - Uma estada aberta por animal → 409 stay_already_open (também na corrida,
 #     pelo índice único parcial idx_shelter_stays_open).
-#   - observation: a observação FOR UPDATE, `open` e do mesmo animal (ou ainda
-#     sem animal), senão path bite_observation_id; grava nela place shelter
-#     (Q16), version + 1.
+#   - observation: a observação FOR UPDATE, `open` (senão path
+#     bite_observation_id) e do mesmo animal; ligada a outro animal → 409
+#     observation_changed. Grava nela place shelter (Q16) e, se ainda sem
+#     animal, liga o animal da entrada (o trigger aceita de NULL a valor, uma
+#     vez), version + 1.
 #
 # `shelter_stay.opened` só com o id. Nada do tutor em Result.details.
 module Zoonoses
@@ -46,7 +48,7 @@ module Zoonoses
     module_function
 
     # -> Result.ok(stay:, animal:) | fail(:invalid_request | :date_out_of_range, details: { path: }) |
-    #    fail(:missing_role | :animal_not_active | :stay_already_open)
+    #    fail(:missing_role | :animal_not_active | :stay_already_open | :observation_changed)
     def call(params:, by:, today: Time.zone.today)
       return Result.fail(:missing_role) unless Access.team?(by)
 
@@ -54,7 +56,7 @@ module Zoonoses
       attrs = parse(params, today)
       return attrs if attrs.is_a?(Result)
 
-      ShelterStay.transaction(requires_new: true) { record(attrs, by, today) }
+      ShelterStay.transaction(requires_new: true) { record(attrs, by) }
     rescue Refused => e
       e.result
     rescue ActiveRecord::RecordNotUnique => e
@@ -63,7 +65,7 @@ module Zoonoses
       Result.fail(:stay_already_open)
     end
 
-    def record(attrs, by, today)
+    def record(attrs, by)
       return invalid("health_unit_id") unless HealthUnit.exists?(id: attrs[:health_unit_id], kind: UNIT_KIND, active: true)
 
       animal = attrs[:new_animal] ? create_animal(attrs[:new_animal], by) : Animal.lock.find_by(id: attrs[:animal_id])
@@ -73,12 +75,12 @@ module Zoonoses
 
       observation = observation!(attrs[:bite_observation_id], animal) if attrs[:entry_kind] == "observation"
       if animal.status == "missing"
-        animal.update!(status: "active", status_on: today, version: animal.version + 1)
+        animal.update!(status: "active", status_on: attrs[:entered_on], version: animal.version + 1)
         DomainEvents.publish("animal.changed", animal_id: animal.id)
       end
       stay = ShelterStay.create!(animal: animal, health_unit_id: attrs[:health_unit_id], entry_kind: attrs[:entry_kind],
                                  entered_on: attrs[:entered_on], bite_observation: observation)
-      observation&.update!(place: "shelter", version: observation.version + 1)
+      observation&.update!(place: "shelter", animal_id: observation.animal_id || animal.id, version: observation.version + 1)
       DomainEvents.publish(EVENT, shelter_stay_id: stay.id)
       Result.ok(stay: stay, animal: animal)
     end
@@ -94,8 +96,8 @@ module Zoonoses
 
     def observation!(id, animal)
       observation = BiteObservation.lock.find_by(id: id)
-      valid = observation && observation.state == "open" && [ nil, animal.id ].include?(observation.animal_id)
-      refuse!(invalid("bite_observation_id")) unless valid
+      refuse!(invalid("bite_observation_id")) unless observation&.state == "open"
+      refuse!(Result.fail(:observation_changed)) unless [ nil, animal.id ].include?(observation.animal_id)
       observation
     end
 

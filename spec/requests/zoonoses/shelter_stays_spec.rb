@@ -57,6 +57,11 @@ RSpec.describe "Zoonoses — canil e gatil", type: :request do
     json_post_to("/zoonoses/shelter_stays", { health_unit_id: unit.id, entry_kind: "collection", animal_id: json_body["animal_id"] })
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "stay_already_open" } ])
 
+    linked = bite_observation!(animal: animal!)
+    json_post_to("/zoonoses/shelter_stays", { health_unit_id: unit.id, entry_kind: "observation", animal_id: animal!.id,
+                                              bite_observation_id: linked.id })
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "observation_changed" } ])
+
     adopter = tutor!
     json_post_to("/zoonoses/shelter_stays/#{stay_id}/exit", { exit_kind: "adopted", adopter_patient_id: adopter.id, expected_version: 2 })
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "stay_changed" } ])

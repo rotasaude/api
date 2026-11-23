@@ -58,6 +58,18 @@ RSpec.describe Zoonoses::ExitShelter, type: :model do
     animal.update!(status: "deceased", status_on: today)
     expect(exit_stay(stay, exit_kind: "euthanasia")).to be_ok
     expect(stay.reload).to have_attributes(exit_kind: "euthanasia", exited_on: today)
+
+    # Sem exited_on: max(dia da eutanásia, dia da entrada).
+    earlier = animal!
+    later_stay = shelter_stay!(animal: earlier, entered_on: today - 4)
+    euthanasia!(animal: earlier, performed_on: today - 2)
+    expect(exit_stay(later_stay, exit_kind: "euthanasia")).to be_ok
+    expect(later_stay.reload.exited_on).to eq(today - 2)
+    before_entry = animal!
+    entered_stay = shelter_stay!(animal: before_entry, entered_on: today - 1)
+    euthanasia!(animal: before_entry, performed_on: today - 6)
+    expect(exit_stay(entered_stay, exit_kind: "euthanasia")).to be_ok
+    expect(entered_stay.reload.exited_on).to eq(today - 1)
   end
 
   it "versão velha → stay_changed; sem versão → expected_version_required; saída repetida → invalid_transition" do

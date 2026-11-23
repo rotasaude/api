@@ -148,9 +148,11 @@ RSpec.describe "Zoonoses — animais", type: :request do
     expect(body["has_microchip"]).to be(true)
     expect(body.keys).to include("vaccinations", "observations", "tests", "collars", "stays", "neuterings", "euthanasia")
     expect(body["stays"].sole).to include("id" => stay.id, "entry_kind" => "collection")
-    expect(body["neuterings"].sole).to include("veterinarian_name" => vet.professional.professional_name, "shelter_stay_id" => stay.id)
-    expect(body["euthanasia"]).to include("id" => euthanasia.id, "reason" => "untreatable_suffering",
-                                          "veterinarian_name" => vet.professional.professional_name)
+    # A veterinária no mesmo formato da resposta da escrita (Task 8): { name, crmv }.
+    veterinarian = { "name" => vet.professional.professional_name, "crmv" => "CRMV-PR #{vet.professional.registration_number}" }
+    expect(body["neuterings"].sole).to include("veterinarian" => veterinarian, "shelter_stay_id" => stay.id)
+    expect(body["euthanasia"]).to include("id" => euthanasia.id, "reason" => "untreatable_suffering", "veterinarian" => veterinarian)
+    expect(response.body).not_to include("veterinarian_name")
     expect(response.body).not_to include("Sofrimento sem tratamento")
     expect([ body["vaccinations"], body["observations"], body["tests"], body["collars"] ]).to eq([ [], [], [], [] ])
   end

@@ -61,7 +61,7 @@ RSpec.describe Zoonoses::EnterShelter, type: :model do
       .to eq([ :invalid_request, { path: "bite_observation_id" } ])
     other = bite_observation!(animal: animal!)
     expect(refusal(enter(animal_id: animal.id, entry_kind: "observation", bite_observation_id: other.id)))
-      .to eq([ :invalid_request, { path: "bite_observation_id" } ])
+      .to eq([ :observation_changed, {} ])
     expect(refusal(enter(animal_id: animal.id, entry_kind: "collection", bite_observation_id: bite_observation!(animal: animal).id)))
       .to eq([ :invalid_request, { path: "bite_observation_id" } ])
     expect(ShelterStay.where(animal_id: animal.id)).to be_empty
@@ -73,10 +73,28 @@ RSpec.describe Zoonoses::EnterShelter, type: :model do
     expect(open.reload).to have_attributes(place: "shelter", version: 2)
   end
 
+  it "observação sem animal é ligada na entrada; duas entradas de animais diferentes com a mesma observação → a segunda 409 observation_changed" do
+    unlinked = bite_observation!(animal: nil)
+    first = animal!
+    expect(enter(animal_id: first.id, entry_kind: "observation", bite_observation_id: unlinked.id)).to be_ok
+    expect(unlinked.reload).to have_attributes(animal_id: first.id, place: "shelter", version: 2)
+
+    second = animal!
+    expect(refusal(enter(animal_id: second.id, entry_kind: "observation", bite_observation_id: unlinked.id)))
+      .to eq([ :observation_changed, {} ])
+    expect(ShelterStay.where(animal_id: second.id)).to be_empty
+
+    # Animal novo com observação sem animal: nasce e já fica ligado.
+    fresh = bite_observation!(animal: nil)
+    result = enter(new_animal: { "species" => "dog", "sex" => "male" }, entry_kind: "observation", bite_observation_id: fresh.id)
+    expect(result).to be_ok
+    expect(fresh.reload.animal_id).to eq(result.payload.fetch(:animal).id)
+  end
+
   it "animal missing volta a active na entrada; deceased ou transferred → animal_not_active" do
     missing = animal!(status: "missing", status_on: today - 10)
-    expect(enter(animal_id: missing.id)).to be_ok
-    expect(missing.reload).to have_attributes(status: "active", status_on: today, version: 2)
+    expect(enter(animal_id: missing.id, entered_on: (today - 2).iso8601)).to be_ok
+    expect(missing.reload).to have_attributes(status: "active", status_on: today - 2, version: 2)
     expect(DomainEvent.where(name: "animal.changed").sole.payload).to eq("animal_id" => missing.id)
 
     %w[deceased transferred].each do |status|

@@ -14,7 +14,11 @@
 #     ficou inativo continua editável.
 #   - Situação (Q31): active → missing | transferred | deceased; missing →
 #     active | deceased (senão 409 invalid_transition path status);
-#     status_on = hoje a cada mudança. transferred e deceased não se editam
+#     status_on = hoje a cada mudança. Com estada aberta no canil, nenhuma
+#     mudança de situação (409 invalid_transition path status, Task 8): a
+#     morte no canil vai pela saída death e a transferência pela saída
+#     transferred (Zoonoses::ExitShelter), senão a estada não fecharia.
+#     transferred e deceased não se editam
 #     (animal_not_active, conferido sob a trava, antes de gravar: o trigger
 #     rota_animal_guard é o cinto).
 #   - Concorrência: ausente → expected_version_required; diferente da version
@@ -96,6 +100,7 @@ module Zoonoses
 
         if status && status != locked.status
           next Result.fail(:invalid_transition, details: { path: "status" }) unless TRANSITIONS.fetch(locked.status).include?(status)
+          next Result.fail(:invalid_transition, details: { path: "status" }) if ShelterStay.open_stays.exists?(animal_id: locked.id)
 
           locked.assign_attributes(status: status, status_on: Time.zone.today)
         end

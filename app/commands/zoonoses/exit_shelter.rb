@@ -1,6 +1,7 @@
 # Saída do canil ou gatil (módulo 35b, ADR 0054; contrato §1, §7, Q31). Corpo:
 # `exit_kind` (Catalog::EXIT_KINDS), `exited_on` (opcional, "AAAA-MM-DD",
-# padrão hoje; entre a entrada e hoje → senão date_out_of_range),
+# padrão hoje — na euthanasia, o maior entre o dia da eutanásia e o da
+# entrada; entre a entrada e hoje → senão date_out_of_range),
 # `adopter_patient_id` (só e sempre com adopted) e o obrigatório
 # `expected_version` (ausente → expected_version_required; diferente → 409
 # stay_changed). Toda recusa de campo é invalid_request com o path.
@@ -52,15 +53,15 @@ module Zoonoses
       return Result.fail(:stay_changed) unless locked.version == attrs[:expected_version]
       return Result.fail(:invalid_transition, details: { path: "status" }) unless locked.open?
 
-      exited_on = attrs[:exited_on] || today
-      return Result.fail(:date_out_of_range, details: { path: "exited_on" }) unless (locked.entered_on..today).cover?(exited_on)
-
       kind = attrs[:exit_kind]
       if kind == "euthanasia"
-        return invalid("exit_kind") unless Euthanasia.exists?(animal_id: animal.id)
+        euthanasia = Euthanasia.find_by(animal_id: animal.id)
+        return invalid("exit_kind") unless euthanasia
       else
         return Result.fail(:animal_not_active) unless SaveAnimal::TRANSITIONS.key?(animal.status)
       end
+      exited_on = attrs[:exited_on] || (euthanasia ? [ euthanasia.performed_on, locked.entered_on ].max : today)
+      return Result.fail(:date_out_of_range, details: { path: "exited_on" }) unless (locked.entered_on..today).cover?(exited_on)
       return invalid("exit_kind") if kind == "returned" && animal.tutor_patient_id.nil?
       if kind == "adopted" && !Patient.exists?(id: attrs[:adopter_patient_id], merged_into_id: nil)
         return invalid("adopter_patient_id")

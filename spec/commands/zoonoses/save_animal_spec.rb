@@ -119,6 +119,26 @@ RSpec.describe Zoonoses::SaveAnimal, type: :model do
     expect(refusal(edit(animal, status: "lost"))).to eq([ :invalid_request, { path: "status" } ])
   end
 
+  # Task 8 (fix): no canil, a morte vai pela saída death e a transferência pela
+  # saída transferred; o PATCH de situação deixaria a estada sem como fechar.
+  it "PATCH status with open stay → invalid_transition path status (deceased, transferred, missing); sem estada, inalterado" do
+    sheltered = animal!
+    stay = shelter_stay!(animal: sheltered)
+    %w[deceased transferred missing].each do |status|
+      expect(refusal(edit(sheltered, status: status))).to eq([ :invalid_transition, { path: "status" } ])
+    end
+    expect(sheltered.reload).to have_attributes(status: "active", version: 1)
+    expect(edit(sheltered, name: "Rex")).to be_ok
+    expect(edit(sheltered, status: "active", name: "Rex")).to be_ok
+
+    stay.update!(exit_kind: "transferred", exited_on: Time.zone.today, version: 2)
+    expect(edit(sheltered, status: "missing")).to be_ok
+    expect(sheltered.reload.status).to eq("missing")
+    free = animal!
+    expect(edit(free, status: "deceased")).to be_ok
+    expect(free.reload.status).to eq("deceased")
+  end
+
   it "deceased → active → animal_not_active; nome do transferred → animal_not_active; nada gravado" do
     dead = animal!(status: "deceased", status_on: Time.zone.today - 3)
     expect(refusal(edit(dead, status: "active"))).to eq([ :animal_not_active, {} ])
