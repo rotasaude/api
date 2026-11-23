@@ -16,9 +16,11 @@
 #     há lote ou medida do produto); `products` em lote;
 #   - settings → VectorSettings (o local da baixa e as opções: os locais
 #     vector_control ativos);
-#   - shortfalls → VectorShortfall (o produto, o local, o dia da visita e quem
+#   - shortfalls → VectorShortfall (o produto, o local, a origem — `source`
+#     inspection, vaccination ou collar, Q17 do 35b —, o dia `occurred_on`, o
+#     dia da visita `visit_on` só na inspection (nulo nas outras) e quem
 #     conciliou; `reconciled_by: null` na conciliação do sistema). A nota
-#     nunca sai;
+#     nunca sai, nem o animal ou o tutor da dose;
 #   - cadences → VectorCadence[] (cidade primeiro); cycle → VectorCycle;
 #     cycle_summary → CycleSummary (VectorControl::CycleStats por bairro);
 #   - ovitraps → Ovitrap[]; ovitrap_readings → OvitrapReading[] (com
@@ -184,7 +186,8 @@ module VectorControl
     end
 
     def shortfalls(rows)
-      measures = VectorInspectionMeasure.where(id: rows.map(&:vector_inspection_measure_id)).includes(vector_inspection: :home_visit).index_by(&:id)
+      measures = VectorInspectionMeasure.where(id: rows.filter_map(&:vector_inspection_measure_id))
+                                        .includes(vector_inspection: :home_visit).index_by(&:id)
       products = VectorProduct.where(id: rows.map(&:vector_product_id)).index_by(&:id)
       locations = StockLocation.where(id: rows.filter_map(&:stock_location_id)).index_by(&:id)
       users = User.where(id: rows.filter_map(&:reconciled_by_user_id)).includes(:professional).index_by(&:id)
@@ -192,10 +195,11 @@ module VectorControl
         product = products.fetch(row.vector_product_id)
         location = locations[row.stock_location_id]
         reconciler = users[row.reconciled_by_user_id]
+        measure = row.source == "inspection" ? measures.fetch(row.vector_inspection_measure_id) : nil
         { id: row.id, created_at: row.created_at.utc.iso8601(6), stock_location: location && { id: location.id, name: location.name },
           product: { id: product.id, code: product.code, name: product.name, unit: product.unit },
-          quantity: format("%.2f", row.quantity), cause: row.cause,
-          visit_on: measures.fetch(row.vector_inspection_measure_id).vector_inspection.home_visit.occurred_at.in_time_zone.to_date.iso8601,
+          quantity: format("%.2f", row.quantity), cause: row.cause, source: row.source, occurred_on: row.occurred_on.iso8601,
+          visit_on: measure && measure.vector_inspection.home_visit.occurred_at.in_time_zone.to_date.iso8601,
           reconciled_at: row.reconciled_at&.utc&.iso8601, reconciled_by: reconciler && { name: reconciler.professional&.professional_name } }
       end
     end
@@ -225,7 +229,9 @@ module VectorControl
       end
       values = Parameters.current.values
       lists.merge(
-        products: VectorProduct.active_products.order(:code, :id).map do |product|
+        # Q11 (35b): só os vetoriais — o enum da field-sync v1.3.0; a vacina e a
+        # coleira saem em zoonoses_domains.products.
+        products: VectorProduct.active_products.where("uses && ARRAY[?]::text[]", Catalog::PRODUCT_USES).order(:code, :id).map do |product|
           { id: product.id, code: product.code, name: product.name, unit: product.unit,
             charge_size: format("%.2f", product.charge_size), uses: product.uses }
         end,

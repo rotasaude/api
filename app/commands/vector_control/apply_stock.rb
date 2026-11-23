@@ -3,9 +3,11 @@
 # { DeductStock; Ledger.record!(kind: "vector_application", document: medida) }.
 # Sem local, sem lote ou sem saldo (inclusive a recusa do Ledger ou do trigger,
 # Ledger::Insufficient → insufficient_balance), só o savepoint volta e a medida
-# ganha a falta `vector_stock_shortfalls` com `vector_stock.shortfall_recorded`
-# (só o id). NUNCA recusa a visita (invariante do ADR 0054) e nunca deixa o
-# saldo negativo.
+# ganha a falta `vector_stock_shortfalls` (`source` inspection, `occurred_on`
+# = o dia da visita; Q17 do 35b) com `vector_stock.shortfall_recorded` (só o
+# id). NUNCA recusa a visita (invariante do ADR 0054) e nunca deixa o saldo
+# negativo. A dose antirrábica e a coleira (35b) seguem o mesmo molde no
+# Zoonoses::ApplyStock.
 #
 # Só o VectorControl::RecordInspection chama, na transação da visita, depois
 # das medidas. Ordem de trava: os produtos já estão FOR SHARE (facts!); aqui
@@ -27,7 +29,8 @@ module VectorControl
 
       location_id = VectorControlSetting.find_by(id: 1)&.stock_location_id
       locked = lock!(measures, location_id, today)
-      measures.map { |measure| apply(measure, location_id, locked, by, today) }
+      visit_on = inspection.home_visit.occurred_at.in_time_zone.to_date
+      measures.map { |measure| apply(measure, location_id, locked, by, today, visit_on) }
     end
 
     # -> { lot_id => StockLot } travados (o único conjunto de onde a baixa escolhe).
@@ -45,25 +48,27 @@ module VectorControl
       {} # a DeductStock vê o local inativo e grava no_location
     end
 
-    def apply(measure, location_id, locked, by, today)
+    def apply(measure, location_id, locked, by, today, visit_on)
       location = nil
       outcome = VectorInspectionMeasure.transaction(requires_new: true) do
-        result = DeductStock.call(measure: measure, location_id: location_id, today: today, locked: locked)
+        result = DeductStock.call(product_id: measure.vector_product_id, quantity: measure.quantity, location_id: location_id,
+                                  today: today, locked: locked)
         location = result.payload[:location]
         next result if result.payload[:shortfall_cause]
 
         Pharmacy::Ledger.record!(location: location, lot: result.payload.fetch(:lot), kind: "vector_application",
                                  quantity: result.payload.fetch(:quantity), by: by, document: measure)
       end
-      return shortfall!(measure, outcome.payload.fetch(:shortfall_cause), location) if outcome.is_a?(Result)
+      return shortfall!(measure, outcome.payload.fetch(:shortfall_cause), location, visit_on) if outcome.is_a?(Result)
 
       Result.ok(movement: outcome)
     rescue Pharmacy::Ledger::Insufficient
-      shortfall!(measure, "insufficient_balance", location)
+      shortfall!(measure, "insufficient_balance", location, visit_on)
     end
 
-    def shortfall!(measure, cause, location)
-      shortfall = VectorStockShortfall.create!(vector_inspection_measure: measure, vector_product_id: measure.vector_product_id,
+    def shortfall!(measure, cause, location, visit_on)
+      shortfall = VectorStockShortfall.create!(source: "inspection", vector_inspection_measure: measure, occurred_on: visit_on,
+                                               vector_product_id: measure.vector_product_id,
                                                stock_location: (location unless cause == "no_location"), quantity: measure.quantity,
                                                cause: cause)
       DomainEvents.publish(SHORTFALL_EVENT, vector_stock_shortfall_id: shortfall.id)

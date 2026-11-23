@@ -3,7 +3,9 @@
 # `vaccine_room`) ou insumo de campo da vigilância ambiental (35a, ADR 0054,
 # Q4: `vector_control`). Cada lote só entra em local do seu domínio
 # (`item_not_allowed_here`), nos dois sentidos. O interruptor que vale para o
-# local é o do domínio: `pharmacy`, `vaccination` ou `vector_control`.
+# local é o do domínio: `pharmacy`, `vaccination` ou `vector_control`; o
+# domínio VECTOR_CONTROL também abre com o `zoonoses` utilizável (35b, Q3 e
+# Q11: a vacina antirrábica animal e a coleira moram no estoque do 35a).
 module Stock
   module Domain
     MEDICATION = "medication".freeze
@@ -41,11 +43,12 @@ module Stock
     # O lote é do domínio do local.
     def allows?(location, lot) = self.for(location) == of_lot(lot)
 
-    # Interruptor do domínio utilizável na cidade.
+    # Interruptor do domínio utilizável na cidade (VECTOR_CONTROL: o
+    # vector_control ou o zoonoses, VectorControl::Gate.supplies_usable?).
     def usable?(city, domain)
       case domain
       when IMMUNOBIOLOGICAL then Vaccination::Gate.usable?(city)
-      when VECTOR_CONTROL then VectorControl::Gate.usable?(city)
+      when VECTOR_CONTROL then VectorControl::Gate.supplies_usable?(city)
       else Pharmacy::Gate.usable?(city)
       end
     end

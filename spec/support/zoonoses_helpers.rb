@@ -91,6 +91,24 @@ module ZoonosesHelpers
                          reason_note: "Sofrimento sem tratamento possível.", legal_basis: %w[cfmv_1000_2012] }.merge(over))
   end
 
+  # Task 6 (contrato §3, Q11): insumo de zoonoses, um vector_product com uma
+  # finalidade só, `un` e carga 1.00.
+  def zoonoses_product!(use: "rabies_vaccine", **over)
+    vector_product!(name: use == "collar" ? "Coleira de deltametrina 4%" : "Vacina antirrábica animal", unit: "un",
+                    charge_size: "1.00", uses: [ use ], **over)
+  end
+
+  # Dose de rotina direto na linha (Task 7 traz o comando, com a baixa).
+  def rabies_vaccination!(animal: animal!, product: zoonoses_product!, **over)
+    RabiesVaccination.create!({ animal: animal, species: animal&.species || "dog", modality: "routine", vaccinated_on: Time.zone.today,
+                                vector_product: product, recorded_by_user: zoonoses_author }.merge(over))
+  end
+
+  # Coleira direto na linha (Task 14 traz o comando, com a baixa).
+  def collar!(animal: animal!, product: zoonoses_product!(use: "collar"), placed_on: Time.zone.today, **over)
+    Collar.create!({ animal: animal, vector_product: product, placed_on: placed_on, due_on: placed_on >> 6 }.merge(over))
+  end
+
   private
 
   def zoonoses_author = (@zoonoses_author ||= zoonoses_team!)

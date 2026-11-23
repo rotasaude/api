@@ -9,6 +9,9 @@
 # traz todos), em ordem de código, como <item> com `vector_product_id` e sem
 # CATMAT (Pharmacy::Json.vector_item), com o interruptor `vector_control` no
 # lugar do `pharmacy`. Outro `domain` → 422 path `domain`; sem `domain`, como antes.
+# Módulo 35b (Q11): o domínio vector_control abre com o vector_control ou o
+# zoonoses utilizável (VectorControl::Gate.supplies_usable?) e traz também a
+# vacina antirrábica e a coleira.
 module Pharmacy
   class ItemsController < BaseController
     DOMAINS = [ Stock::Domain::VECTOR_CONTROL ].freeze
@@ -37,7 +40,7 @@ module Pharmacy
       domain = body_param("domain")
       return render_refusal("domain") unless domain.nil? || DOMAINS.include?(domain)
       return require_pharmacy! if domain.nil?
-      return if VectorControl::Gate.usable?(Current.city)
+      return if VectorControl::Gate.supplies_usable?(Current.city)
 
       render json: { error: "feature_disabled", feature: VectorControl::Gate::KEY }, status: :forbidden
     end

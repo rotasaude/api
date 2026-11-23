@@ -1,5 +1,7 @@
-# Conciliação de uma falta de insumo do boletim (módulo 35a, ADR 0054;
-# contrato §4; Q9): quem confere por fora (reposição, ajuste) registra a nota.
+# Conciliação de uma falta de insumo (módulo 35a, ADR 0054; contrato §4; Q9):
+# a do boletim e, no 35b (Q17), a da dose antirrábica e a da coleira — a
+# mesma regra para as três origens. Quem confere por fora (reposição, ajuste)
+# registra a nota.
 # NÃO grava movimento de estoque (como o 32b). A nota (10 a 500 caracteres
 # depois do strip) é cifrada com a chave da cidade e nunca sai em log, evento,
 # erro nem JSON.

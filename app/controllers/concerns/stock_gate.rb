@@ -1,7 +1,9 @@
 # Rotas do razão do 27a que também carregam imunobiológico (ADR 0047, Desvio 5)
 # e insumo de campo (35a, A-12): entradas, transferências, ajustes, posição e
-# extrato. A rota passa se `pharmacy`, `vaccination` OU `vector_control` está
-# utilizável (nenhum: 403 com `pharmacy`, o interruptor da família de rotas);
+# extrato. A rota passa se `pharmacy`, `vaccination` OU o domínio
+# `vector_control` está utilizável — este com o `vector_control` ou o
+# `zoonoses` (35b, Q3/Q11; Stock::Domain.usable?) — (nenhum: 403 com
+# `pharmacy`, o interruptor da família de rotas);
 # cada ação, ao carregar o local, confere o interruptor do domínio dele
 # (Stock::Domain.feature_for).
 module StockGate
@@ -24,7 +26,7 @@ module StockGate
 
   # Módulo 35a (Q21): as telas de locais do 27a (admin, equipe e "meus
   # locais") conferem o interruptor do domínio do LOCAL: o vector_control vale
-  # com `vector_control` mesmo sem `pharmacy`. -> tipos de local do 27a (central,
+  # com `vector_control` (ou `zoonoses`, 35b) mesmo sem `pharmacy`. -> tipos de local do 27a (central,
   # unit, vector_control) cujo domínio está utilizável.
   def usable_stock_location_kinds
     Pharmacy::Catalog::STOCK_LOCATION_KINDS.select { |kind| stock_domain_usable?(Stock::Domain.for(StockLocation.new(kind: kind))) }

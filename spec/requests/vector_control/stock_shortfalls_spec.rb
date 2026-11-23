@@ -32,7 +32,8 @@ RSpec.describe "Vigilância ambiental — faltas de insumo", type: :request do
     row = json_body["items"].last
     expect(row).to eq("id" => without.id, "created_at" => without.created_at.utc.iso8601(6), "stock_location" => nil,
                       "product" => { "id" => product.id, "code" => "PYR", "name" => "Pyriproxyfen", "unit" => "g" },
-                      "quantity" => "2.00", "cause" => "no_location", "visit_on" => Time.zone.today.iso8601,
+                      "quantity" => "2.00", "cause" => "no_location", "source" => "inspection",
+                      "occurred_on" => Time.zone.today.iso8601, "visit_on" => Time.zone.today.iso8601,
                       "reconciled_at" => nil, "reconciled_by" => nil)
     get "/vector_control/stock_shortfalls", params: { location_id: location.id }
     expect(json_body["items"].map { |item| item["id"] }).to eq([ here.id ])

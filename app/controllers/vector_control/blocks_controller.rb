@@ -4,9 +4,13 @@
 # coordenação (403 missing_role). Lista `{ items }` com TODOS os quarteirões de
 # um bairro, sem página, na ordem natural do número (Q18); cada item é o
 # CityBlock. Sem dado de pessoa: sem
-# trilha.
+# trilha. Módulo 35b (Q11): abre com o vector_control ou o zoonoses
+# utilizável (os quarteirões e os anéis do inquérito da leishmaniose).
 module VectorControl
   class BlocksController < BaseController
+    # Q11 (35b): abre com o vector_control ou o zoonoses utilizável.
+    skip_before_action :require_vector_control!
+    before_action :require_vector_supplies!
     before_action(only: %i[create update add_neighbor remove_neighbor]) { query_only! }
     before_action :coordinator!, only: %i[create update add_neighbor remove_neighbor]
     before_action :load_block, only: %i[update add_neighbor remove_neighbor]

@@ -1,7 +1,9 @@
-# Baixa de estoque de UMA medida química do boletim (módulo 35a, ADR 0054;
-# contrato §4; W-7): escolhe o lote — um só, sem dividir a quantidade, como o
-# Urgency::DeductStock — ou a causa da falta. Não grava nada: quem grava é o
-# VectorControl::ApplyStock, no savepoint { DeductStock; Ledger.record! }.
+# Baixa de estoque de UMA quantidade de um produto de campo (módulo 35a, ADR
+# 0054; contrato §4; W-7): a medida química do boletim e, no 35b (contrato
+# §3), a dose antirrábica e a coleira (1 un). Escolhe o lote — um só, sem
+# dividir a quantidade, como o Urgency::DeductStock — ou a causa da falta. Não
+# grava nada: quem grava é o VectorControl::ApplyStock ou o
+# Zoonoses::ApplyStock, no savepoint { DeductStock; Ledger.record! }.
 #
 # Local: o `vector_control_settings.stock_location_id` (lido pelo chamador),
 # do tipo vector_control e ATIVO até a trava; ausente, de outro tipo,
@@ -13,9 +15,9 @@
 # (inclusive pela corrida), vencido, bloqueado, fora do conjunto travado ou com
 # saldo menor que a quantidade.
 #
-# Ordem de trava (a do Ledger, depois das travas da visita): LOTES → LOCAL. Os
-# lotes já vêm travados pelo VectorControl::ApplyStock (`locked`, FOR UPDATE de
-# todas as medidas numa chamada, antes do local e dos savepoints): aqui o local
+# Ordem de trava (a do Ledger, depois das travas do documento): LOTES → LOCAL.
+# Os lotes já vêm travados pelo chamador (`locked`, FOR UPDATE de todos os
+# produtos numa chamada, antes do local e dos savepoints): aqui o local
 # é só relido (FOR SHARE, já seguro) e o lote sai SÓ de `locked` — nunca se
 # trava lote novo depois do local (cruzaria com a desativação do local, que
 # trava lotes e depois o local FOR UPDATE, e o deadlock recusaria a visita). Um
@@ -26,19 +28,18 @@ module VectorControl
   module DeductStock
     module_function
 
-    # `measure`: VectorInspectionMeasure com produto e `quantity` > 0;
-    # `locked`: { lot_id => StockLot } já travados FOR UPDATE pelo chamador.
+    # `quantity` > 0 (BigDecimal); `locked`: { lot_id => StockLot } já
+    # travados FOR UPDATE pelo chamador.
     # -> Result.ok(location:, lot:, quantity:) | Result.ok(shortfall_cause:, location:, quantity:)
-    def call(measure:, location_id:, today:, locked:)
-      quantity = measure.quantity
+    def call(product_id:, quantity:, location_id:, today:, locked:)
       location = location_id && StockLocation.find_by(id: location_id, kind: "vector_control", active: true)
       return shortfall("no_location", nil, quantity) unless location
 
       location = Pharmacy::Ledger.lock_location!(location.id)
 
-      fresh = Fefo.lots(product_id: measure.vector_product_id, location: location, today: today).select { |entry| locked.key?(entry.lot.id) }
+      fresh = Fefo.lots(product_id: product_id, location: location, today: today).select { |entry| locked.key?(entry.lot.id) }
       entry = fresh.find { |row| row.balance >= quantity }
-      return shortfall(missing_cause(measure, location), location, quantity) unless entry
+      return shortfall(missing_cause(product_id, location), location, quantity) unless entry
 
       Result.ok(location: location, lot: locked.fetch(entry.lot.id), quantity: quantity)
     rescue Pharmacy::Ledger::Inactive
@@ -46,8 +47,8 @@ module VectorControl
     end
 
     # Q21: algum lote do produto já esteve no local (movimento) → falta saldo.
-    def missing_cause(measure, location)
-      present = StockMovement.exists?(stock_location_id: location.id, vector_product_id: measure.vector_product_id)
+    def missing_cause(product_id, location)
+      present = StockMovement.exists?(stock_location_id: location.id, vector_product_id: product_id)
       present ? "insufficient_balance" : "no_lot"
     end
 

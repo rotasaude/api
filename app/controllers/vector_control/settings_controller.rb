@@ -2,9 +2,14 @@
 # local de estoque de onde o boletim baixa, só a coordenação (403
 # missing_role). GET e PUT devolvem o VectorSettings `{ stock_location: { id,
 # name } | null, options: [{ id, name }] }` (opções = os locais vector_control
-# ativos). Corpo do PUT `{ stock_location_id }` (nulo = sem baixa).
+# ativos). Corpo do PUT `{ stock_location_id }` (nulo = sem baixa). Módulo
+# 35b (Q11): o mesmo local da baixa da dose antirrábica e da coleira; abre com
+# o vector_control ou o zoonoses utilizável.
 module VectorControl
   class SettingsController < BaseController
+    # Q11 (35b): abre com o vector_control ou o zoonoses utilizável.
+    skip_before_action :require_vector_control!
+    before_action :require_vector_supplies!
     before_action(only: :update) { query_only! }
     before_action :coordinator!
 

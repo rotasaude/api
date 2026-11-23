@@ -23,6 +23,10 @@ module VectorControl
     LIMITS = { deposit_count_max: 999, charges_max: 999, samples_max: 99, larvae_collected_max: 10, measures_max: 20 }.freeze
     METHODS = %w[mechanical focal perifocal spatial].freeze
     PRODUCT_USES = %w[focal perifocal spatial].freeze
+    # Módulo 35b (Q11): a vacina antirrábica animal e a coleira também são
+    # vector_products, com uma finalidade só (SaveProduct). PRODUCT_USES segue
+    # só com as vetoriais (o boletim e o enum da field-sync v1.3.0).
+    ALL_PRODUCT_USES = (PRODUCT_USES + Zoonoses::Catalog::PRODUCT_USES).freeze
     UNITS = %w[g ml un].freeze
     CHARGES = (BigDecimal("0.01")..BigDecimal("999"))
     SAMPLE_NUMBERS = (1..99)

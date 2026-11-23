@@ -6,6 +6,14 @@
 # de focal/perifocal/spatial; `active` booleano. Texto longo recusado, nunca
 # cortado. Toda recusa de campo é `invalid_request` com o `path` do campo.
 #
+# Módulo 35b (Q11): `uses` aceita também rabies_vaccine e collar
+# (Catalog::ALL_PRODUCT_USES), só com o zoonoses utilizável (`zoonoses:`, lido
+# pelo controller fora da transação) e sempre numa finalidade só, com `unit`
+# un e `charge_size` 1.00 — conferido no produto como fica depois da escrita
+# (no PATCH, as chaves que mudam sobre as gravadas). Fora disso,
+# `invalid_request` path `uses` (o CHECK ck_vector_products_zoonoses_uses é o
+# cinto).
+#
 # `unit` e `charge_size` não mudam depois que há lote ou medida do produto →
 # 409 product_in_use (para isso se cria outro produto). A edição trava o
 # produto FOR UPDATE e só então confere o uso: a entrada do 27a e o boletim
@@ -22,11 +30,12 @@ module VectorControl
     CODE_INDEX = "idx_vector_products_code".freeze
     IN_USE = /unit and charge_size are fixed once the product is in use/
     EVENT = "vector_product.changed".freeze
+    ZOONOSES_CHECK = "ck_vector_products_zoonoses_uses".freeze
 
     module_function
 
     # -> Result.ok(product:) | fail(:invalid_request, details: { path: }) | fail(:product_in_use)
-    def call(params:, by:, product: nil)
+    def call(params:, by:, product: nil, zoonoses: false)
       params = params.to_h.stringify_keys
       unknown = (params.keys - KEYS).first
       return invalid(unknown) if unknown
@@ -36,6 +45,7 @@ module VectorControl
 
       attrs, path = parse(params)
       return invalid(path) if path
+      return invalid("uses") unless zoonoses_rule?(attrs, product, zoonoses)
 
       product ? update(product, attrs, by) : create(attrs, by)
     rescue ActiveRecord::RecordNotUnique => e
@@ -43,6 +53,9 @@ module VectorControl
 
       invalid("code")
     rescue ActiveRecord::StatementInvalid => e
+      # A regra da Q11 foi lida sobre o produto antes da trava: uma edição
+      # concorrente que a quebre cai no CHECK, recusada como a regra.
+      return invalid("uses") if e.message.include?(ZOONOSES_CHECK)
       raise unless e.message.match?(IN_USE)
 
       Result.fail(:product_in_use)
@@ -95,9 +108,21 @@ module VectorControl
         size = value.is_a?(String) && value.match?(CHARGE_SIZE) ? BigDecimal(value) : nil
         size if size&.positive?
       when "uses"
-        value if value.is_a?(Array) && value.any? && value.uniq.size == value.size && value.all? { |use| Catalog::PRODUCT_USES.include?(use) }
+        value if value.is_a?(Array) && value.any? && value.uniq.size == value.size && value.all? { |use| Catalog::ALL_PRODUCT_USES.include?(use) }
       when "active" then value if [ true, false ].include?(value)
       end
+    end
+
+    # Q11: finalidade de zoonoses só com o zoonoses utilizável (quando a
+    # escrita a traz) e sozinha, em un com carga 1.00 (no produto final).
+    def zoonoses_rule?(attrs, product, zoonoses)
+      uses = attrs.fetch(:uses) { product&.uses } || []
+      return true unless uses.intersect?(Zoonoses::Catalog::PRODUCT_USES)
+      return false if attrs.key?(:uses) && !zoonoses
+
+      unit = attrs.fetch(:unit) { product&.unit }
+      charge_size = attrs.fetch(:charge_size) { product&.charge_size }
+      uses.size == 1 && unit == "un" && charge_size == 1
     end
 
     def text(value, range)
@@ -118,6 +143,6 @@ module VectorControl
 
     def invalid(path) = Result.fail(:invalid_request, details: { path: path })
 
-    private_class_method :create, :update, :parse, :parse_value, :text, :code_taken?, :in_use?, :invalid
+    private_class_method :create, :update, :parse, :parse_value, :zoonoses_rule?, :text, :code_taken?, :in_use?, :invalid
   end
 end

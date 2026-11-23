@@ -167,17 +167,17 @@ RSpec.describe VectorControl::DeductStock, type: :model do
 
   before { allow(Ledi::DeliverJob).to receive(:perform_later) }
 
-  def measure = Struct.new(:quantity, :vector_product_id).new(BigDecimal("2"), product.id)
+  def deduct(locked) = described_class.call(product_id: product.id, quantity: BigDecimal("2"), location_id: location.id, today: today, locked: locked)
 
   it "lote com saldo fora do conjunto travado não é candidato (insufficient_balance, há lote no local), e nenhum lote é travado aqui" do
     fresh_lot = vector_lot!(location, product: product, quantity: "5", expires_on: today + 30)
     later_lot = vector_lot!(location, product: product, quantity: "5", expires_on: today + 60)
     expect(Pharmacy::Ledger).not_to receive(:lock_lots!)
 
-    none = described_class.call(measure: measure, location_id: location.id, today: today, locked: {})
+    none = deduct({})
     expect(none.payload).to include(shortfall_cause: "insufficient_balance", location: location)
 
-    only_later = described_class.call(measure: measure, location_id: location.id, today: today, locked: { later_lot.id => later_lot })
+    only_later = deduct({ later_lot.id => later_lot })
     expect(only_later.payload).to include(lot: later_lot, quantity: BigDecimal("2"))
     expect(only_later.payload[:lot]).not_to eq(fresh_lot)
   end

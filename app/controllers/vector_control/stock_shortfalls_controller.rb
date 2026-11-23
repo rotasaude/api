@@ -8,12 +8,17 @@
 #   - POST `/:id/reconcile` `{ note }` (VectorControl::ReconcileShortfall):
 #     devolve o VectorShortfall, sem envelope. Falta que o usuário não lê →
 #     403 missing_role; inexistente → 404.
-# Sem pessoa: só o produto, o local, a quantidade, a causa e o dia da visita.
+# Sem pessoa: só o produto, o local, a quantidade, a causa, a origem e o dia.
+# Módulo 35b (Q11, Q17): as faltas da dose antirrábica e da coleira também;
+# abre com o vector_control ou o zoonoses utilizável.
 module VectorControl
   class StockShortfallsController < BaseController
     STATES = %w[open reconciled].freeze
     LIMIT = 50
 
+    # Q11 (35b): abre com o vector_control ou o zoonoses utilizável.
+    skip_before_action :require_vector_control!
+    before_action :require_vector_supplies!
     before_action(only: :reconcile) { query_only! }
 
     def index
