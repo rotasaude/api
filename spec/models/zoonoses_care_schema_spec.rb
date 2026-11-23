@@ -93,10 +93,15 @@ RSpec.describe "Esquema do cuidado do módulo 35b", type: :model do
         raw_update(closed, state: "open", outcome: nil, outcome_on: nil, closed_by_user_id: nil)
       end
       refused(/bite_observations: a closed observation never changes/) { raw_update(closed, outcome: "died") }
-      refused(/bite_observations: a closed observation never changes/) { raw_update(closed, animal_id: animal!.id) }
+      refused(/bite_observations: a closed observation never changes/) { raw_update(closed, place: "shelter") }
+      accepted { raw_update(closed, animal_id: animal!.id, version: 2) } # §5: ligado a qualquer momento, uma vez
+      refused(/bite_observations: animal_id never changes once set/) { raw_update(closed.reload, animal_id: animal!.id) }
+      refused(/bite_observations: animal_id never changes once set/) { raw_update(closed.reload, animal_id: nil) }
 
       open = bite_observation!
       accepted { raw_update(open, animal_id: animal!.id, place: "shelter") }
+      refused(/bite_observations: animal_id never changes once set/) { raw_update(open.reload, animal_id: animal!.id) }
+      refused(/bite_observations: animal_id never changes once set/) { raw_update(open.reload, animal_id: nil) }
       accepted { raw_update(open, state: "closed", outcome: "healthy", outcome_on: Time.zone.today) }
       refused(/bite_observations: a closed observation never changes/) { raw_update(open, place: "home") }
     end

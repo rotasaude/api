@@ -4853,8 +4853,9 @@ $do$;
 -- recusados). A eutanásia, a castração e o desfecho são só acréscimo
 -- (rota_reencryption_only: UPDATE recusado, salvo a re-cifra da nota). A
 -- demanda só anda para a frente (open → scheduled → inspected → closed). A
--- observação só vai de open a closed, uma vez (depois, nada muda), e
--- animal_id e place só mudam enquanto open. O inquérito só anda
+-- observação só vai de open a closed, uma vez (depois, só o animal_id
+-- pode ser ligado, de NULL a valor, uma vez; nunca muda depois), e place só
+-- muda enquanto open. O inquérito só anda
 -- draft → open → closed. A estada só muda na saída (exit_kind, exited_on e
 -- adopter_patient_id, de NULL a valor, uma vez). A re-cifra da nota da
 -- inspeção e da observação passa antes das outras regras. As colunas são
@@ -4890,8 +4891,15 @@ BEGIN
   IF current_setting('rota.reencrypting', true) = 'on' AND (new_row - 'outcome_note') = (old_row - 'outcome_note') THEN
     RETURN NEW;
   END IF;
+  IF (old_row ->> 'animal_id') IS NOT NULL AND (new_row ->> 'animal_id') IS DISTINCT FROM (old_row ->> 'animal_id') THEN
+    RAISE EXCEPTION 'bite_observations: animal_id never changes once set';
+  END IF;
   IF (old_row ->> 'state') = 'closed' THEN
-    RAISE EXCEPTION 'bite_observations: a closed observation never changes';
+    -- Contrato §5: o animal pode ser ligado a qualquer momento (de NULL a valor, uma vez); o resto fica congelado.
+    IF (old_row ->> 'animal_id') IS NOT NULL OR (new_row ->> 'animal_id') IS NULL
+       OR (new_row - ARRAY['animal_id', 'version', 'updated_at']) IS DISTINCT FROM (old_row - ARRAY['animal_id', 'version', 'updated_at']) THEN
+      RAISE EXCEPTION 'bite_observations: a closed observation never changes';
+    END IF;
   END IF;
   RETURN NEW;
 END;
