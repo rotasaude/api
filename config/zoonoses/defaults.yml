@@ -7,14 +7,18 @@
 # (o manual manda usar 2% quando a prevalência é desconhecida). A tabela do manual
 # é por faixa de população canina estimada no setor; aqui cada linha leva o LIMITE
 # SUPERIOR da faixa em `population` e o cálculo usa a primeira linha cuja população
-# seja >= dog_population (a faixa 500-599 vira 599, e assim por diante). A última
-# linha é a faixa ">1000" do manual (population 1000); acima dela vale a amostra da
+# seja >= dog_population (a faixa 500-599 vira 599, e assim por diante). A primeira
+# linha leva `min_population: 500` (Q32): abaixo disso o manual não traz amostra,
+# então target_dogs = dog_population (censo) e a tela avisa "Abaixo de 500 cães, o
+# manual não traz amostra: todos os cães entram no inquérito."; em todo caso
+# target_dogs <= dog_population (a Zoonoses::LeishSample, Task 13, aplica a regra).
+# A última linha é a faixa ">1000" do manual (population 1000); acima dela vale a amostra da
 # última linha (Q18). `a_conferir: true` marca linha não conferida no manual: gate
 # de go-live (contrato §18). Fonte e páginas em config/zoonoses/sources.yml.
 observation_days: 10
 collar_months: 6
 leish_sample_table:
-  - { population: 599, sample: 300 }
+  - { population: 599, sample: 300, min_population: 500 }
   - { population: 699, sample: 334 }
   - { population: 799, sample: 363 }
   - { population: 899, sample: 388 }

@@ -1,6 +1,9 @@
 # Módulo 35b: códigos e rótulos dos domínios do centro de zoonoses. Os da lista
 # do app são os de field-sync/domains-v1.json → zoonoses (contracts v1.4.0),
 # verbatim; os subtipos são os do contrato §4.
+# Incompleto de propósito: os domínios restantes do Valor fixado 3 (desfecho da
+# observação, ELISA, decisão, entrada, saída, motivo de remoção, motivo de
+# eutanásia, base legal) entram com as tasks donas (8, 12, 13, 14).
 species:
   - { code: dog, label: "Cão" }
   - { code: cat, label: "Gato" }

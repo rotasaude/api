@@ -27,6 +27,12 @@ RSpec.describe "Prova técnica do 35b", type: :model do
     expect(table.map { |row| row["sample"] }).to eq(table.map { |row| row["sample"] }.sort)
   end
 
+  it "só a primeira linha tem min_population 500 (Q32) e só a linha de 1000 está a_conferir" do
+    expect(table.first["min_population"]).to eq(500)
+    expect(table.drop(1).map { |row| row["min_population"] }).to all(be_nil)
+    expect(table.select { |row| row["a_conferir"] }.map { |row| row["population"] }).to eq([1000])
+  end
+
   it "a linha de 600 dá 334 (pesquisa §3.5; manual 4.6.4.1)" do
     row = table.find { |r| r["population"] >= 600 }
     expect(row["sample"]).to eq(334)
