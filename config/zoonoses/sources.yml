@@ -1,0 +1,11 @@
+# Módulo 35b, Task 1 (prova técnica): fonte lida para fechar a tabela de amostra
+# da leishmaniose visceral canina. `pages` são as páginas do PDF (entre
+# parênteses, a numeração impressa). O arquivo não fica no repositório: o
+# SHA-256 identifica o que foi lido.
+leish_manual:
+  title: "Manual de vigilância e controle da leishmaniose visceral"
+  edition: "Ministério da Saúde/SVSA, 2ª edição, 2026 (ISBN 978-85-334-2913-0)"
+  url: "https://www.gov.br/saude/pt-br/centrais-de-conteudo/publicacoes/guias-e-manuais/2026/manual-de-vigilancia-e-controle-da-leishmaniose-visceral.pdf"
+  fetched_on: "2026-11-23"
+  sha256: "f01a8419e446ae033dbdf4009e81fd7102d7d779fffcce8fed3b1a613817bfc2"
+  pages: "66-68 (65-67: item 4.6.4.1; Tabela 4 na 67 (66), coluna 1,0-2,0; exemplo 600 cães, amostra de 334, na 67-68 (66-67))"

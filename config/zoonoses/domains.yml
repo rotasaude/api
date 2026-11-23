@@ -1,0 +1,40 @@
+# Módulo 35b: códigos e rótulos dos domínios do centro de zoonoses. Os da lista
+# do app são os de field-sync/domains-v1.json → zoonoses (contracts v1.4.0),
+# verbatim; os subtipos são os do contrato §4.
+species:
+  - { code: dog, label: "Cão" }
+  - { code: cat, label: "Gato" }
+  - { code: other, label: "Outro" }
+sexes:
+  - { code: male, label: "Macho" }
+  - { code: female, label: "Fêmea" }
+  - { code: unknown, label: "Não informado" }
+sizes:
+  - { code: small, label: "Pequeno" }
+  - { code: medium, label: "Médio" }
+  - { code: large, label: "Grande" }
+animal_statuses:
+  - { code: active, label: "Ativo" }
+  - { code: deceased, label: "Óbito" }
+  - { code: missing, label: "Desaparecido" }
+  - { code: transferred, label: "Transferido" }
+subtypes:
+  - { code: scorpion, label: "Escorpião" }
+  - { code: bat, label: "Morcego" }
+  - { code: rodent, label: "Rato ou outro roedor" }
+  - { code: tick, label: "Carrapato" }
+  - { code: aggressive_animal, label: "Animal que mordeu ou atacou" }
+  - { code: neurological_animal, label: "Animal com comportamento estranho ou paralisia" }
+  - { code: sporotrichosis, label: "Gato com feridas (esporotricose)" }
+  - { code: other, label: "Outro problema com animal" }
+dpp_results:
+  - { code: reactive, label: "Reagente" }
+  - { code: non_reactive, label: "Não reagente" }
+  - { code: invalid, label: "Inválido" }
+leish_survey_kinds:
+  - { code: sample, label: "Amostral" }
+  - { code: census, label: "Censitário" }
+  - { code: focus, label: "Foco" }
+product_uses:
+  - { code: rabies_vaccine, label: "Vacina antirrábica animal" }
+  - { code: collar, label: "Coleira inseticida" }

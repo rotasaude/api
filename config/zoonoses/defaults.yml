@@ -1,0 +1,27 @@
+# Módulo 35b (contrato §9, Q18): padrão de fábrica dos parâmetros técnicos do
+# centro de zoonoses. A coordenação edita por versão (zoonoses_parameter_versions);
+# este arquivo é a versão 0.
+#
+# leish_sample_table: Tabela 4 do manual de vigilância e controle da leishmaniose
+# visceral (LV-2026, 2ª ed., 4.6.4.1), coluna de prevalência esperada 1,0-2,0
+# (o manual manda usar 2% quando a prevalência é desconhecida). A tabela do manual
+# é por faixa de população canina estimada no setor; aqui cada linha leva o LIMITE
+# SUPERIOR da faixa em `population` e o cálculo usa a primeira linha cuja população
+# seja >= dog_population (a faixa 500-599 vira 599, e assim por diante). A última
+# linha é a faixa ">1000" do manual (population 1000); acima dela vale a amostra da
+# última linha (Q18). `a_conferir: true` marca linha não conferida no manual: gate
+# de go-live (contrato §18). Fonte e páginas em config/zoonoses/sources.yml.
+observation_days: 10
+collar_months: 6
+leish_sample_table:
+  - { population: 599, sample: 300 }
+  - { population: 699, sample: 334 }
+  - { population: 799, sample: 363 }
+  - { population: 899, sample: 388 }
+  - { population: 999, sample: 410 }
+  - { population: 1000, sample: 430, a_conferir: true }
+leish_focus_min_dogs: 100
+dogs_per_block: 16
+rabies_coverage_target: 0.8
+dog_population_estimate: null
+cat_population_estimate: null
