@@ -178,14 +178,43 @@ RSpec.describe "Esquema da vacinação do módulo 35b", type: :model do
       refused(/rabies_vaccinations: a dose is cancelled once/) { raw_update(dose, cancelled_at: nil, cancel_reason: nil) }
     end
 
-    it "mudar vaccinated_on, animal, produto, lote ou o evento adverso → trigger" do
+    it "mudar vaccinated_on, animal, produto ou o evento adverso → trigger" do
       dose = vaccination!
-      refused(/rabies_vaccinations: only cancelled_at and cancel_reason change/) { raw_update(dose, vaccinated_on: Time.zone.today - 1) }
-      refused(/rabies_vaccinations: only cancelled_at and cancel_reason change/) { raw_update(dose, animal_id: animal!.id) }
-      refused(/rabies_vaccinations: only cancelled_at and cancel_reason change/) { raw_update(dose, adverse_event: true) }
-      refused(/rabies_vaccinations: only cancelled_at and cancel_reason change/) { raw_update(dose, stock_lot_id: lot!.id) }
-      refused(/rabies_vaccinations: only cancelled_at and cancel_reason change/) do
+      refused(/rabies_vaccinations: only cancelled_at, cancel_reason and stock_lot_id change/) do
+        raw_update(dose, vaccinated_on: Time.zone.today - 1)
+      end
+      refused(/rabies_vaccinations: only cancelled_at, cancel_reason and stock_lot_id change/) { raw_update(dose, animal_id: animal!.id) }
+      refused(/rabies_vaccinations: only cancelled_at, cancel_reason and stock_lot_id change/) { raw_update(dose, adverse_event: true) }
+      refused(/rabies_vaccinations: only cancelled_at, cancel_reason and stock_lot_id change/) do
+        raw_update(dose, vector_product_id: vector_product!(unit: "un", charge_size: "1.00", uses: %w[rabies_vaccine]).id)
+      end
+      refused(/rabies_vaccinations: only cancelled_at, cancel_reason and stock_lot_id change/) do
         raw_update(dose, cancelled_at: Time.current, cancel_reason: "Dose lançada no animal errado", vaccinated_on: Time.zone.today - 1)
+      end
+    end
+
+    # Task 7 (contrato §1/§3: "nulo se faltou"): o comando grava a dose, baixa
+    # o estoque e anota o lote do movimento, uma vez.
+    it "lote da baixa: NULL → lote aceito uma vez; lote → outro lote recusado; lote → NULL recusado" do
+      dose = vaccination!
+      first, second = lot!, lot!
+      accepted { dose.update!(stock_lot_id: first.id) }
+      expect(dose.reload.stock_lot_id).to eq(first.id)
+      refused(/rabies_vaccinations: the stock lot is set once/) { raw_update(dose, stock_lot_id: second.id) }
+      refused(/rabies_vaccinations: the stock lot is set once/) { raw_update(dose, stock_lot_id: nil) }
+      accepted { dose.update!(cancelled_at: Time.current, cancel_reason: "Dose lançada no animal errado") }
+      refused(/rabies_vaccinations: the stock lot is set once/) { raw_update(dose, stock_lot_id: nil) }
+      expect(dose.reload).to have_attributes(stock_lot_id: first.id, cancelled_at: be_present)
+    end
+
+    it "anotar o lote não conta como anulação; anular a dose com falta segue valendo uma vez" do
+      dose = vaccination!
+      accepted { dose.update!(stock_lot_id: lot!.id) }
+      expect(dose.reload.cancelled_at).to be_nil
+      shortfall = vaccination!
+      accepted { shortfall.update!(cancelled_at: Time.current, cancel_reason: "Dose lançada no animal errado") }
+      refused(/rabies_vaccinations: a dose is cancelled once/) do
+        raw_update(shortfall, cancelled_at: nil, cancel_reason: nil, stock_lot_id: lot!.id)
       end
     end
 
@@ -195,7 +224,7 @@ RSpec.describe "Esquema da vacinação do módulo 35b", type: :model do
       rewrite = lambda do |value|
         connection.execute(RabiesVaccination.sanitize_sql([ "UPDATE rabies_vaccinations SET adverse_note = ? WHERE id = ?", value, dose.id ]))
       end
-      refused(/rabies_vaccinations: only cancelled_at and cancel_reason change/) { rewrite.call("texto-recifrado") }
+      refused(/rabies_vaccinations: only cancelled_at, cancel_reason and stock_lot_id change/) { rewrite.call("texto-recifrado") }
       accepted { CityEncryption.allowing_reencryption { rewrite.call("texto-recifrado") } }
       expect(connection.select_value("SELECT current_setting('rota.reencrypting', true)")).to eq("off")
       expect(RabiesVaccination.connection.select_value("SELECT adverse_note FROM rabies_vaccinations WHERE id = '#{dose.id}'")).to eq("texto-recifrado")

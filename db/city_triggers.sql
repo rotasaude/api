@@ -4759,8 +4759,10 @@ $do$;
 -- campanha, a dose e a coleira nunca somem (DELETE e TRUNCATE recusados). A
 -- etapa da campanha só anda planned → open → closed (sem voltar nem pular de
 -- closed). A dose é imutável fora da anulação, de NULL a valor, uma vez
--- (molde do rota_immunization_guard); a re-cifra da nota adversa e do motivo
--- da anulação passa antes das outras regras. A coleira só muda na retirada
+-- (molde do rota_immunization_guard), e do lote da baixa (stock_lot_id), de
+-- NULL a valor, uma vez: o comando grava a dose, baixa o estoque e anota o
+-- lote do movimento; na falta o lote fica NULL (contrato §1/§3). A re-cifra
+-- da nota adversa e do motivo da anulação passa antes das outras regras. A coleira só muda na retirada
 -- (removed_on e removal_reason, de NULL a valor, uma vez). As colunas são
 -- lidas por to_jsonb: este arquivo roda de novo em migrações antigas, e a
 -- função só roda com a tabela já criada (as três nascem na 20261123900002).
@@ -4782,8 +4784,10 @@ $fn$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION rota_rabies_vaccination_guard() RETURNS trigger AS $fn$
 DECLARE
-  moving text[] := ARRAY['cancelled_at', 'cancel_reason'];
+  moving text[] := ARRAY['cancelled_at', 'cancel_reason', 'stock_lot_id'];
   encrypted text[] := ARRAY['adverse_note', 'cancel_reason'];
+  old_lot text := to_jsonb(OLD) ->> 'stock_lot_id';
+  new_lot text := to_jsonb(NEW) ->> 'stock_lot_id';
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'rabies_vaccinations: DELETE refused';
@@ -4792,9 +4796,14 @@ BEGIN
     RETURN NEW;
   END IF;
   IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
-    RAISE EXCEPTION 'rabies_vaccinations: only cancelled_at and cancel_reason change';
+    RAISE EXCEPTION 'rabies_vaccinations: only cancelled_at, cancel_reason and stock_lot_id change';
   END IF;
-  IF (to_jsonb(OLD) ->> 'cancelled_at') IS NOT NULL OR (to_jsonb(NEW) ->> 'cancelled_at') IS NULL THEN
+  IF new_lot IS DISTINCT FROM old_lot AND (old_lot IS NOT NULL OR new_lot IS NULL) THEN
+    RAISE EXCEPTION 'rabies_vaccinations: the stock lot is set once';
+  END IF;
+  IF (to_jsonb(NEW) ->> 'cancelled_at', to_jsonb(NEW) ->> 'cancel_reason')
+       IS DISTINCT FROM (to_jsonb(OLD) ->> 'cancelled_at', to_jsonb(OLD) ->> 'cancel_reason')
+     AND ((to_jsonb(OLD) ->> 'cancelled_at') IS NOT NULL OR (to_jsonb(NEW) ->> 'cancelled_at') IS NULL) THEN
     RAISE EXCEPTION 'rabies_vaccinations: a dose is cancelled once';
   END IF;
   RETURN NEW;
