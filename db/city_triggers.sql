@@ -4700,8 +4700,9 @@ $do$;
 
 -- Módulo 35b — fundação (ADR 0054; plano, Task 2; contrato §1, §2 e §9): o
 -- animal e os parâmetros. O animal nunca some (DELETE e TRUNCATE recusados); a
--- situação só sai de active, para qualquer outra, e nunca volta (nem anda de
--- uma saída para outra); castrado nunca volta a não castrado. A re-cifra do
+-- situação (Q31) vai de active a missing, transferred ou deceased; de missing
+-- volta a active ou vai a deceased; transferred e deceased são finais (a linha
+-- não muda mais); castrado nunca volta a não castrado. A re-cifra do
 -- microchip (determinístico) passa antes de tudo. As versões dos parâmetros
 -- são só acréscimo (a vigente é a maior). As colunas são lidas por
 -- to_jsonb(NEW)/(OLD): este arquivo roda de novo em migrações antigas; a
@@ -4717,9 +4718,11 @@ BEGIN
   IF current_setting('rota.reencrypting', true) = 'on' AND (new_row - 'microchip') = (old_row - 'microchip') THEN
     RETURN NEW;
   END IF;
-  IF (new_row ->> 'status') IS DISTINCT FROM (old_row ->> 'status')
-     AND ((old_row ->> 'status') <> 'active' OR (new_row ->> 'status') = 'active') THEN
-    RAISE EXCEPTION 'animals: status only leaves active, once, and never comes back';
+  IF (old_row ->> 'status') IN ('transferred', 'deceased') THEN
+    RAISE EXCEPTION 'animals: % is final', old_row ->> 'status';
+  END IF;
+  IF (old_row ->> 'status') = 'missing' AND (new_row ->> 'status') NOT IN ('missing', 'active', 'deceased') THEN
+    RAISE EXCEPTION 'animals: missing only goes back to active or to deceased';
   END IF;
   IF (old_row ->> 'neutered')::boolean AND NOT (new_row ->> 'neutered')::boolean THEN
     RAISE EXCEPTION 'animals: neutered never goes back to false';

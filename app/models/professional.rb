@@ -8,9 +8,14 @@ class Professional < ApplicationRecord
   # Papéis elegíveis a perfil profissional (Professionals::Create e a fila de pendências): o clínico,
   # o liberador do laboratório (ADR 0037) e a equipe do CAPS (ADR 0049, P29), que NÃO recebe
   # health_professional — ele abriria a UBS ao CAPS pela leitura contextual.
-  PROFILE_ROLES = %w[health_professional lab_releaser psychosocial_staff psychosocial_lead].freeze
+  # A equipe de zoonoses (ADR 0054, módulo 35b; Q30) também: a veterinária
+  # (223305, CRMV) tem perfil e vínculo na UVZ sem o health_professional.
+  PROFILE_ROLES = %w[health_professional lab_releaser psychosocial_staff psychosocial_lead zoonoses_team].freeze
   # Dos elegíveis, os que também precisam de vínculo de unidade (o liberador só do perfil).
-  LINK_ROLES = %w[health_professional psychosocial_staff psychosocial_lead].freeze
+  LINK_ROLES = %w[health_professional psychosocial_staff psychosocial_lead zoonoses_team].freeze
+  # Dos elegíveis, os de perfil opcional (Q30): só a veterinária da equipe de
+  # zoonoses tem perfil; sem outro papel elegível e sem perfil, não é pendência.
+  OPTIONAL_PROFILE_ROLES = %w[zoonoses_team].freeze
   FIELDS = %w[professional_name council council_state registration_number cns cpf phone contact_email].freeze
   # O profissional edita só nome e contato (emenda ao ADR 0021, 2026-09-27):
   # conselho, registro e CNS a prefeitura confere.

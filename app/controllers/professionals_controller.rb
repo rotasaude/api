@@ -34,8 +34,14 @@ class ProfessionalsController < ApplicationController
     # B33: quem só tem lab_releaser precisa apenas do perfil (sem vínculo de unidade);
     # a equipe do CAPS (P29) precisa do perfil e do vínculo, como o clínico.
     clinical = Membership.active.where(role: Professional::LINK_ROLES, user_id: users.map(&:id)).pluck(:user_id).to_set
+    # Q30 (módulo 35b): a equipe de zoonoses tem perfil opcional (só a
+    # veterinária): quem só tem papel de perfil opcional e não tem perfil fica
+    # fora; com perfil, segue a regra do vínculo.
+    required = Membership.active.where(role: Professional::PROFILE_ROLES - Professional::OPTIONAL_PROFILE_ROLES,
+                                       user_id: users.map(&:id)).pluck(:user_id).to_set
     rows = users.map { |u| { user_id: u.id, email_address: u.email_address, status: pending_status(status[u.id], clinical.include?(u.id)) } }
                 .reject { |row| row[:status] == "ok" }
+                .reject { |row| row[:status] == "missing_profile" && !required.include?(row[:user_id]) }
     render json: { users: rows }
   end
 

@@ -2,8 +2,9 @@
 # Tutor é sempre um Patient (nunca o nome digitado), só sem community; o
 # domicílio é opcional. Microchip cifrado determinístico com a chave da cidade
 # (molde do Citizen#cpf): único entre os não nulos e buscável só pelo corpo
-# (nunca em URL, log nem ao app). Situação só sai de active e não volta;
-# castrado não volta; nunca apagado (trigger). Nunca sai em inspect, to_s,
+# (nunca em URL, log nem ao app). Situação (Q31): active → missing |
+# transferred | deceased; missing → active | deceased; transferred e deceased
+# são finais. Castrado não volta; nunca apagado (trigger). Nunca sai em inspect, to_s,
 # pretty_print nem as_json — só o id e a situação.
 class Animal < ApplicationRecord
   encrypts :microchip, deterministic: true, key_provider: CityDeterministicKeyProvider.new

@@ -3,6 +3,7 @@
 # Também têm perfil o liberador do laboratório (ADR 0037) e a equipe do CAPS
 # (psychosocial_staff e psychosocial_lead; ADR 0049, P29), que não recebe
 # health_professional — ele abriria a UBS ao CAPS pela leitura contextual.
+# E a equipe de zoonoses (zoonoses_team; módulo 35b, Q30): a veterinária.
 module Professionals
   class Create
     UNIQUE_REASONS = {

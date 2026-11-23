@@ -22,15 +22,23 @@ module ZoonosesHelpers
 
   def uvz_unit! = create_unit("UVZ #{SecureRandom.hex(2)}", kind: "environmental_surveillance")
 
-  # Veterinária (Q12): papel zoonoses_team, perfil CRMV completo e vínculo
-  # ativo 223305 na unidade (a UVZ, se não vier).
+  # Veterinária (Q12, Q30): só o papel zoonoses_team, o perfil CRMV completo
+  # e o vínculo ativo 223305 na unidade (a UVZ, se não vier), pelo caminho
+  # real (Professionals::Create e OpenLink, pelo municipal_admin).
   def veterinarian!(unit: uvz_unit!)
     user = zoonoses_team!
     n = registry_seq!
-    Professional.create!(user: user, professional_name: "Veterinária #{n}", cns: valid_cns(n), council: "CRMV", council_state: "PR",
-                         registration_number: (90_000 + n).to_s)
-    link_professional!(user.reload, unit, cbo: Zoonoses::Catalog::VETERINARIAN_CBO)
-    user
+    attrs = { "professional_name" => "Veterinária #{n}", "cns" => valid_cns(n), "council" => "CRMV", "council_state" => "PR",
+              "registration_number" => (90_000 + n).to_s }
+    Current.set(city: Current.city || TEST_CITY_A) do
+      created = Professionals::Create.call(user_id: user.id, attrs: attrs, by: zoonoses_admin)
+      raise ArgumentError, "veterinarian!: #{created.reason} #{created.details.inspect}" if created.failure?
+
+      linked = Professionals::OpenLink.call(professional: created.payload[:professional], health_unit_id: unit.id,
+                                            cbo_code: Zoonoses::Catalog::VETERINARIAN_CBO, by: zoonoses_admin)
+      raise ArgumentError, "veterinarian!: #{linked.reason} #{linked.details.inspect}" if linked.failure?
+    end
+    user.reload
   end
 
   # Paciente com CPF válido e o nome marcado.
@@ -50,6 +58,8 @@ module ZoonosesHelpers
   private
 
   def zoonoses_author = (@zoonoses_author ||= zoonoses_team!)
+
+  def zoonoses_admin = (@zoonoses_admin ||= staff_with("admin-zoonoses-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin"))
 end
 
 RSpec.configure { |c| c.include ZoonosesHelpers }

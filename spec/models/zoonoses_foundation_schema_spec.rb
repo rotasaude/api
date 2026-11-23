@@ -55,12 +55,30 @@ RSpec.describe "Esquema da fundação do módulo 35b", type: :model do
     refused(/ck_animals_version/) { animal.update_columns(version: 0) }
   end
 
-  it "status deceased → active recusado pelo trigger" do
-    animal = animal!
-    accepted { animal.update_columns(status: "deceased", status_on: Time.zone.today) }
-    refused(/animals: status only leaves active/) { animal.update_columns(status: "active") }
-    refused(/animals: status only leaves active/) { animal.update_columns(status: "missing") }
-    accepted { animal.update_columns(name: "Rex") }
+  # Q31: active → missing | transferred | deceased; missing → active |
+  # deceased; transferred e deceased são finais.
+  it "situação: active vai aos três; missing volta a active ou vai a deceased; transferred e deceased são finais" do
+    %w[missing transferred deceased].each do |status|
+      animal = animal!
+      accepted { animal.update_columns(status: status, status_on: Time.zone.today) }
+    end
+
+    back = animal!(status: "missing")
+    accepted { back.update_columns(status: "active") }
+    dead = animal!(status: "missing")
+    accepted { dead.update_columns(status: "deceased") }
+    refused(/animals: missing only goes back to active or to deceased/) { animal!(status: "missing").update_columns(status: "transferred") }
+
+    %w[transferred deceased].each do |final|
+      animal = animal!(status: final)
+      (Zoonoses::Catalog::ANIMAL_STATUSES - [ final ]).each do |status|
+        refused(/animals: #{final} is final/) { animal.update_columns(status: status) }
+      end
+      refused(/animals: #{final} is final/) { animal.update_columns(name: "Rex") }
+    end
+
+    alive = animal!
+    accepted { alive.update_columns(name: "Rex") }
   end
 
   it "neutered true → false recusado" do
