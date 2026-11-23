@@ -1113,6 +1113,12 @@ Rails.application.routes.draw do
     get    "vaccinations",                    to: "vaccinations#index"
     post   "vaccinations",                    to: "vaccinations#create"
     post   "vaccinations/:id/cancel",         to: "vaccinations#cancel", constraints: member_id
+    get    "shelter_stays",                   to: "shelter_stays#index"
+    post   "shelter_stays",                   to: "shelter_stays#create"
+    post   "shelter_stays/:id/exit",          to: "shelter_stays#exit_stay", constraints: member_id
+    post   "neuterings",                      to: "neuterings#create"
+    # Eutanásia imutável (§7): só a criação, sem leitura avulsa, edição nem exclusão.
+    post   "euthanasias",                     to: "euthanasias#create"
   end
 
   # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard

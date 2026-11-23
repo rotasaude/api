@@ -1,9 +1,11 @@
 # Módulo 35b: códigos e rótulos dos domínios do centro de zoonoses. Os da lista
 # do app são os de field-sync/domains-v1.json → zoonoses (contracts v1.4.0),
 # verbatim; os subtipos são os do contrato §4.
+# Os do canil (entrada, saída, motivo de eutanásia, base legal) são os do
+# contrato §7 e da decisão 20 da spec (Task 8).
 # Incompleto de propósito: os domínios restantes do Valor fixado 3 (desfecho da
-# observação, ELISA, decisão, entrada, saída, motivo de remoção, motivo de
-# eutanásia, base legal) entram com as tasks donas (8, 12, 13, 14).
+# observação, ELISA, decisão, motivo de remoção) entram com as tasks donas
+# (12, 13, 14).
 species:
   - { code: dog, label: "Cão" }
   - { code: cat, label: "Gato" }
@@ -41,3 +43,23 @@ leish_survey_kinds:
 product_uses:
   - { code: rabies_vaccine, label: "Vacina antirrábica animal" }
   - { code: collar, label: "Coleira inseticida" }
+entry_kinds:
+  - { code: collection, label: "Recolhimento" }
+  - { code: voluntary_surrender, label: "Entrega voluntária" }
+  - { code: observation, label: "Observação" }
+  - { code: other, label: "Outro" }
+exit_kinds:
+  - { code: returned, label: "Devolução" }
+  - { code: adopted, label: "Adoção" }
+  - { code: death, label: "Óbito" }
+  - { code: euthanasia, label: "Eutanásia" }
+  - { code: transferred, label: "Transferência" }
+euthanasia_reasons:
+  - { code: leishmaniasis, label: "Leishmaniose visceral" }
+  - { code: rabies_suspect, label: "Suspeita de raiva" }
+  - { code: untreatable_suffering, label: "Sofrimento sem tratamento possível" }
+  - { code: public_health_risk, label: "Risco à saúde pública" }
+  - { code: other, label: "Outro" }
+legal_bases:
+  - { code: cfmv_1000_2012, label: "Resolução CFMV nº 1.000/2012" }
+  - { code: law_14228_2021, label: "Lei nº 14.228/2021" }

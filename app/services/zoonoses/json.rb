@@ -44,6 +44,36 @@ module Zoonoses
         created_at: row.created_at.iso8601 }
     end
 
+    # Estada no canil (§7) na lista e na resposta da escrita: só ids, datas,
+    # códigos e a espécie do animal (`animal` já carregado ou lido aqui).
+    # Nunca o tutor nem o adotante (nem o id dele), nem o nome do animal.
+    def shelter_stay(row, species: row.animal.species)
+      { id: row.id, animal_id: row.animal_id, species: species, health_unit_id: row.health_unit_id, entry_kind: row.entry_kind,
+        entered_on: row.entered_on.iso8601, bite_observation_id: row.bite_observation_id, exit_kind: row.exit_kind,
+        exited_on: row.exited_on&.iso8601, version: row.version, created_at: row.created_at.iso8601 }
+    end
+
+    # Castração (§7) na resposta da escrita, com a veterinária (Q30).
+    def neutering_record(row)
+      { id: row.id, animal_id: row.animal_id, performed_on: row.performed_on.iso8601, shelter_stay_id: row.shelter_stay_id,
+        veterinarian: veterinarian(row.professional), created_at: row.created_at.iso8601 }
+    end
+
+    # Eutanásia (§7) na resposta da escrita, com a veterinária (Q30). Nunca a
+    # nota do motivo.
+    def euthanasia_record(row)
+      { id: row.id, animal_id: row.animal_id, performed_on: row.performed_on.iso8601, reason: row.reason, legal_basis: row.legal_basis,
+        shelter_stay_id: row.shelter_stay_id, bite_observation_id: row.bite_observation_id,
+        veterinarian: veterinarian(row.professional), created_at: row.created_at.iso8601 }
+    end
+
+    # `{ name, crmv }` do perfil profissional: o CRMV como "CRMV-<UF> <número>"
+    # (o molde do ClinicalDocuments::Json; registro do conselho é público).
+    def veterinarian(professional)
+      { name: professional.professional_name,
+        crmv: "#{professional.council}-#{professional.council_state} #{professional.registration_number}" }
+    end
+
     # O histórico do animal (Q2), uma consulta por tabela, mais recente primeiro.
     def history(animal_id)
       { vaccinations: RabiesVaccination.where(animal_id: animal_id).order(vaccinated_on: :desc, created_at: :desc).map { vaccination(_1) },
@@ -94,6 +124,6 @@ module Zoonoses
         veterinarian_name: row.professional.professional_name }
     end
 
-    private_class_method :history, :vaccination, :observation, :leish_test, :collar, :stay, :neutering, :euthanasia
+    private_class_method :veterinarian, :history, :vaccination, :observation, :leish_test, :collar, :stay, :neutering, :euthanasia
   end
 end
