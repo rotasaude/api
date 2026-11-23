@@ -3736,7 +3736,8 @@ $do$;
 -- 13 tabelas.
 CREATE OR REPLACE FUNCTION rota_ombudsman_manifestation_guard() RETURNS trigger AS $fn$
 DECLARE
-  ciphered text[] := ARRAY['body', 'extension_reason', 'manifestant_name', 'manifestant_contact', 'manifestant_cpf', 'manifestant_phone'];
+  ciphered text[] := ARRAY['body', 'extension_reason', 'manifestant_name', 'manifestant_contact', 'manifestant_cpf', 'manifestant_phone',
+                           'place_address'];
   manifestant text[] := ARRAY['manifestant_name', 'manifestant_contact', 'manifestant_cpf', 'manifestant_phone'];
   item text;
   old_value text;
@@ -3751,7 +3752,10 @@ BEGIN
   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.protocol IS DISTINCT FROM OLD.protocol OR NEW.body IS DISTINCT FROM OLD.body
      OR NEW.channel IS DISTINCT FROM OLD.channel OR NEW.identification_mode IS DISTINCT FROM OLD.identification_mode
      OR NEW.received_at IS DISTINCT FROM OLD.received_at OR NEW.created_by_user_id IS DISTINCT FROM OLD.created_by_user_id
-     OR NEW.ouvidorsus_number IS DISTINCT FROM OLD.ouvidorsus_number OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+     OR NEW.ouvidorsus_number IS DISTINCT FROM OLD.ouvidorsus_number OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     -- Módulo 35b (§4, Q15): o endereço da ocorrência é do registro, como o
+     -- texto (to_jsonb: a coluna nasce na 20261123900001).
+     OR (to_jsonb(NEW) -> 'place_address') IS DISTINCT FROM (to_jsonb(OLD) -> 'place_address') THEN
     RAISE EXCEPTION 'ombudsman_manifestations: the registration columns never change';
   END IF;
   IF NEW.citizen_id IS DISTINCT FROM OLD.citizen_id THEN
@@ -3801,7 +3805,10 @@ BEGIN
   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.ombudsman_manifestation_id IS DISTINCT FROM OLD.ombudsman_manifestation_id
      OR NEW.department_id IS DISTINCT FROM OLD.department_id OR NEW.health_unit_id IS DISTINCT FROM OLD.health_unit_id
      OR NEW.extract IS DISTINCT FROM OLD.extract OR NEW.created_by_user_id IS DISTINCT FROM OLD.created_by_user_id
-     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     -- Módulo 35b (Q13): o ator do sistema também é da criação (to_jsonb: a
+     -- coluna nasce na 20261123900001).
+     OR (to_jsonb(NEW) -> 'created_by_system') IS DISTINCT FROM (to_jsonb(OLD) -> 'created_by_system') THEN
     RAISE EXCEPTION 'ombudsman_forwardings: extract, destination and creation never change';
   END IF;
   IF NEW.extended IS DISTINCT FROM OLD.extended THEN
@@ -4682,6 +4689,60 @@ BEGIN
   FOREACH item IN ARRAY ARRAY['ovitraps', 'ovitrap_readings', 'vector_tasks', 'liraa_surveys', 'liraa_strata',
                               'liraa_stratum_blocks', 'liraa_draw_items', 'transmission_blocks', 'transmission_block_areas',
                               'transmission_block_cases', 'transmission_block_cycles'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END IF;
+  END LOOP;
+END
+$do$;
+
+-- Módulo 35b — fundação (ADR 0054; plano, Task 2; contrato §1, §2 e §9): o
+-- animal e os parâmetros. O animal nunca some (DELETE e TRUNCATE recusados); a
+-- situação só sai de active, para qualquer outra, e nunca volta (nem anda de
+-- uma saída para outra); castrado nunca volta a não castrado. A re-cifra do
+-- microchip (determinístico) passa antes de tudo. As versões dos parâmetros
+-- são só acréscimo (a vigente é a maior). As colunas são lidas por
+-- to_jsonb(NEW)/(OLD): este arquivo roda de novo em migrações antigas; a
+-- função só roda com a tabela já criada (as duas nascem na 20261123900001).
+CREATE OR REPLACE FUNCTION rota_animal_guard() RETURNS trigger AS $fn$
+DECLARE
+  old_row jsonb := to_jsonb(OLD);
+  new_row jsonb := to_jsonb(NEW);
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'animals: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (new_row - 'microchip') = (old_row - 'microchip') THEN
+    RETURN NEW;
+  END IF;
+  IF (new_row ->> 'status') IS DISTINCT FROM (old_row ->> 'status')
+     AND ((old_row ->> 'status') <> 'active' OR (new_row ->> 'status') = 'active') THEN
+    RAISE EXCEPTION 'animals: status only leaves active, once, and never comes back';
+  END IF;
+  IF (old_row ->> 'neutered')::boolean AND NOT (new_row ->> 'neutered')::boolean THEN
+    RAISE EXCEPTION 'animals: neutered never goes back to false';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.animals') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS animals_guard ON animals';
+    EXECUTE 'CREATE TRIGGER animals_guard BEFORE UPDATE OR DELETE ON animals
+      FOR EACH ROW EXECUTE FUNCTION rota_animal_guard()';
+  END IF;
+  IF to_regclass('public.zoonoses_parameter_versions') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS zoonoses_parameter_versions_append_only ON zoonoses_parameter_versions';
+    EXECUTE 'CREATE TRIGGER zoonoses_parameter_versions_append_only BEFORE UPDATE OR DELETE ON zoonoses_parameter_versions
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['animals', 'zoonoses_parameter_versions'] LOOP
     IF to_regclass('public.' || item) IS NOT NULL THEN
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',

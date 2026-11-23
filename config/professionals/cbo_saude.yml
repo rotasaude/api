@@ -44,6 +44,9 @@
 - { code: "251605", title: "Assistente social", council: CRESS }
 - { code: "221205", title: "Biomédico", council: CRBM }
 - { code: "224140", title: "Profissional de educação física na saúde", council: CREF }
+# Módulo 35b (ADR 0054; contrato §1): a veterinária do centro de zoonoses (só
+# ela registra eutanásia).
+- { code: "223305", title: "Médico veterinário", council: CRMV }
 # Profissionais de campo sem conselho (módulo 24a, ADR 0042): o perfil deles
 # não tem conselho, UF nem registro (Professional: todo ou nenhum).
 - { code: "515105", title: "Agente comunitário de saúde", council: null }

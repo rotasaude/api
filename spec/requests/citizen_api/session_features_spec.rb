@@ -92,4 +92,17 @@ RSpec.describe "Sessão do cidadão com os interruptores", type: :request do
     expect(features).to include("home_visits")
     expect(features).not_to include("vector_control")
   end
+
+  # Módulo 35b (CITIZEN_HIDDEN; contrato §1): o centro de zoonoses nunca vai
+  # ao cidadão pela sessão (o wpda lê a chave pela ouvidoria, §4).
+  it "GET /citizen/session não traz zoonoses ligado" do
+    city = home_visit_city!
+    Platform::Features.set!(city: city, key: "zoonoses", enabled: true, maintainer: ledi_maintainer!)
+    expect(Platform::Features.usable?(city, "zoonoses")).to be(true)
+    sign_in_citizen
+    get "/citizen/session"
+    features = JSON.parse(response.body)["features"]
+    expect(features).to include("home_visits")
+    expect(features).not_to include("zoonoses")
+  end
 end

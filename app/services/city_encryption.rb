@@ -232,7 +232,10 @@ module CityEncryption
     [ VectorSample, :result_note ], [ VectorStockShortfall, :reconciliation_note ],
     # A nota de correção da contagem de ovos, a nota de fechamento da tarefa e
     # o motivo do descarte do bloqueio de transmissão.
-    [ OvitrapReading, :count_note ], [ VectorTask, :closed_note ], [ TransmissionBlock, :dismissed_reason ]
+    [ OvitrapReading, :count_note ], [ VectorTask, :closed_note ], [ TransmissionBlock, :dismissed_reason ],
+    # ADR 0054 (módulo 35b): o microchip do animal (determinístico) e o
+    # endereço da ocorrência da demanda de zoonoses.
+    [ Animal, :microchip ], [ OmbudsmanManifestation, :place_address ]
   ].freeze
 
   module_function

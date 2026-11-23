@@ -139,7 +139,12 @@ Rails.application.config.filter_parameters += [
   /\A(measurements|meeting_topics|target_audience|health_topics|health_practices|altered_evaluation|smoking|qr_payload|place_text|candidates|withdrawal_reason|mistaken_reason)\z/,
   # ADR 0053: a coordenada do imóvel e da visita é dado de pessoa (onde ela
   # mora, onde foi visitada): nunca em log.
-  /\A(location|latitude|longitude|accuracy_m)\z/
+  /\A(location|latitude|longitude|accuracy_m)\z/,
+  # ADR 0054 (módulo 35b): o microchip do animal, o endereço da ocorrência da
+  # demanda e o endereço e o nome do tutor do animal da notificação do 25
+  # (`animal_tutor_phone` já cai em `:phone`; adverse_note, inspection_note e
+  # reason_note, em `:note`).
+  /\A(microchip|place_address|animal_address|animal_tutor_name)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

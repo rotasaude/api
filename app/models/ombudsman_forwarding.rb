@@ -1,5 +1,7 @@
 # Encaminhamento por extrato (ADR 0051): a um setor ou a uma unidade (CHECK:
-# um). Extrato, destino e criação imutáveis; sai de pending uma vez (resposta,
+# um). Criado por um usuário ou pelo sistema (o encaminhamento automático das
+# demandas de zoonoses, módulo 35b, Q13; CHECK: exatamente um dos dois).
+# Extrato, destino e criação imutáveis; sai de pending uma vez (resposta,
 # recusa — com o motivo em reply, Q9 — ou cancelamento) e então congela;
 # prorroga uma vez com prazo e motivo juntos (trigger). Extrato, resposta e
 # motivo cifrados; nunca saem em inspect, to_s, pretty_print nem as_json.
@@ -12,7 +14,7 @@ class OmbudsmanForwarding < ApplicationRecord
   belongs_to :department, optional: true
   belongs_to :health_unit, optional: true
   belongs_to :replied_by_user, class_name: "User", optional: true
-  belongs_to :created_by_user, class_name: "User"
+  belongs_to :created_by_user, class_name: "User", optional: true
 
   def destination = department || health_unit
   def pending? = state == "pending"

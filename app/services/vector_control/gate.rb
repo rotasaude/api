@@ -13,5 +13,11 @@ module VectorControl
 
       Platform::Features.usable?(city, KEY) && HomeVisits::Gate.usable?(city)
     end
+
+    # Q11 (módulo 35b): as peças do 35a que o centro de zoonoses usa —
+    # produtos, quarteirões com os anéis, o local de estoque, as faltas de
+    # insumo, a busca de item e os domínios — abrem com o vector_control ou o
+    # zoonoses utilizável. O resto do /vector_control segue só com usable?.
+    def supplies_usable?(city) = usable?(city) || Zoonoses::Gate.usable?(city)
   end
 end

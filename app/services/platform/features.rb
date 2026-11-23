@@ -223,14 +223,20 @@ module Platform
       # faltando pré-requisito; o que foi gravado fica.
       Entry.new(key: "vector_control",
                 description: "Boletim do agente na visita, quarteirões, ciclos, ovitrampas, LIRAa e bloqueio de transmissão",
-                requires: %w[feature:home_visits])
+                requires: %w[feature:home_visits]),
+      # ADR 0054: sem cascata para o vector_control; desligar o cadastro
+      # territorial deixa zoonoses ligado faltando pré-requisito; o que foi
+      # gravado fica.
+      Entry.new(key: "zoonoses",
+                description: "Animal com tutor, vacinação antirrábica, demandas da ouvidoria, observação do agressor, leishmaniose canina e canil",
+                requires: %w[feature:territory_registry])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
     # Contrato P19: chaves que nunca vão ao cidadão (GET /citizen/session),
     # mesmo ligadas e utilizáveis. Lista de exclusão: todo módulo futuro com
     # interruptor sensível acrescenta a sua chave aqui.
-    CITIZEN_HIDDEN = %w[psychosocial_care collective_activities vector_control].freeze
+    CITIZEN_HIDDEN = %w[psychosocial_care collective_activities vector_control zoonoses].freeze
     class UnknownFeature < StandardError; end
 
     UNREACHABLE = [ "city_unreachable" ].freeze

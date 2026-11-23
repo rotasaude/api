@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -61,6 +61,38 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.check_constraint "kind::text = ANY (ARRAY['scheduled', 'rebuild']::text[])", name: "ck_analytics_runs_kind"
     t.check_constraint "status::text = ANY (ARRAY['running', 'succeeded', 'failed']::text[])", name: "ck_analytics_runs_status"
     t.check_constraint "window_from <= window_to", name: "ck_analytics_runs_window"
+  end
+
+  create_table "animals", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.date "birth_estimate_on"
+    t.string "breed", limit: 60
+    t.string "coat", limit: 40
+    t.boolean "community", default: false, null: false
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.uuid "household_id"
+    t.text "microchip"
+    t.string "name", limit: 60
+    t.boolean "neutered", default: false, null: false
+    t.string "registry_number", limit: 20
+    t.string "sex", null: false
+    t.string "size"
+    t.string "species", null: false
+    t.string "status", default: "active", null: false
+    t.date "status_on"
+    t.uuid "tutor_patient_id"
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index "lower((registry_number)::text)", name: "idx_animals_registry_number", unique: true, where: "(registry_number IS NOT NULL)"
+    t.index ["household_id"], name: "idx_animals_household", where: "(household_id IS NOT NULL)"
+    t.index ["microchip"], name: "idx_animals_microchip", unique: true, where: "(microchip IS NOT NULL)"
+    t.index ["tutor_patient_id"], name: "idx_animals_tutor", where: "(tutor_patient_id IS NOT NULL)"
+    t.check_constraint "sex::text = ANY (ARRAY['male'::text, 'female'::text, 'unknown'::text])", name: "ck_animals_sex"
+    t.check_constraint "size IS NULL OR size::text = ANY (ARRAY['small'::text, 'medium'::text, 'large'::text])", name: "ck_animals_size"
+    t.check_constraint "species::text = ANY (ARRAY['dog'::text, 'cat'::text, 'other'::text])", name: "ck_animals_species"
+    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'deceased'::text, 'missing'::text, 'transferred'::text])", name: "ck_animals_status"
+    t.check_constraint "tutor_patient_id IS NULL OR community = false", name: "ck_animals_tutor"
+    t.check_constraint "version >= 1", name: "ck_animals_version"
   end
 
   create_table "appointment_notices", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2624,7 +2656,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'driver'::text, 'endemic_coordinator'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'ombudsman'::text, 'ombudsman_responder'::text, 'ombudsman_staff'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'psychosocial_lead'::text, 'psychosocial_staff'::text, 'stock_keeper'::text, 'surveillance'::text, 'tfd_committee'::text, 'transport_dispatcher'::text, 'vector_lab'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'driver'::text, 'endemic_coordinator'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'ombudsman'::text, 'ombudsman_responder'::text, 'ombudsman_staff'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'psychosocial_lead'::text, 'psychosocial_staff'::text, 'stock_keeper'::text, 'surveillance'::text, 'tfd_committee'::text, 'transport_dispatcher'::text, 'vector_lab'::text, 'viewer'::text, 'zoonoses_team'::text])", name: "ck_memberships_role"
   end
 
   create_table "micro_area_field_assignments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2777,7 +2809,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
 
   create_table "ombudsman_forwardings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.uuid "created_by_user_id", null: false
+    t.boolean "created_by_system", default: false, null: false
+    t.uuid "created_by_user_id"
     t.uuid "department_id"
     t.date "due_on", null: false
     t.boolean "extended", default: false, null: false
@@ -2792,6 +2825,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.datetime "updated_at", null: false
     t.index ["ombudsman_manifestation_id", "created_at"], name: "idx_ombudsman_forwardings_manifestation"
     t.index ["state", "due_on"], name: "idx_ombudsman_forwardings_state"
+    t.check_constraint "(created_by_user_id IS NULL) = created_by_system", name: "ck_ombudsman_forwardings_creator"
     t.check_constraint "num_nonnulls(department_id, health_unit_id) = 1", name: "ck_ombudsman_forwardings_destination"
     t.check_constraint "(state::text = ANY (ARRAY['replied'::text, 'declined'::text])) = (reply IS NOT NULL)", name: "ck_ombudsman_forwardings_reply"
     t.check_constraint "state::text = ANY (ARRAY['pending'::text, 'replied'::text, 'declined'::text, 'cancelled'::text])", name: "ck_ombudsman_forwardings_state"
@@ -2832,6 +2866,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.text "manifestant_name"
     t.text "manifestant_phone"
     t.string "ouvidorsus_number", limit: 40
+    t.text "place_address"
     t.string "protocol", limit: 20, null: false
     t.datetime "received_at", null: false
     t.uuid "referred_health_unit_id"
@@ -2930,12 +2965,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
 
   create_table "ombudsman_subjects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
+    t.string "code"
     t.datetime "created_at", null: false
     t.string "name", limit: 80, null: false
     t.uuid "parent_id"
     t.integer "position", default: 0, null: false
     t.datetime "updated_at", null: false
     t.index "COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower((name)::text)", name: "idx_ombudsman_subjects_name", unique: true
+    t.index ["code"], name: "idx_ombudsman_subjects_code", unique: true, where: "(code IS NOT NULL)"
   end
 
   create_table "otp_challenges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -5207,7 +5244,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.text "uses", null: false, array: true
     t.integer "version", default: 1, null: false
     t.index "lower((code)::text)", name: "idx_vector_products_code", unique: true
-    t.check_constraint "cardinality(uses) >= 1 AND uses <@ ARRAY['focal'::text, 'perifocal'::text, 'spatial'::text]", name: "ck_vector_products_uses"
+    t.check_constraint "cardinality(uses) >= 1 AND uses <@ ARRAY['focal'::text, 'perifocal'::text, 'spatial'::text, 'rabies_vaccine'::text, 'collar'::text]", name: "ck_vector_products_uses"
+    t.check_constraint "NOT (uses && ARRAY['rabies_vaccine'::text, 'collar'::text]) OR (cardinality(uses) = 1 AND unit::text = 'un'::text AND charge_size = 1::numeric)", name: "ck_vector_products_zoonoses_uses"
     t.check_constraint "charge_size > 0::numeric", name: "ck_vector_products_charge_size"
     t.check_constraint "unit::text = ANY (ARRAY['g'::text, 'ml'::text, 'un'::text])", name: "ck_vector_products_unit"
     t.check_constraint "version >= 1", name: "ck_vector_products_version"
@@ -5337,6 +5375,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
     t.check_constraint "week::text ~ '^[0-9]{4}-[0-9]{2}$'::text", name: "ck_weekly_negative_reports_week"
   end
 
+  create_table "zoonoses_parameter_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.jsonb "values", null: false
+    t.integer "version", null: false
+    t.index ["version"], name: "idx_zoonoses_parameter_versions_version", unique: true
+    t.check_constraint "jsonb_typeof(\"values\") = 'object'::text", name: "ck_zoonoses_parameter_versions_values"
+    t.check_constraint "version >= 1", name: "ck_zoonoses_parameter_versions_version"
+  end
+
+  add_foreign_key "animals", "households"
+  add_foreign_key "animals", "patients", column: "tutor_patient_id"
+  add_foreign_key "animals", "users", column: "created_by_user_id"
   add_foreign_key "appointment_notices", "appointments"
   add_foreign_key "appointment_notices", "citizens"
   add_foreign_key "appointment_reminders", "appointments"
@@ -6113,4 +6164,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_16_900003) do
   add_foreign_key "waiting_room_displays", "users", column: "created_by_user_id"
   add_foreign_key "weekly_negative_reports", "health_units"
   add_foreign_key "weekly_negative_reports", "users", column: "recorded_by_user_id"
+  add_foreign_key "zoonoses_parameter_versions", "users", column: "created_by_user_id"
 end

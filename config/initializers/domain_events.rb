@@ -557,4 +557,31 @@ Rails.application.config.to_prepare do
   # Q26(2): caso movido pela coordenação (VectorControl::Blocks::MoveCase):
   # transmission_block_id (destino), from_transmission_block_id e user_id.
   DomainEvents.bind "transmission_block_case.moved", to: []
+  # Módulo 35b (ADR 0054; contrato §16, Q26; plano, Desvio 3): os 20 eventos do
+  # centro de zoonoses, na ordem da lista, e as duas trilhas (21 e 22:
+  # animal.viewed, zoonoses_demand.viewed). Só ids, nunca tutor, contato,
+  # microchip nem endereço. Sem consumidor: o Zoonoses::OpenObservationJob
+  # (Task 12) consome os eventos do 25.
+  DomainEvents.bind "animal.registered", to: []
+  DomainEvents.bind "animal.changed", to: []
+  DomainEvents.bind "rabies_campaign.changed", to: []
+  DomainEvents.bind "rabies_vaccination.recorded", to: []
+  DomainEvents.bind "rabies_vaccination.cancelled", to: []
+  DomainEvents.bind "zoonoses_demand.opened", to: []
+  DomainEvents.bind "zoonoses_demand.changed", to: []
+  DomainEvents.bind "bite_observation.opened", to: []
+  DomainEvents.bind "bite_observation.closed", to: []
+  DomainEvents.bind "bite_observation.contact_viewed", to: []
+  DomainEvents.bind "leish_survey.changed", to: []
+  DomainEvents.bind "leish_test.recorded", to: []
+  DomainEvents.bind "leish_dog_outcome.recorded", to: []
+  DomainEvents.bind "collar.placed", to: []
+  DomainEvents.bind "collar.removed", to: []
+  DomainEvents.bind "shelter_stay.opened", to: []
+  DomainEvents.bind "shelter_stay.closed", to: []
+  DomainEvents.bind "neutering.recorded", to: []
+  DomainEvents.bind "euthanasia.recorded", to: []
+  DomainEvents.bind "zoonoses_parameters.changed", to: []
+  DomainEvents.bind "animal.viewed", to: []
+  DomainEvents.bind "zoonoses_demand.viewed", to: []
 end

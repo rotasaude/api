@@ -1,7 +1,9 @@
 # Assunto da manifestação (ADR 0051; contrato §7): dois níveis (assunto e
 # subassunto; trigger), nome único por pai sem distinguir caixa. A migração
 # insere a semente; o banco carregado do dump nasce sem ela (ensure_defaults!).
-# Nunca é apagado (trigger): desativa-se.
+# Nunca é apagado (trigger): desativa-se. `code` marca o assunto reservado
+# (módulo 35b, §4 e Q14: Zoonoses::Catalog::SUBJECT_CODE), único entre os não
+# nulos.
 class OmbudsmanSubject < ApplicationRecord
   # Contrato §7: assuntos e subassuntos iniciais (a cidade edita).
   DEFAULT_TREE = [
@@ -22,6 +24,8 @@ class OmbudsmanSubject < ApplicationRecord
   validates :name, length: Ombudsman::Catalog::NAME
 
   scope :active, -> { where(active: true) }
+
+  def reserved? = code.present?
 
   # A semente só entra com a tabela vazia, nunca item a item (Q47): assunto
   # renomeado ou desativado pela cidade não reaparece. Concorrente: o índice

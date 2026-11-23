@@ -5,8 +5,10 @@
 # modo, recebimento, criador e número do OuvidorSUS nunca mudam; citizen_id só
 # vai a nulo (exclusão LGPD), com os manifestant_* (trigger). Nome, contato,
 # CPF, telefone (o do cidadão excluído, §16 Q57), texto e motivo da
-# prorrogação cifrados. Nunca sai em inspect, to_s, pretty_print nem as_json —
-# só o id e o estado.
+# prorrogação cifrados. O endereço da ocorrência da demanda de zoonoses
+# (place_address, módulo 35b, §4 e Q15) é cifrado, imutável como o texto, e sai
+# só no detalhe da demanda. Nunca sai em inspect, to_s, pretty_print nem
+# as_json — só o id e o estado.
 class OmbudsmanManifestation < ApplicationRecord
   encrypts :manifestant_name
   encrypts :manifestant_contact
@@ -14,6 +16,7 @@ class OmbudsmanManifestation < ApplicationRecord
   encrypts :manifestant_phone
   encrypts :body
   encrypts :extension_reason
+  encrypts :place_address
 
   belongs_to :citizen, optional: true
   belongs_to :subject, class_name: "OmbudsmanSubject", optional: true

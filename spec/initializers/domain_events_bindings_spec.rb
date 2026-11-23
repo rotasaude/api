@@ -768,4 +768,18 @@ RSpec.describe "home visit bindings (ADR 0052)" do
     expect(DomainEvents.registry.keys).to include(*contract)
     expect(contract.flat_map { |name| DomainEvents.registry[name] }).to be_empty
   end
+
+  # Módulo 35b (contrato §16 e Q26; plano, Task 2, Desvio 3): os 20 eventos do
+  # centro de zoonoses, na ordem da lista, mais as duas trilhas (21 e 22),
+  # todos sem consumidor (o OpenObservationJob, Task 12, consome os do 25).
+  it "declares the twenty-two 35b events of the contract with no consumer" do
+    contract = %w[animal.registered animal.changed rabies_campaign.changed rabies_vaccination.recorded
+                  rabies_vaccination.cancelled zoonoses_demand.opened zoonoses_demand.changed bite_observation.opened
+                  bite_observation.closed bite_observation.contact_viewed leish_survey.changed leish_test.recorded
+                  leish_dog_outcome.recorded collar.placed collar.removed shelter_stay.opened shelter_stay.closed
+                  neutering.recorded euthanasia.recorded zoonoses_parameters.changed animal.viewed zoonoses_demand.viewed]
+    expect(Zoonoses::Catalog::DOMAIN_EVENTS).to eq(contract)
+    expect(DomainEvents.registry.keys).to include(*contract)
+    expect(contract.flat_map { |name| DomainEvents.registry[name] }).to be_empty
+  end
 end

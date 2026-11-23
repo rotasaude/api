@@ -8,6 +8,7 @@ require Rails.root.join("db/city_migrate/20261103900001_add_sanitary_transport.r
 require Rails.root.join("db/city_migrate/20261104900002_add_psychosocial_care.rb").to_s
 require Rails.root.join("db/city_migrate/20261111900001_add_ombudsman_roles_and_departments.rb").to_s
 require Rails.root.join("db/city_migrate/20261116900001_add_vector_control_territory.rb").to_s
+require Rails.root.join("db/city_migrate/20261123900001_add_zoonoses_foundation.rb").to_s
 # F-14.1: o down() da migração de cidade 20260930200001 desfaz o que o up()
 # cria (duas tabelas e o papel analyst no CHECK de memberships), e o up()
 # seguinte restaura o schema idêntico. O down recusa quando já existe
@@ -34,12 +35,12 @@ RSpec.describe "Migração de cidade 20260930200001 (CreateAnalytics): down e up
   # transport_dispatcher/tfd_committee/driver (30) e
   # psychosocial_staff/psychosocial_lead (31) e
   # ombudsman/ombudsman_staff/ombudsman_responder (33) e
-  # endemic_coordinator/vector_lab (35a); o up de
+  # endemic_coordinator/vector_lab (35a) e zoonoses_team (35b); o up de
   # CreateAnalytics volta a lista fixa sem eles. As migrações do 21a, do 21b,
-  # do 22, do 25, do 26a, do 27a, do 30, do 31, do 33 e do 35a são irreversíveis: a lista volta à mão,
+  # do 22, do 25, do 26a, do 27a, do 30, do 31, do 33, do 35a e do 35b são irreversíveis: a lista volta à mão,
   # igual à da última.
   def restore_exam_roles
-    quoted = AddVectorControlTerritory::ROLES.map { |role| "'#{role}'" }.join(", ")
+    quoted = AddZoonosesFoundation::ROLES.map { |role| "'#{role}'" }.join(", ")
     conn.remove_check_constraint :memberships, name: "ck_memberships_role"
     conn.add_check_constraint :memberships, "role::text = ANY (ARRAY[#{quoted}]::text[])", name: "ck_memberships_role"
   end

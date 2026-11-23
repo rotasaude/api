@@ -6,6 +6,7 @@ require Rails.root.join("db/city_migrate/20261103900001_add_sanitary_transport.r
 require Rails.root.join("db/city_migrate/20261104900002_add_psychosocial_care.rb").to_s
 require Rails.root.join("db/city_migrate/20261111900001_add_ombudsman_roles_and_departments.rb").to_s
 require Rails.root.join("db/city_migrate/20261116900001_add_vector_control_territory.rb").to_s
+require Rails.root.join("db/city_migrate/20261123900001_add_zoonoses_foundation.rb").to_s
 
 RSpec.describe Membership do
   it "conhece o papel citizen_verifier e o trata como privilegiado" do
@@ -123,12 +124,23 @@ RSpec.describe Membership do
     end
   end
 
+  # Módulo 35b (contrato §1; Q12): a equipe de zoonoses busca tutor por CPF e
+  # lê o contato do tutor da notificação — privilegiada; o mantenedor não
+  # concede.
+  it "zoonoses_team é privilegiado; o banco aceita" do
+    expect(described_class::ROLES).to include("zoonoses_team")
+    expect(described_class::PRIVILEGED_ROLES).to include("zoonoses_team")
+    user = User.create!(email_address: "zoonoses@cidade.gov.br", password: "senha-segura-123")
+    expect { described_class.create!(user: user, role: "zoonoses_team", granted_at: Time.current) }.not_to raise_error
+  end
+
   # ROLES espelha ck_memberships_role: a lista da última migração que o
-  # reescreve (35a) é a do 33 mais os dois papéis de endemias, em ordem.
-  it "ROLES é a lista da migração do 35a" do
+  # reescreve (35b) é a do 35a mais a equipe de zoonoses, em ordem.
+  it "ROLES = AddZoonosesFoundation::ROLES" do
     expect(AddVectorControlTerritory::ROLES)
       .to eq((AddOmbudsmanRolesAndDepartments::ROLES + %w[endemic_coordinator vector_lab]).sort)
-    expect(described_class::ROLES).to eq(AddVectorControlTerritory::ROLES)
+    expect(AddZoonosesFoundation::ROLES).to eq((AddVectorControlTerritory::ROLES + %w[zoonoses_team]).sort)
+    expect(described_class::ROLES).to eq(AddZoonosesFoundation::ROLES)
   end
 
   it "as migrações anteriores encadeiam ROLES até o 33" do
