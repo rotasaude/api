@@ -1095,6 +1095,18 @@ Rails.application.routes.draw do
     get    "map_points",                      to: "map_points#index"
   end
 
+  # Módulo 35b (ADR 0054; contrato §10): centro de zoonoses, sessão do
+  # dashboard, gate `zoonoses`. Rotas de membro só com id UUID; dado de pessoa
+  # e microchip só no corpo (a busca é POST).
+  scope "/zoonoses", module: :zoonoses, as: :zoonoses do
+    member_id = { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
+    post   "person_lookup",                   to: "person_lookups#create"
+    post   "animals",                         to: "animals#create"
+    post   "animals/search",                  to: "animals#search"
+    get    "animals/:id",                     to: "animals#show", constraints: member_id
+    patch  "animals/:id",                     to: "animals#update", constraints: member_id
+  end
+
   # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard
   # (sessão; cadastro com step-up). `admin` antes de qualquer `:id`; ids só UUID.
   scope "/field_devices", as: :field_devices do

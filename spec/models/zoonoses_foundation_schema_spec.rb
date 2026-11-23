@@ -114,6 +114,30 @@ RSpec.describe "Esquema da fundação do módulo 35b", type: :model do
     expect(stored.call).to eq("texto-recifrado")
   end
 
+  # Task 5 (minor adiado da Task 2): o deceased é final, mas a re-cifra do
+  # microchip passa antes da regra (rota.reencrypting); sem a marca, a mesma
+  # escrita é recusada.
+  it "a re-cifra regrava o microchip do deceased; sem a marca, a mesma escrita é recusada" do
+    animal = animal!(microchip: "985112345678903", status: "deceased", status_on: Time.zone.today)
+    connection = Animal.connection
+    rewrite = lambda do |value|
+      connection.execute(Animal.sanitize_sql([ "UPDATE animals SET microchip = ? WHERE id = ?", value, animal.id ]))
+    end
+    stored = -> { connection.select_value(Animal.sanitize_sql([ "SELECT microchip FROM animals WHERE id = ?", animal.id ])) }
+
+    # O caminho do ReencryptionJob (record.encrypt sob a marca).
+    accepted { CityEncryption.allowing_reencryption { animal.reload.encrypt } }
+    refused(/animals: deceased is final/) { animal.reload.encrypt }
+    refused(/animals: deceased is final/) { rewrite.call("microchip-recifrado") }
+    accepted { CityEncryption.allowing_reencryption { rewrite.call("microchip-recifrado") } }
+    expect(stored.call).to eq("microchip-recifrado")
+    expect(connection.select_value("SELECT current_setting('rota.reencrypting', true)")).to eq("off")
+    refused(/animals: deceased is final/) { rewrite.call("outro-recifrado") }
+    refused(/animals: deceased is final/) do
+      CityEncryption.allowing_reencryption { connection.execute(Animal.sanitize_sql([ "UPDATE animals SET name = 'Rex' WHERE id = ?", animal.id ])) }
+    end
+  end
+
   it "parâmetros só acréscimo; versão única" do
     row = ZoonosesParameterVersion.create!(version: 1, values: { "observation_days" => 10 }, created_by_user: zoonoses_coordinator!)
     refused(/append-only|append only/i) { row.update_columns(values: { "observation_days" => 12 }) }
