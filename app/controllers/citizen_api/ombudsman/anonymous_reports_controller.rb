@@ -1,4 +1,4 @@
-#   POST /citizen/ombudsman/anonymous_reports { body, health_unit_id? } → 201 { ok: true }
+#   POST /citizen/ombudsman/anonymous_reports { body, health_unit_id?, zoonoses_subtype?, place_address? } → 201 { ok: true }
 # Denúncia anônima sem login (ADR 0051; contrato §4; §16 Q1, Q8, Q29, Q41,
 # Q43): o primeiro formulário público de escrita. Sem protocolo na resposta.
 # Ordem real das recusas (preflight F-16; o 415 vem do before_action do
@@ -7,12 +7,14 @@
 #   → 403 feature_disabled (ombudsman_anonymous_web, que exige ombudsman)
 #   → 413 payload_too_large (Content-Length ou corpo acima de 16 KB; o JSON já
 #     foi interpretado para o log, com `body` filtrado — Q29)
-#   → 422 chave fora de `body`/`health_unit_id`, ou qualquer chave na query
+#   → 422 chave fora de Catalog::ANONYMOUS_KEYS, ou qualquer chave na query
 #     (só o nome, truncado)
 #   → Ombudsman::RegisterAnonymous (422 do texto e da unidade; 429
 #     daily_cap_reached no teto da cidade).
 # Rota pública (Q41): o limite é pelo IP, nunca pela sessão; nada aqui lê ou
 # cria `citizen_session`, nem grava cookie.
+# Módulo 35b (§4, Q6, Q10, Q15): `zoonoses_subtype` e `place_address`, com o
+# gate (Zoonoses::Gate.ombudsman_usable?) lido aqui, fora da transação.
 module CitizenApi
   module Ombudsman
     class AnonymousReportsController < CitizenApi::BaseController
@@ -35,7 +37,9 @@ module CitizenApi
 
       def create
         attrs = request.request_parameters
-        result = ::Ombudsman::RegisterAnonymous.call(body: attrs["body"], health_unit_id: attrs["health_unit_id"])
+        result = ::Ombudsman::RegisterAnonymous.call(body: attrs["body"], health_unit_id: attrs["health_unit_id"],
+                                                     zoonoses_subtype: attrs["zoonoses_subtype"], place_address: attrs["place_address"],
+                                                     zoonoses: ::Zoonoses::Gate.ombudsman_usable?(Current.city))
         return render json: { ok: true }, status: :created if result.ok?
         return render_error("daily_cap_reached", :too_many_requests) if result.reason == :daily_cap_reached
 

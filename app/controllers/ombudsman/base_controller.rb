@@ -27,7 +27,7 @@ module Ombudsman
       missing_role: :forbidden, not_own_citizen: :forbidden,
       not_found: :not_found,
       link_expired: :gone,
-      name_taken: :conflict, already_responder: :conflict,
+      name_taken: :conflict, already_responder: :conflict, reserved_subject: :conflict,
       too_many_requests: :too_many_requests, daily_cap_reached: :too_many_requests
     }.freeze
     KEY_PATH_MAX = Input::KEY_PATH_MAX

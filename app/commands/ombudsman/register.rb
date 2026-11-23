@@ -26,6 +26,19 @@
 # recusa desfaz tudo, inclusive o par declarado. Sem aviso: o cidadão já vê o
 # protocolo. `now` vale para received_at, cycle_started_on e created_at. Nada
 # do texto, do nome nem do CPF em erro ou log.
+#
+# Módulo 35b (ADR 0054; contrato §4; Q6, Q10, Q13–Q15): com `zoonoses: true`
+# (Zoonoses::Gate.ombudsman_usable?, lido pelo controlador fora da
+# transação), as chaves `zoonoses_subtype` e `place_address` valem nos três
+# modos e nos canais da equipe:
+# - `zoonoses: false` com o subtipo, ou subtipo fora da lista → 422 path
+#   zoonoses_subtype; `place_address` sem subtipo → 422 path place_address;
+# - com subtipo, `kind` só request ou report (a anônima continua report, Q6)
+#   → senão 422 path kind; `place_address` 10..300 obrigatório (Q15) → senão
+#   422 path place_address (recusado, nunca cortado);
+# - o `place_address` vai cifrado à manifestação (imutável, como o texto) e,
+#   dentro do mesmo `persist`, Zoonoses::OpenDemand classifica e encaminha à
+#   UVZ com o ator do sistema. O registro nunca se perde por causa dele.
 module Ombudsman
   module Register
     SESSION_MODES = %w[identified preserved].freeze
@@ -37,13 +50,13 @@ module Ombudsman
     # -> Result.ok(manifestation:)
     #  | fail(:invalid_request, details: { path:, problems: }) | fail(:invalid_cpf, details: { path: "cpf" | "manifestant_cpf", ... })
     #  | fail(:too_many_people) | fail(:too_many_attachments) | fail(:not_own_citizen)
-    def call(attrs:, channel:, by: nil, citizen: nil, citizen_session: nil, anonymous_web: false, now: Time.current)
+    def call(attrs:, channel:, by: nil, citizen: nil, citizen_session: nil, anonymous_web: false, zoonoses: false, now: Time.current)
       attrs = attrs.to_h.stringify_keys
       if Catalog::STAFF_CHANNELS.include?(channel)
         raise ArgumentError, "Ombudsman::Register: o canal da equipe exige `by:` (User)" unless by.is_a?(User)
         raise ArgumentError, "Ombudsman::Register: o canal da equipe não tem sessão, cidadão nem anônimo web" if citizen || citizen_session || anonymous_web
 
-        form = staff_form(attrs, channel)
+        form = with_zoonoses(staff_form(attrs, channel), attrs, zoonoses)
         return form if form.failure?
 
         return persist(form.payload, attrs, channel: channel, owner: by, by: by, now: now)
@@ -54,7 +67,7 @@ module Ombudsman
       raise ArgumentError, "Ombudsman::Register: a denúncia anônima não tem cidadão" if anonymous_web && citizen
       raise ArgumentError, "Ombudsman::Register: o canal web exige a sessão" unless anonymous_web || citizen_session
 
-      form = anonymous_web ? anonymous_form(attrs) : session_form(attrs, citizen)
+      form = with_zoonoses(anonymous_web ? anonymous_form(attrs) : session_form(attrs, citizen), attrs, zoonoses)
       return form if form.failure?
 
       persist(form.payload, attrs, channel: "web", owner: citizen_session, citizen_session: citizen_session, now: now)
@@ -168,6 +181,24 @@ module Ombudsman
       Result.ok({ kind: attrs["kind"], identification_mode: attrs["identification_mode"], body: body, health_unit_id: unit_id }.merge(extra))
     end
 
+    # As chaves do 35b sobre o formulário já aceito (o `kind` dele).
+    def with_zoonoses(form, attrs, zoonoses)
+      return form if form.failure?
+
+      subtype = attrs["zoonoses_subtype"]
+      address = attrs["place_address"]
+      if subtype.nil?
+        return address.nil? ? form : refuse("place_address")
+      end
+      return refuse("zoonoses_subtype") unless zoonoses && Zoonoses::Catalog::SUBTYPES.include?(subtype)
+      return refuse("kind") unless Zoonoses::Catalog::DEMAND_KINDS.include?(form.payload[:kind])
+
+      place = Input.text(address, Zoonoses::Catalog::PLACE_ADDRESS)
+      return refuse("place_address") unless place
+
+      Result.ok(form.payload.merge(zoonoses_subtype: subtype, place_address: place))
+    end
+
     def persist(form, attrs, channel:, owner:, now:, citizen_session: nil, by: nil)
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
@@ -182,7 +213,7 @@ module Ombudsman
           protocol: OmbudsmanManifestation.next_protocol(now), kind: form[:kind], identification_mode: form[:identification_mode],
           channel: channel, ouvidorsus_number: form[:ouvidorsus_number], citizen: citizen, created_by_user: by,
           manifestant_name: form[:manifestant_name], manifestant_contact: form[:manifestant_contact],
-          manifestant_cpf: form[:manifestant_cpf], body: form[:body],
+          manifestant_cpf: form[:manifestant_cpf], body: form[:body], place_address: form[:place_address],
           referred_health_unit_id: form[:health_unit_id], state: "received", cycle: 1, received_at: now,
           cycle_started_on: now.in_time_zone.to_date, created_at: now, updated_at: now
         )
@@ -196,6 +227,10 @@ module Ombudsman
           end
         end
         DomainEvents.publish("ombudsman.manifestation_received", manifestation_id: manifestation.id)
+        if form[:zoonoses_subtype]
+          Zoonoses::OpenDemand.call(manifestation: manifestation, subtype: form[:zoonoses_subtype], now: now)
+          manifestation.reload
+        end
         result = Result.ok(manifestation: manifestation)
       end
       result
@@ -231,6 +266,6 @@ module Ombudsman
       Result.fail(error, details: { path: path, problems: [ { error: error.to_s, path: path } ] })
     end
 
-    private_class_method :staff_form, :ouvidorsus_number, :anonymous_person, :identified_person, :staff_citizen!, :session_form, :anonymous_form, :identity, :common_form, :persist, :person!, :refuse
+    private_class_method :with_zoonoses, :staff_form, :ouvidorsus_number, :anonymous_person, :identified_person, :staff_citizen!, :session_form, :anonymous_form, :identity, :common_form, :persist, :person!, :refuse
   end
 end

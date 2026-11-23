@@ -4,15 +4,19 @@
 # muda depois de criado (PATCH com `parent_id` → 422 path parent_id). Chave
 # fora de name/parent_id (criar) ou name/active (editar) → 422 com o nome da
 # chave. `subject: nil` cria.
+# Módulo 35b (§4, Q14): o assunto reservado (com `code`) pode ser renomeado,
+# mas com o zoonoses ligado (`zoonoses:`, lido pelo controlador fora da
+# transação) não pode ser desativado → 409 reserved_subject.
 module Ombudsman
   module SaveSubject
     module_function
 
     # -> Result.ok(subject:) | fail(:invalid_request | :too_deep, details: { path:, problems: }) | fail(:name_taken)
+    #  | fail(:reserved_subject)
     CREATE_KEYS = %w[name parent_id].freeze
     UPDATE_KEYS = %w[name active].freeze
 
-    def call(subject:, attrs:)
+    def call(subject:, attrs:, zoonoses: false)
       attrs = attrs.to_h.stringify_keys
       refused = Input.unknown_key(attrs, subject ? UPDATE_KEYS : CREATE_KEYS)
       return refused if refused
@@ -20,6 +24,7 @@ module Ombudsman
       name = Input.text(attrs["name"], Catalog::NAME) if attrs.key?("name") || subject.nil?
       return failure("name") if (attrs.key?("name") || subject.nil?) && name.nil?
       return failure("active") if attrs.key?("active") && ![ true, false ].include?(attrs["active"])
+      return Result.fail(:reserved_subject) if zoonoses && subject&.reserved? && attrs["active"] == false
 
       OmbudsmanSubject.transaction(requires_new: true) do
         if subject

@@ -1,10 +1,12 @@
 #   GET /citizen/ombudsman/public_config
-#       → { anonymous_web: bool, units: [{ id, name }] }
+#       → { anonymous_web: bool, units: [{ id, name }], zoonoses: bool }
 # Configuração pública da ouvidoria (ADR 0051; contrato §4; §16 Q1, Q20, Q41):
 # se a denúncia anônima sem login está utilizável e as unidades ativas por
 # nome, CAPS inclusive. Sem `ombudsman` → 403 feature_disabled. Rota pública:
 # não lê nem cria `citizen_session` e não grava cookie. Nada de dado na URL:
 # chave na query → 422 com o nome.
+# Módulo 35b (Q10): `zoonoses` = Zoonoses::Gate.ombudsman_usable? (o wpda
+# mostra os subtipos só com o zoonoses e a ouvidoria utilizáveis).
 module CitizenApi
   module Ombudsman
     class PublicConfigsController < CitizenApi::BaseController
@@ -21,7 +23,8 @@ module CitizenApi
       def show
         render json: {
           anonymous_web: ::Ombudsman::AnonymousGate.usable?(Current.city),
-          units: HealthUnit.active_units.map { |unit| { id: unit.id, name: unit.name } }
+          units: HealthUnit.active_units.map { |unit| { id: unit.id, name: unit.name } },
+          zoonoses: ::Zoonoses::Gate.ombudsman_usable?(Current.city)
         }
       end
 

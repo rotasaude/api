@@ -55,7 +55,8 @@ module Ombudsman
     REOPEN_WINDOW_DAYS = 30
     SATISFACTION_WINDOW_DAYS = 30
     ANONYMOUS_MAX_BODY_BYTES = 16_384
-    ANONYMOUS_KEYS = %w[body health_unit_id].freeze
+    # Módulo 35b (§4, Q6, Q15): as duas chaves da demanda de zoonoses.
+    ANONYMOUS_KEYS = %w[body health_unit_id zoonoses_subtype place_address].freeze
     ROLES = %w[ombudsman ombudsman_staff ombudsman_responder].freeze
     FILE_PURPOSE = "ombudsman_attachment".freeze
     DOMAIN_EVENTS = %w[

@@ -17,6 +17,9 @@
 # vem injetado: o envio que chega às 23:59:59 e pega a trava depois da
 # meia-noite é do dia novo, como o occurred_at do evento que ele publica.
 # Nada do texto em erro, log ou evento.
+# Módulo 35b (§4, Q6, Q15): `zoonoses_subtype` e `place_address` seguem ao
+# Ombudsman::Register, com o gate (`zoonoses:`) lido pelo controlador fora da
+# transação; a denúncia continua `report`.
 module Ombudsman
   module RegisterAnonymous
     CAP_KIND = "anonymous_cap".freeze
@@ -25,7 +28,7 @@ module Ombudsman
 
     # -> Result.ok(manifestation:) | fail(:daily_cap_reached)
     #  | fail(:invalid_request, details: { path:, problems: })
-    def call(body:, health_unit_id:, now: nil)
+    def call(body:, health_unit_id:, zoonoses_subtype: nil, place_address: nil, zoonoses: false, now: nil)
       Settings.ensure_defaults!(now: now || Time.current)
       ApplicationRecord.transaction do
         settings = OmbudsmanSetting.lock.find(1)
@@ -36,8 +39,9 @@ module Ombudsman
         next cap_reached!(today, now) if received >= settings.anonymous_daily_cap
 
         Register.call(attrs: { "kind" => "report", "identification_mode" => "anonymous", "body" => body,
-                               "health_unit_id" => health_unit_id },
-                      channel: "web", anonymous_web: true, now: now)
+                               "health_unit_id" => health_unit_id, "zoonoses_subtype" => zoonoses_subtype,
+                               "place_address" => place_address },
+                      channel: "web", anonymous_web: true, zoonoses: zoonoses, now: now)
       end
     end
 

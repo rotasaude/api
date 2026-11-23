@@ -1,7 +1,8 @@
 #   GET  /citizen/ombudsman/manifestations
 #   GET  /citizen/ombudsman/manifestations/:id
 #   POST /citizen/ombudsman/manifestations
-#        { citizen_id | { cpf, full_name }, kind, identification_mode, body, health_unit_id?, attachment_ids? }
+#        { citizen_id | { cpf, full_name }, kind, identification_mode, body, health_unit_id?, attachment_ids?,
+#          zoonoses_subtype?, place_address? }
 # "Minhas manifestações" e o registro pelo canal do cidadão (ADR 0051; contrato
 # §3; §16 U1, Q19, Q40, Q42, Q43, Q45, Q46). A sessão é do TELEFONE: a lista
 # traz as manifestações de todos os cidadãos dele (cpf_masked quando há mais de
@@ -20,6 +21,9 @@
 # respondem o detalhe novo, com os `can_*`; chave fora da lista → 422 com o
 # path; manifestação de outro cidadão ou anônima → 404; 30 envios por dia por
 # sessão (429 too_many_requests).
+# Módulo 35b (§4, Q10, Q15): `zoonoses_subtype` e `place_address` com o gate
+# (Zoonoses::Gate.ombudsman_usable?) lido aqui, fora da transação; o
+# `place_address` nunca volta ao cidadão (Ombudsman::CitizenJson).
 module CitizenApi
   module Ombudsman
     class ManifestationsController < CitizenApi::BaseController
@@ -27,7 +31,8 @@ module CitizenApi
 
       wrap_parameters false
 
-      CREATE_KEYS = %w[citizen_id cpf full_name kind identification_mode body health_unit_id attachment_ids].freeze
+      CREATE_KEYS = %w[citizen_id cpf full_name kind identification_mode body health_unit_id attachment_ids zoonoses_subtype
+                       place_address].freeze
       KEY_PATH_MAX = 64
       FAILURE_STATUS = { not_own_citizen: :forbidden, not_found: :not_found, manifestation_changed: :conflict,
                          already_answered: :conflict, reopen_pending: :conflict }.freeze
@@ -83,7 +88,8 @@ module CitizenApi
         end
 
         result = ::Ombudsman::Register.call(attrs: attrs.except("citizen_id"), channel: "web", citizen: citizen,
-                                            citizen_session: current_citizen_session)
+                                            citizen_session: current_citizen_session,
+                                            zoonoses: ::Zoonoses::Gate.ombudsman_usable?(Current.city))
         return render_failure(result) if result.failure?
 
         manifestation = result.payload.fetch(:manifestation)

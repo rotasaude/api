@@ -17,10 +17,13 @@
 #     received_at, due_on, channel }; a anônima → 404.
 # Texto, nome, contato e CPF só do corpo JSON; chave fora da lista no corpo ou
 # qualquer chave na query → 422 com o path (só o nome da chave).
+# Módulo 35b (§4, Q10, Q14): o registro aceita `zoonoses_subtype` e
+# `place_address`, com o gate (Zoonoses::Gate.ombudsman_usable?) lido aqui,
+# fora da transação. O detalhe traz o `place_address` (só para a equipe).
 module Ombudsman
   class ManifestationsController < BaseController
     CREATE_KEYS = %w[kind identification_mode channel ouvidorsus_number citizen_id manifestant_name manifestant_contact
-                     manifestant_cpf body health_unit_id attachment_ids].freeze
+                     manifestant_cpf body health_unit_id attachment_ids zoonoses_subtype place_address].freeze
 
     PAGE = 50
     LIST_FILTERS = { "state" => Catalog::STATES, "color" => Catalog::COLORS, "kind" => Catalog::KINDS,
@@ -68,7 +71,8 @@ module Ombudsman
       channel = body_param("channel")
       return render_refusal("channel") unless Catalog::STAFF_CHANNELS.include?(channel)
 
-      result = Register.call(attrs: body.except("channel"), channel: channel, by: Current.user)
+      result = Register.call(attrs: body.except("channel"), channel: channel, by: Current.user,
+                             zoonoses: Zoonoses::Gate.ombudsman_usable?(Current.city))
       return render_failure(result) if result.failure?
 
       manifestation = result.payload.fetch(:manifestation)

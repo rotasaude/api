@@ -242,7 +242,7 @@ RSpec.describe "Ouvidoria — configuração", type: :request do
       expect(tree.map { |s| s["name"] }).to eq(OmbudsmanSubject::DEFAULT_TREE.map(&:first))
       expect(tree.first).to include("active" => true)
       expect(tree.first["children"].map { |c| c["name"] }).to eq([ "Demora", "Conduta de profissional", "Acolhimento" ])
-      expect(tree.first["children"].first.keys).to contain_exactly("id", "name", "active")
+      expect(tree.first["children"].first.keys).to contain_exactly("id", "name", "active", "code")
 
       json_post "/ombudsman/subjects", name: "Novo"
       expect(response).to have_http_status(:forbidden)

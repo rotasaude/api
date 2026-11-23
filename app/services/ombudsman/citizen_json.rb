@@ -2,6 +2,8 @@
 # Q42; preflight F-17). Separadas de Ombudsman::Json (a da equipe) de
 # propósito: o cidadão nunca vê o encaminhamento, o extrato, o assunto, quem
 # respondeu nem o nome do arquivo (os anexos são "Anexo N": só o id).
+# Nem o `place_address` da demanda de zoonoses (módulo 35b, Q15): o cidadão
+# não o vê de volta.
 # `forwarded` aparece como `in_analysis` (Q40). As flags `can_*` saem dos dados
 # (F-17): complementar em `awaiting_complement`; pedir reabertura em estado
 # final, até 30 dias da conclusão e sem pedido no ciclo; responder a pesquisa

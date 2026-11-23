@@ -51,8 +51,9 @@ module Ombudsman
 
     # O evento da linha do tempo de uma ação sobre o encaminhamento: da
     # equipe (o técnico ou o respondente), nunca visível ao cidadão, só o id.
+    # `by: nil` é o encaminhamento automático do 35b (Q13): ator `system`.
     def event!(manifestation, forwarding, kind, by:, now:, text: nil)
-      OmbudsmanEvent.create!(ombudsman_manifestation: manifestation, kind: kind, actor: "staff", actor_user: by, text: text,
+      OmbudsmanEvent.create!(ombudsman_manifestation: manifestation, kind: kind, actor: by ? "staff" : "system", actor_user: by, text: text,
                              data: { "forwarding_id" => forwarding.id }, visible_to_citizen: false, created_at: now)
     end
   end

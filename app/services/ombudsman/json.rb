@@ -4,6 +4,10 @@
 # `identified`, nos demais "preserved" — nem o ouvidor a recebe fora de
 # POST .../identity. Nada de filename dos anexos (Q2): a tela diz "Anexo N".
 # Datas e instantes em ISO 8601.
+# Módulo 35b (§4, §16, Q13, Q15): o `place_address` (o lugar da ocorrência da
+# demanda de zoonoses) só sai no detalhe da equipe, nunca na lista nem ao
+# cidadão; o evento do ator `system` (a classificação e o encaminhamento
+# automáticos) sai sem `actor_name` — a tela diz "Sistema".
 module Ombudsman
   module Json
     module_function
@@ -34,7 +38,7 @@ module Ombudsman
       pending = manifestation.forwardings.count(&:pending?)
       pending_reopen = manifestation.reopen_requests.find { |request| request.state == "pending" }
       list_item(manifestation, settings, today, { manifestation.id => pending }).merge(
-        body: manifestation.body, ouvidorsus_number: manifestation.ouvidorsus_number,
+        body: manifestation.body, place_address: manifestation.place_address, ouvidorsus_number: manifestation.ouvidorsus_number,
         referred_professional: professional(manifestation.referred_professional), cycle: manifestation.cycle,
         extended: manifestation.extended, extension_reason: manifestation.extension_reason,
         complement_used: manifestation.complement_used, complement_requested_at: manifestation.complement_requested_at&.iso8601,

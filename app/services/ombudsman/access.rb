@@ -2,6 +2,10 @@
 # Psychosocial::Access: o papel vem da membership ativa; o respondente só
 # alcança os destinos em que tem linha ativa em ombudsman_responders E o papel
 # ombudsman_responder ainda ativo (revogado o papel, a linha não conta).
+# Módulo 35b (§4, Q13): com o zoonoses ligado (`zoonoses:`, lido fora da
+# transação), a unidade environmental_surveillance (a UVZ) também conta como
+# destino com respondente quando há usuário ativo da equipe do centro
+# (Zoonoses::Access.team_user_ids), sem o papel ombudsman_responder.
 module Ombudsman
   module Access
     STAFF_ROLES = %w[ombudsman_staff ombudsman].freeze
@@ -35,18 +39,24 @@ module Ombudsman
     end
 
     # -> [uuid] dos usuários que respondem o destino (um dos dois ids).
-    def responder_ids_for(department_id: nil, health_unit_id: nil)
+    def responder_ids_for(department_id: nil, health_unit_id: nil, zoonoses: false)
       destination = department_id ? { department_id: department_id } : { health_unit_id: health_unit_id }
       return [] if destination.values.first.blank?
 
-      responder_rows.where(destination).distinct.pluck(:user_id)
+      ids = responder_rows.where(destination).distinct.pluck(:user_id)
+      return ids unless zoonoses && department_id.nil? && HealthUnit.where(id: health_unit_id, kind: Zoonoses::Access::UNIT_KIND).exists?
+
+      ids | Zoonoses::Access.team_user_ids
     end
 
     # -> { department_ids: [uuid], health_unit_ids: [uuid] }: os destinos que
     # têm ao menos um respondente (em lote, para a lista de opções).
-    def destinations_with_responder
-      { department_ids: responder_rows.where.not(department_id: nil).distinct.pluck(:department_id),
-        health_unit_ids: responder_rows.where.not(health_unit_id: nil).distinct.pluck(:health_unit_id) }
+    def destinations_with_responder(zoonoses: false)
+      unit_ids = responder_rows.where.not(health_unit_id: nil).distinct.pluck(:health_unit_id)
+      if zoonoses && Zoonoses::Access.team_user_ids.any?
+        unit_ids |= HealthUnit.where(kind: Zoonoses::Access::UNIT_KIND).pluck(:id)
+      end
+      { department_ids: responder_rows.where.not(department_id: nil).distinct.pluck(:department_id), health_unit_ids: unit_ids }
     end
 
     def roles?(user, roles) = user.present? && user.memberships.active.where(role: roles).exists?

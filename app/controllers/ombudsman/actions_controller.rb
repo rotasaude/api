@@ -54,7 +54,8 @@ module Ombudsman
     def forward
       respond Forward.call(manifestation_id: params[:id], expected_state: body_param("expected_state"),
                            department_id: body_param("department_id"), health_unit_id: body_param("health_unit_id"),
-                           extract: body_param("extract"), by: Current.user)
+                           extract: body_param("extract"), by: Current.user,
+                           zoonoses: Zoonoses::Gate.ombudsman_usable?(Current.city))
     end
 
     def request_complement

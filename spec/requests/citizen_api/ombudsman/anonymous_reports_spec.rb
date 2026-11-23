@@ -201,7 +201,7 @@ RSpec.describe "Denúncia anônima sem login", type: :request do
       inactive = create_unit("UBS Desativada", active: false)
       get "/citizen/ombudsman/public_config"
       expect(response).to have_http_status(:ok)
-      expect(json_body.keys).to eq(%w[anonymous_web units])
+      expect(json_body.keys).to eq(%w[anonymous_web units zoonoses])
       expect(json_body["anonymous_web"]).to be(true)
       expect(json_body["units"]).to eq(HealthUnit.active_units.map { |u| { "id" => u.id, "name" => u.name } })
       expect(json_body["units"]).to include({ "id" => caps.id, "name" => "CAPS Alfa" })

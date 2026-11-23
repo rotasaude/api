@@ -12,6 +12,9 @@
 # Uma linha `classified` por ação, `data: { changes: { campo: [antes, depois] } }`
 # só com ids, rótulos e booleanos; sem mudança (reclassificação igual) nada é
 # gravado. Sob Ombudsman::Lock, com `expected_state` (409 manifestation_changed).
+# Módulo 35b (Q13): `by: nil` é a classificação automática da demanda de
+# zoonoses (Zoonoses::OpenDemand): o evento grava `actor: "system"`, sem
+# usuário.
 module Ombudsman
   module Classify
     FROM = %w[received in_analysis].freeze
@@ -49,7 +52,7 @@ module Ombudsman
 
         manifestation.update!(changes.to_h { |field, (_, value)| [ COLUMNS.fetch(field), value ] }.merge(state: "in_analysis", updated_at: now))
         unless changes.empty?
-          OmbudsmanEvent.create!(ombudsman_manifestation: manifestation, kind: "classified", actor: "staff", actor_user: by,
+          OmbudsmanEvent.create!(ombudsman_manifestation: manifestation, kind: "classified", actor: by ? "staff" : "system", actor_user: by,
                                  data: { "changes" => changes }, visible_to_citizen: false, created_at: now)
         end
         Result.ok(manifestation: manifestation)

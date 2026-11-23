@@ -12,15 +12,25 @@
 # Sob Ombudsman::Lock, com `expected_state` (409 manifestation_changed, nada
 # gravado). Evento `forwarded` (`data: { forwarding_id }`, nunca visível ao
 # cidadão) e ombudsman.forwarded { manifestation_id, forwarding_id }.
+# Módulo 35b (§4, Q13), com `zoonoses:` (o gate, lido fora da transação):
+# - a UVZ (unidade environmental_surveillance) conta com respondente quando
+#   há alguém da equipe do centro (Access.responder_ids_for);
+# - o encaminhamento à UVZ cria, na mesma transação, a zoonoses_demands
+#   `open` (Zoonoses::OpenDemand.demand!; subtipo do `code` do assunto, ou
+#   `other`) — vale para o encaminhamento manual da equipe e para o
+#   automático;
+# - `by: nil` é o automático (Zoonoses::OpenDemand): `created_by_system`, e o
+#   evento com o ator `system`.
 module Ombudsman
   module Forward
     FROM = %w[in_analysis forwarded].freeze
 
     module_function
 
-    # -> Result.ok(manifestation:, forwarding:) | fail(:invalid_request, details: { path:, problems: })
+    # -> Result.ok(manifestation:, forwarding:, demand:) (demand nil fora da UVZ com o gate)
+    #  | fail(:invalid_request, details: { path:, problems: })
     #  | fail(:destination_without_responder) | fail(:not_found) | fail(:manifestation_changed) | fail(:invalid_transition)
-    def call(manifestation_id:, expected_state:, department_id:, health_unit_id:, extract:, by:, now: Time.current)
+    def call(manifestation_id:, expected_state:, department_id:, health_unit_id:, extract:, by:, zoonoses: false, now: Time.current)
       return Input.refuse("department_id") if department_id.nil? && health_unit_id.nil?
       return Input.refuse("health_unit_id") if !department_id.nil? && !health_unit_id.nil?
 
@@ -39,20 +49,27 @@ module Ombudsman
         next Result.fail(:invalid_transition) unless FROM.include?(manifestation.state)
 
         model = key == "department_id" ? Department : HealthUnit
-        next Input.refuse(key) unless model.where(active: true).exists?(id: destination_id)
+        target = model.where(active: true).find_by(id: destination_id)
+        next Input.refuse(key) unless target
 
         destination = { key.to_sym => destination_id.downcase }
-        next Result.fail(:destination_without_responder) if Access.responder_ids_for(**destination).empty?
+        next Result.fail(:destination_without_responder) if Access.responder_ids_for(**destination, zoonoses: zoonoses).empty?
 
         forwarding = OmbudsmanForwarding.create!(
           ombudsman_manifestation: manifestation, **destination, extract: text, state: "pending", created_by_user: by,
+          created_by_system: by.nil?,
           due_on: Deadlines.forwarding_due_on(now.in_time_zone.to_date, OmbudsmanSetting.current), created_at: now, updated_at: now
         )
         manifestation.update!(state: "forwarded", updated_at: now) unless manifestation.state == "forwarded"
         Forwardings.event!(manifestation, forwarding, "forwarded", by: by, now: now)
         DomainEvents.publish("ombudsman.forwarded", manifestation_id: manifestation.id, forwarding_id: forwarding.id)
-        Result.ok(manifestation: manifestation, forwarding: forwarding)
+        demand = (Zoonoses::OpenDemand.demand!(forwarding: forwarding, manifestation: manifestation, now: now) if zoonoses && uvz?(target))
+        Result.ok(manifestation: manifestation, forwarding: forwarding, demand: demand)
       end
     end
+
+    def uvz?(target) = target.is_a?(HealthUnit) && target.kind == Zoonoses::Access::UNIT_KIND
+
+    private_class_method :uvz?
   end
 end

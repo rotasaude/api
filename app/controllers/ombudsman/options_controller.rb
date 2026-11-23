@@ -3,6 +3,8 @@
 # `has_active_responder` (Access: linha ativa, papel e conta ativos);
 # profissionais com vínculo ativo, com as unidades ativas em que atuam.
 # Técnico e ouvidor. Sem dado de pessoa além do nome do profissional.
+# Módulo 35b (Q13): com o zoonoses e a ouvidoria utilizáveis (lido aqui, fora
+# da transação), a UVZ com alguém da equipe do centro conta como coberta.
 module Ombudsman
   class OptionsController < BaseController
     before_action :require_staff!
@@ -10,7 +12,7 @@ module Ombudsman
 
     def show
       Settings.ensure_defaults!
-      covered = Access.destinations_with_responder
+      covered = Access.destinations_with_responder(zoonoses: Zoonoses::Gate.ombudsman_usable?(Current.city))
       units = HealthUnit.active_units.to_a
       render json: {
         subjects: subjects, departments: departments(covered[:department_ids]),
