@@ -7,6 +7,8 @@
 # dose por documento; o código do imunobiológico é cópia do lote (trigger).
 # Módulo 35a (ADR 0054; A-1): a baixa do boletim e o estorno dela têm a medida
 # por documento; o produto é cópia do lote (trigger).
+# Módulo 35b (ADR 0054): a dose antirrábica (baixa e estorno) e a coleira têm
+# a dose ou a coleira por documento.
 class StockMovement < ApplicationRecord
   encrypts :reason
 
@@ -20,6 +22,8 @@ class StockMovement < ApplicationRecord
   belongs_to :immunization, optional: true
   belongs_to :urgency_administration, optional: true
   belongs_to :vector_inspection_measure, optional: true, inverse_of: :movements
+  belongs_to :rabies_vaccination, optional: true, inverse_of: :movements
+  belongs_to :collar, optional: true, inverse_of: :movements
   belongs_to :recorded_by_user, class_name: "User"
 
   def inspect = "#<StockMovement id=#{id} kind=#{kind}>"

@@ -235,7 +235,9 @@ module CityEncryption
     [ OvitrapReading, :count_note ], [ VectorTask, :closed_note ], [ TransmissionBlock, :dismissed_reason ],
     # ADR 0054 (módulo 35b): o microchip do animal (determinístico) e o
     # endereço da ocorrência da demanda de zoonoses.
-    [ Animal, :microchip ], [ OmbudsmanManifestation, :place_address ]
+    [ Animal, :microchip ], [ OmbudsmanManifestation, :place_address ],
+    # A nota do evento adverso e o motivo da anulação da dose antirrábica.
+    [ RabiesVaccination, :adverse_note ], [ RabiesVaccination, :cancel_reason ]
   ].freeze
 
   module_function

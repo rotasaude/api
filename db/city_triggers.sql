@@ -4754,3 +4754,95 @@ BEGIN
   END LOOP;
 END
 $do$;
+
+-- Módulo 35b — vacinação (ADR 0054; plano, Task 3; contrato §1 e §3): a
+-- campanha, a dose e a coleira nunca somem (DELETE e TRUNCATE recusados). A
+-- etapa da campanha só anda planned → open → closed (sem voltar nem pular de
+-- closed). A dose é imutável fora da anulação, de NULL a valor, uma vez
+-- (molde do rota_immunization_guard); a re-cifra da nota adversa e do motivo
+-- da anulação passa antes das outras regras. A coleira só muda na retirada
+-- (removed_on e removal_reason, de NULL a valor, uma vez). As colunas são
+-- lidas por to_jsonb: este arquivo roda de novo em migrações antigas, e a
+-- função só roda com a tabela já criada (as três nascem na 20261123900002).
+CREATE OR REPLACE FUNCTION rota_rabies_campaign_guard() RETURNS trigger AS $fn$
+DECLARE
+  old_stage text := to_jsonb(OLD) ->> 'stage';
+  new_stage text := to_jsonb(NEW) ->> 'stage';
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'rabies_campaigns: DELETE refused';
+  END IF;
+  IF new_stage IS DISTINCT FROM old_stage
+     AND NOT ((old_stage = 'planned' AND new_stage IN ('open', 'closed')) OR (old_stage = 'open' AND new_stage = 'closed')) THEN
+    RAISE EXCEPTION 'rabies_campaigns: the stage only goes planned → open → closed';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_rabies_vaccination_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['cancelled_at', 'cancel_reason'];
+  encrypted text[] := ARRAY['adverse_note', 'cancel_reason'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'rabies_vaccinations: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'rabies_vaccinations: only cancelled_at and cancel_reason change';
+  END IF;
+  IF (to_jsonb(OLD) ->> 'cancelled_at') IS NOT NULL OR (to_jsonb(NEW) ->> 'cancelled_at') IS NULL THEN
+    RAISE EXCEPTION 'rabies_vaccinations: a dose is cancelled once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_collar_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['removed_on', 'removal_reason'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'collars: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'collars: only removed_on and removal_reason change';
+  END IF;
+  IF (to_jsonb(OLD) ->> 'removed_on') IS NOT NULL OR (to_jsonb(NEW) ->> 'removed_on') IS NULL THEN
+    RAISE EXCEPTION 'collars: a collar is removed once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.rabies_campaigns') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS rabies_campaigns_guard ON rabies_campaigns';
+    EXECUTE 'CREATE TRIGGER rabies_campaigns_guard BEFORE UPDATE OR DELETE ON rabies_campaigns
+      FOR EACH ROW EXECUTE FUNCTION rota_rabies_campaign_guard()';
+  END IF;
+  IF to_regclass('public.rabies_vaccinations') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS rabies_vaccinations_guard ON rabies_vaccinations';
+    EXECUTE 'CREATE TRIGGER rabies_vaccinations_guard BEFORE UPDATE OR DELETE ON rabies_vaccinations
+      FOR EACH ROW EXECUTE FUNCTION rota_rabies_vaccination_guard()';
+  END IF;
+  IF to_regclass('public.collars') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS collars_guard ON collars';
+    EXECUTE 'CREATE TRIGGER collars_guard BEFORE UPDATE OR DELETE ON collars
+      FOR EACH ROW EXECUTE FUNCTION rota_collar_guard()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['rabies_campaigns', 'rabies_vaccinations', 'collars'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END IF;
+  END LOOP;
+END
+$do$;

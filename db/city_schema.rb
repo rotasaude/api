@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -825,6 +825,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
     t.uuid "recorded_by_user_id", null: false
     t.index ["cold_chain_equipment_id", "read_at"], name: "idx_cold_chain_readings_equipment"
     t.check_constraint "min_c <= max_c", name: "ck_cold_chain_readings_range"
+  end
+
+  create_table "collars", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "animal_id", null: false
+    t.uuid "client_uuid"
+    t.datetime "created_at", null: false
+    t.date "due_on", null: false
+    t.date "placed_on", null: false
+    t.string "removal_reason"
+    t.date "removed_on"
+    t.uuid "vector_product_id", null: false
+    t.index ["animal_id", "placed_on"], name: "idx_collars_animal"
+    t.index ["animal_id"], name: "idx_collars_active", unique: true, where: "(removed_on IS NULL)"
+    t.index ["client_uuid"], name: "idx_collars_client_uuid", unique: true, where: "(client_uuid IS NOT NULL)"
+    t.index ["due_on"], name: "idx_collars_due", where: "(removed_on IS NULL)"
+    t.check_constraint "(removed_on IS NULL) = (removal_reason IS NULL)", name: "ck_collars_removal"
+    t.check_constraint "due_on > placed_on", name: "ck_collars_due"
+    t.check_constraint "removal_reason IS NULL OR removal_reason::text = ANY (ARRAY['replaced'::text, 'lost'::text, 'death'::text, 'other'::text])", name: "ck_collars_removal_reason"
   end
 
   create_table "collective_activities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -3725,6 +3743,56 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
     t.check_constraint "jsonb_typeof(night_limits) = 'object'::text", name: "ck_psychosocial_settings_night_limits"
   end
 
+  create_table "rabies_campaigns", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "ends_on", null: false
+    t.integer "goal_cats", default: 0, null: false
+    t.integer "goal_dogs", default: 0, null: false
+    t.string "name", null: false
+    t.date "starts_on", null: false
+    t.string "stage", default: "planned", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.integer "year", null: false
+    t.index "((true))", name: "idx_rabies_campaigns_open", unique: true, where: "((stage)::text = 'open'::text)"
+    t.check_constraint "char_length(name::text) >= 1 AND char_length(name::text) <= 80", name: "ck_rabies_campaigns_name"
+    t.check_constraint "goal_dogs >= 0 AND goal_cats >= 0", name: "ck_rabies_campaigns_goals"
+    t.check_constraint "stage::text = ANY (ARRAY['planned'::text, 'open'::text, 'closed'::text])", name: "ck_rabies_campaigns_stage"
+    t.check_constraint "starts_on <= ends_on", name: "ck_rabies_campaigns_period"
+    t.check_constraint "version >= 1", name: "ck_rabies_campaigns_version"
+  end
+
+  create_table "rabies_vaccinations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "adverse_note"
+    t.boolean "adverse_event", default: false, null: false
+    t.uuid "animal_id"
+    t.uuid "campaign_id"
+    t.text "cancel_reason"
+    t.datetime "cancelled_at"
+    t.uuid "client_uuid"
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id"
+    t.uuid "household_id"
+    t.string "modality", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.string "species", null: false
+    t.uuid "stock_lot_id"
+    t.date "vaccinated_on", null: false
+    t.uuid "vector_product_id", null: false
+    t.index ["animal_id", "campaign_id"], name: "idx_rabies_vaccinations_animal_campaign", unique: true, where: "((cancelled_at IS NULL) AND (animal_id IS NOT NULL) AND (campaign_id IS NOT NULL))"
+    t.index ["animal_id", "vaccinated_on"], name: "idx_rabies_vaccinations_animal", where: "(animal_id IS NOT NULL)"
+    t.index ["campaign_id", "vaccinated_on"], name: "idx_rabies_vaccinations_campaign", where: "(campaign_id IS NOT NULL)"
+    t.index ["client_uuid"], name: "idx_rabies_vaccinations_client_uuid", unique: true, where: "(client_uuid IS NOT NULL)"
+    t.index ["vaccinated_on"], name: "idx_rabies_vaccinations_day"
+    t.check_constraint "(cancelled_at IS NULL) = (cancel_reason IS NULL)", name: "ck_rabies_vaccinations_cancellation"
+    t.check_constraint "(modality::text = 'house'::text) = (household_id IS NOT NULL)", name: "ck_rabies_vaccinations_household"
+    t.check_constraint "(modality::text = 'routine'::text) = (campaign_id IS NULL)", name: "ck_rabies_vaccinations_campaign"
+    t.check_constraint "animal_id IS NOT NULL OR modality::text = 'fixed_post'::text", name: "ck_rabies_vaccinations_animal"
+    t.check_constraint "modality::text <> 'house'::text OR health_unit_id IS NULL", name: "ck_rabies_vaccinations_house_unit"
+    t.check_constraint "modality::text = ANY (ARRAY['house'::text, 'fixed_post'::text, 'routine'::text])", name: "ck_rabies_vaccinations_modality"
+    t.check_constraint "species::text = ANY (ARRAY['dog'::text, 'cat'::text])", name: "ck_rabies_vaccinations_species"
+  end
+
   create_table "regulation_authorizations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "authorized_by_user_id", null: false
     t.uuid "care_offer_id", null: false
@@ -4348,6 +4416,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
 
   create_table "stock_movements", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "catalog_item_id"
+    t.uuid "collar_id"
     t.datetime "created_at", null: false
     t.uuid "dispensation_item_id"
     t.string "immunobiological_code", limit: 10
@@ -4356,6 +4425,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
     t.integer "package_units"
     t.integer "packages"
     t.decimal "quantity", precision: 12, scale: 2, null: false
+    t.uuid "rabies_vaccination_id"
     t.text "reason"
     t.datetime "recorded_at", null: false
     t.uuid "recorded_by_user_id", null: false
@@ -4368,9 +4438,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
     t.uuid "vector_inspection_measure_id"
     t.uuid "vector_product_id"
     t.uuid "vial_opening_id"
+    t.index ["collar_id"], name: "idx_stock_movements_collar", where: "(collar_id IS NOT NULL)"
     t.index ["dispensation_item_id"], name: "idx_stock_movements_dispensation_item"
     t.index ["immunization_id"], name: "idx_stock_movements_immunization"
     t.index ["stock_location_id", "stock_lot_id"], name: "idx_stock_movements_balance"
+    t.index ["rabies_vaccination_id"], name: "idx_stock_movements_rabies_vaccination", where: "(rabies_vaccination_id IS NOT NULL)"
     t.index ["stock_lot_id", "recorded_at", "id"], name: "idx_stock_movements_lot_time"
     t.index ["urgency_administration_id"], name: "idx_stock_movements_urgency_administration"
     t.index ["vector_inspection_measure_id"], name: "idx_stock_movements_vector_inspection_measure"
@@ -4378,9 +4450,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
     t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code, vector_product_id) = 1", name: "ck_stock_movements_item"
     t.check_constraint "(package_units IS NULL) = (packages IS NULL) AND (package_units IS NULL OR package_units >= 1 AND package_units <= 10000 AND packages >= 1 AND packages <= 10000)", name: "ck_stock_movements_package"
     t.check_constraint "kind::text <> ALL (ARRAY['loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text]) OR reason IS NOT NULL", name: "ck_stock_movements_reason"
-    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text, 'vial_opening'::text, 'immunization'::text, 'immunization_reversal'::text, 'administration'::text, 'vector_application'::text, 'vector_application_reversal'::text])", name: "ck_stock_movements_kind"
-    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id, vial_opening_id, immunization_id, urgency_administration_id, vector_inspection_measure_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL) AND (vial_opening_id IS NOT NULL) = (kind::text = 'vial_opening'::text) AND (immunization_id IS NOT NULL) = (kind::text = ANY (ARRAY['immunization'::text, 'immunization_reversal'::text])) AND (urgency_administration_id IS NOT NULL) = (kind::text = 'administration'::text) AND (vector_inspection_measure_id IS NOT NULL) = (kind::text = ANY (ARRAY['vector_application'::text, 'vector_application_reversal'::text]))", name: "ck_stock_movements_document"
-    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text, 'immunization_reversal'::text, 'vector_application_reversal'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'vial_opening'::text, 'immunization'::text, 'administration'::text, 'vector_application'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
+    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text, 'vial_opening'::text, 'immunization'::text, 'immunization_reversal'::text, 'administration'::text, 'vector_application'::text, 'vector_application_reversal'::text, 'animal_vaccination'::text, 'animal_vaccination_reversal'::text, 'collar_placement'::text])", name: "ck_stock_movements_kind"
+    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id, vial_opening_id, immunization_id, urgency_administration_id, vector_inspection_measure_id, rabies_vaccination_id, collar_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL) AND (vial_opening_id IS NOT NULL) = (kind::text = 'vial_opening'::text) AND (immunization_id IS NOT NULL) = (kind::text = ANY (ARRAY['immunization'::text, 'immunization_reversal'::text])) AND (urgency_administration_id IS NOT NULL) = (kind::text = 'administration'::text) AND (vector_inspection_measure_id IS NOT NULL) = (kind::text = ANY (ARRAY['vector_application'::text, 'vector_application_reversal'::text])) AND (rabies_vaccination_id IS NOT NULL) = (kind::text = ANY (ARRAY['animal_vaccination'::text, 'animal_vaccination_reversal'::text])) AND (collar_id IS NOT NULL) = (kind::text = 'collar_placement'::text)", name: "ck_stock_movements_document"
+    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text, 'immunization_reversal'::text, 'vector_application_reversal'::text, 'animal_vaccination_reversal'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'vial_opening'::text, 'immunization'::text, 'administration'::text, 'vector_application'::text, 'animal_vaccination'::text, 'collar_placement'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
   end
 
   create_table "stock_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -5280,22 +5352,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
 
   create_table "vector_stock_shortfalls", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "cause", null: false
+    t.uuid "collar_id"
     t.datetime "created_at", null: false
+    t.date "occurred_on", null: false
     t.decimal "quantity", precision: 12, scale: 2, null: false
+    t.uuid "rabies_vaccination_id"
     t.datetime "reconciled_at"
     t.uuid "reconciled_by_user_id"
     t.text "reconciliation_note"
+    t.string "source", null: false
     t.uuid "stock_location_id"
     t.datetime "updated_at", null: false
-    t.uuid "vector_inspection_measure_id", null: false
+    t.uuid "vector_inspection_measure_id"
     t.uuid "vector_product_id", null: false
     t.integer "version", default: 1, null: false
+    t.index ["collar_id"], name: "idx_vector_stock_shortfalls_collar", unique: true, where: "(collar_id IS NOT NULL)"
+    t.index ["rabies_vaccination_id"], name: "idx_vector_stock_shortfalls_rabies_vaccination", unique: true, where: "(rabies_vaccination_id IS NOT NULL)"
     t.index ["stock_location_id", "reconciled_at", "created_at"], name: "idx_vector_stock_shortfalls_location"
     t.index ["vector_inspection_measure_id"], name: "idx_vector_stock_shortfalls_measure", unique: true
     t.check_constraint "(cause::text = 'no_location'::text) = (stock_location_id IS NULL)", name: "ck_vector_stock_shortfalls_location"
     t.check_constraint "(reconciled_by_user_id IS NULL) = (reconciliation_note IS NULL) AND (reconciled_by_user_id IS NULL OR reconciled_at IS NOT NULL)", name: "ck_vector_stock_shortfalls_reconciliation"
     t.check_constraint "cause::text = ANY (ARRAY['no_location'::text, 'insufficient_balance'::text, 'no_lot'::text])", name: "ck_vector_stock_shortfalls_cause"
+    t.check_constraint "(source::text = 'inspection'::text) = (vector_inspection_measure_id IS NOT NULL) AND (source::text = 'vaccination'::text) = (rabies_vaccination_id IS NOT NULL) AND (source::text = 'collar'::text) = (collar_id IS NOT NULL)", name: "ck_vector_stock_shortfalls_reference"
     t.check_constraint "quantity > 0::numeric", name: "ck_vector_stock_shortfalls_quantity"
+    t.check_constraint "source::text = ANY (ARRAY['inspection'::text, 'vaccination'::text, 'collar'::text])", name: "ck_vector_stock_shortfalls_source"
     t.check_constraint "version >= 1", name: "ck_vector_stock_shortfalls_version"
   end
 
@@ -5496,6 +5576,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
   add_foreign_key "cold_chain_excursions", "users", column: "decided_by_user_id"
   add_foreign_key "cold_chain_readings", "cold_chain_equipments"
   add_foreign_key "cold_chain_readings", "users", column: "recorded_by_user_id"
+  add_foreign_key "collars", "animals"
+  add_foreign_key "collars", "vector_products"
   add_foreign_key "collective_activities", "field_devices"
   add_foreign_key "collective_activities", "health_teams", column: "team_id"
   add_foreign_key "collective_activities", "health_units"
@@ -5937,6 +6019,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
   add_foreign_key "psychosocial_referrals", "patients"
   add_foreign_key "psychosocial_referrals", "users", column: "referred_by_user_id"
   add_foreign_key "psychosocial_settings", "users", column: "updated_by_user_id"
+  add_foreign_key "rabies_vaccinations", "animals"
+  add_foreign_key "rabies_vaccinations", "health_units"
+  add_foreign_key "rabies_vaccinations", "households"
+  add_foreign_key "rabies_vaccinations", "rabies_campaigns", column: "campaign_id"
+  add_foreign_key "rabies_vaccinations", "stock_lots"
+  add_foreign_key "rabies_vaccinations", "users", column: "recorded_by_user_id"
+  add_foreign_key "rabies_vaccinations", "vector_products"
   add_foreign_key "regulation_authorizations", "care_offers"
   add_foreign_key "regulation_authorizations", "regulation_requests"
   add_foreign_key "regulation_authorizations", "users", column: "authorized_by_user_id"
@@ -6003,8 +6092,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
   add_foreign_key "stock_minimums", "stock_locations"
   add_foreign_key "stock_minimums", "users", column: "updated_by_user_id"
   add_foreign_key "stock_minimums", "vector_products"
+  add_foreign_key "stock_movements", "collars"
   add_foreign_key "stock_movements", "dispensation_items"
   add_foreign_key "stock_movements", "immunizations"
+  add_foreign_key "stock_movements", "rabies_vaccinations"
   add_foreign_key "stock_movements", "stock_adjustments"
   add_foreign_key "stock_movements", "stock_entries"
   add_foreign_key "stock_movements", "stock_locations"
@@ -6146,6 +6237,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900001) do
   add_foreign_key "vector_parameter_versions", "users", column: "created_by_user_id"
   add_foreign_key "vector_samples", "users", column: "result_by_user_id"
   add_foreign_key "vector_samples", "vector_inspections"
+  add_foreign_key "vector_stock_shortfalls", "collars"
+  add_foreign_key "vector_stock_shortfalls", "rabies_vaccinations"
   add_foreign_key "vector_stock_shortfalls", "stock_locations"
   add_foreign_key "vector_stock_shortfalls", "users", column: "reconciled_by_user_id"
   add_foreign_key "vector_stock_shortfalls", "vector_inspection_measures"

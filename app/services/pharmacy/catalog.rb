@@ -16,11 +16,16 @@ module Pharmacy
     # (ADR 0050): `administration` (−), a baixa da checagem de medicação da UPA.
     # Módulo 35a (ADR 0054; A-1): `vector_application` (−), a baixa do boletim,
     # e `vector_application_reversal` (+), o estorno na retirada da visita.
+    # Módulo 35b (ADR 0054): `animal_vaccination` (−), a baixa da dose antirrábica,
+    # `animal_vaccination_reversal` (+), o estorno na anulação, e `collar_placement` (−).
     MOVEMENT_KINDS = %w[opening receipt donation transfer_out transfer_in dispensing loss expiry adjustment return
                         vial_opening immunization immunization_reversal administration
-                        vector_application vector_application_reversal].freeze
-    POSITIVE_KINDS = %w[opening receipt donation transfer_in return immunization_reversal vector_application_reversal].freeze
-    NEGATIVE_KINDS = %w[transfer_out dispensing loss expiry vial_opening immunization administration vector_application].freeze
+                        vector_application vector_application_reversal
+                        animal_vaccination animal_vaccination_reversal collar_placement].freeze
+    POSITIVE_KINDS = %w[opening receipt donation transfer_in return immunization_reversal vector_application_reversal
+                        animal_vaccination_reversal].freeze
+    NEGATIVE_KINDS = %w[transfer_out dispensing loss expiry vial_opening immunization administration vector_application
+                        animal_vaccination collar_placement].freeze
 
     ENTRY_KINDS = %w[invoice donation opening].freeze
     ENTRY_MOVEMENT = { "invoice" => "receipt", "donation" => "donation", "opening" => "opening" }.freeze

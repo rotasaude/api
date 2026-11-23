@@ -239,6 +239,8 @@ RSpec.describe "Esquema da farmácia (ADR 0045)" do
   it "a migração espelha as listas de Pharmacy::Catalog" do
     catalog = Pharmacy::Catalog
     vector = %w[vector_application vector_application_reversal]
+    zoonoses = %w[animal_vaccination animal_vaccination_reversal collar_placement] # módulo 35b
+    vector += zoonoses
     vaccine = %w[vial_opening immunization immunization_reversal administration] + vector
     expect([ AddVaccinationRoom::MOVEMENT_KINDS, AddVaccinationRoom::POSITIVE_KINDS, AddVaccinationRoom::NEGATIVE_KINDS ])
       .to eq([ catalog::MOVEMENT_KINDS - %w[administration] - vector, catalog::POSITIVE_KINDS - vector,
@@ -246,7 +248,7 @@ RSpec.describe "Esquema da farmácia (ADR 0045)" do
     expect([ AddUrgencyStockDeduction::MOVEMENT_KINDS, AddUrgencyStockDeduction::POSITIVE_KINDS, AddUrgencyStockDeduction::NEGATIVE_KINDS ])
       .to eq([ catalog::MOVEMENT_KINDS - vector, catalog::POSITIVE_KINDS - vector, catalog::NEGATIVE_KINDS - vector ])
     expect([ AddVectorInspections::MOVEMENT_KINDS, AddVectorInspections::POSITIVE_KINDS, AddVectorInspections::NEGATIVE_KINDS ])
-      .to eq([ catalog::MOVEMENT_KINDS, catalog::POSITIVE_KINDS, catalog::NEGATIVE_KINDS ])
+      .to eq([ catalog::MOVEMENT_KINDS - zoonoses, catalog::POSITIVE_KINDS - zoonoses, catalog::NEGATIVE_KINDS - zoonoses ])
     expect([ AddPharmacyStock::LOCATION_KINDS, AddPharmacyStock::STAFF_ROLES, AddPharmacyStock::DISPENSER_ROLES, AddPharmacyStock::MOVEMENT_KINDS,
              AddPharmacyStock::POSITIVE_KINDS, AddPharmacyStock::NEGATIVE_KINDS, AddPharmacyStock::ENTRY_KINDS, AddPharmacyStock::TRANSFER_STATUSES,
              AddPharmacyStock::ADJUSTMENT_KINDS, AddPharmacyStock::ADJUSTMENT_STATUSES, AddPharmacyStock::COUNCILS, AddPharmacyStock::DEFAULT_SETTINGS,

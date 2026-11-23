@@ -77,11 +77,12 @@ RSpec.describe "Esquema da inspeção do módulo 35a", type: :model do
 
   it "a migração espelha Pharmacy::Catalog e VectorControl::Catalog; irreversível" do
     catalog = Pharmacy::Catalog
+    zoonoses = %w[animal_vaccination animal_vaccination_reversal collar_placement] # módulo 35b (900002)
     expect([ AddVectorInspections::MOVEMENT_KINDS, AddVectorInspections::POSITIVE_KINDS, AddVectorInspections::NEGATIVE_KINDS ])
-      .to eq([ catalog::MOVEMENT_KINDS, catalog::POSITIVE_KINDS, catalog::NEGATIVE_KINDS ])
-    expect(catalog::MOVEMENT_KINDS.last(2)).to eq(%w[vector_application vector_application_reversal])
-    expect(catalog::NEGATIVE_KINDS).to end_with("vector_application")
-    expect(catalog::POSITIVE_KINDS).to end_with("vector_application_reversal")
+      .to eq([ catalog::MOVEMENT_KINDS - zoonoses, catalog::POSITIVE_KINDS - zoonoses, catalog::NEGATIVE_KINDS - zoonoses ])
+    expect((catalog::MOVEMENT_KINDS - zoonoses).last(2)).to eq(%w[vector_application vector_application_reversal])
+    expect(catalog::NEGATIVE_KINDS - zoonoses).to end_with("vector_application")
+    expect(catalog::POSITIVE_KINDS - zoonoses).to end_with("vector_application_reversal")
     vc = VectorControl::Catalog
     expect([ AddVectorInspections::ACTIVITIES, AddVectorInspections::WORK_TYPES, AddVectorInspections::SITUATIONS,
              AddVectorInspections::DEPOSIT_GROUPS, AddVectorInspections::METHODS, AddVectorInspections::PRODUCT_USES,
