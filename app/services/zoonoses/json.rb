@@ -26,6 +26,24 @@ module Zoonoses
       animal(animal).merge(tutor: tutor && { id: tutor.id, display_name: tutor.display_name }, **history(animal.id))
     end
 
+    # Campanha antirrábica (§3): sem dado pessoal.
+    def campaign(campaign)
+      { id: campaign.id, name: campaign.name, year: campaign.year, starts_on: campaign.starts_on.iso8601,
+        ends_on: campaign.ends_on.iso8601, goal_dogs: campaign.goal_dogs, goal_cats: campaign.goal_cats, stage: campaign.stage,
+        version: campaign.version, created_at: campaign.created_at.iso8601 }
+    end
+
+    # Dose antirrábica na lista e na resposta da escrita (§3, §16): só ids,
+    # datas e códigos. Nunca o tutor, o nome do animal, a nota do evento
+    # adverso nem o motivo da anulação.
+    def rabies_vaccination(row)
+      { id: row.id, modality: row.modality, campaign_id: row.campaign_id, animal_id: row.animal_id, species: row.species,
+        vaccinated_on: row.vaccinated_on.iso8601, health_unit_id: row.health_unit_id, household_id: row.household_id,
+        vector_product_id: row.vector_product_id, stock_lot_id: row.stock_lot_id, adverse_event: row.adverse_event,
+        cancelled: row.cancelled?, cancelled_at: row.cancelled_at&.iso8601, recorded_by_user_id: row.recorded_by_user_id,
+        created_at: row.created_at.iso8601 }
+    end
+
     # O histórico do animal (Q2), uma consulta por tabela, mais recente primeiro.
     def history(animal_id)
       { vaccinations: RabiesVaccination.where(animal_id: animal_id).order(vaccinated_on: :desc, created_at: :desc).map { vaccination(_1) },

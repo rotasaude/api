@@ -1105,6 +1105,14 @@ Rails.application.routes.draw do
     post   "animals/search",                  to: "animals#search"
     get    "animals/:id",                     to: "animals#show", constraints: member_id
     patch  "animals/:id",                     to: "animals#update", constraints: member_id
+    get    "campaigns",                       to: "campaigns#index"
+    post   "campaigns",                       to: "campaigns#create"
+    patch  "campaigns/:id",                   to: "campaigns#update", constraints: member_id
+    post   "campaigns/:id/open",              to: "campaigns#open_campaign", constraints: member_id
+    post   "campaigns/:id/close",             to: "campaigns#close_campaign", constraints: member_id
+    get    "vaccinations",                    to: "vaccinations#index"
+    post   "vaccinations",                    to: "vaccinations#create"
+    post   "vaccinations/:id/cancel",         to: "vaccinations#cancel", constraints: member_id
   end
 
   # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard

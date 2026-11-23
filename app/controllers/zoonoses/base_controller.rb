@@ -71,6 +71,23 @@ module Zoonoses
       false
     end
 
+    # reader? (team? ou municipal_admin); senão 403 missing_role (false).
+    def reader!
+      return true if Access.reader?(Current.user)
+
+      forbid
+      false
+    end
+
+    # coordinator? (endemic_coordinator, a coordenação de vigilância
+    # ambiental, Q1); senão 403 missing_role (false).
+    def coordinator!
+      return true if Access.coordinator?(Current.user)
+
+      forbid
+      false
+    end
+
     # Página `{ items, next_before }` de `scope` (mais recente primeiro por
     # `column`, id), com o cursor opaco CareLines::Cursor: `limit + 1` linhas
     # para saber se há mais.
