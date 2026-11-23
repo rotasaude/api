@@ -12,8 +12,8 @@ class Collar < ApplicationRecord
 
   def removed? = removed_on.present?
 
-  def inspect = "#<Collar id=#{id}>"
+  def inspect = "#<Collar id=#{id} removed=#{removed?}>"
   def to_s = inspect
   def pretty_print(pp) = pp.text(inspect)
-  def as_json(*) = { "id" => id }
+  def as_json(*) = { "id" => id, "removed" => removed? }
 end

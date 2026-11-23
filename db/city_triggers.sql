@@ -4773,7 +4773,7 @@ BEGIN
     RAISE EXCEPTION 'rabies_campaigns: DELETE refused';
   END IF;
   IF new_stage IS DISTINCT FROM old_stage
-     AND NOT ((old_stage = 'planned' AND new_stage IN ('open', 'closed')) OR (old_stage = 'open' AND new_stage = 'closed')) THEN
+     AND NOT ((old_stage = 'planned' AND new_stage = 'open') OR (old_stage = 'open' AND new_stage = 'closed')) THEN
     RAISE EXCEPTION 'rabies_campaigns: the stage only goes planned → open → closed';
   END IF;
   RETURN NEW;

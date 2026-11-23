@@ -97,7 +97,7 @@ RSpec.describe "Esquema da vacinação do módulo 35b", type: :model do
       accepted { campaign!(name: "a" * 80, goal_dogs: 0, goal_cats: 0, starts_on: Time.zone.today, ends_on: Time.zone.today) }
     end
 
-    it "planned → open → closed; closed → open recusado; nunca volta" do
+    it "planned → open → closed; campanha planned → closed recusado; closed → open recusado; nunca volta" do
       campaign = campaign!
       accepted { campaign.update_columns(stage: "open") }
       accepted { campaign.update_columns(stage: "closed") }
@@ -107,7 +107,7 @@ RSpec.describe "Esquema da vacinação do módulo 35b", type: :model do
       opened = campaign!(stage: "open")
       refused(/rabies_campaigns: the stage only goes planned → open → closed/) { opened.update_columns(stage: "planned") }
       skipped = campaign!
-      accepted { skipped.update_columns(stage: "closed") }
+      refused(/rabies_campaigns: the stage only goes planned → open → closed/) { skipped.update_columns(stage: "closed") }
     end
 
     it "metas e período seguem editáveis; DELETE e TRUNCATE recusados" do

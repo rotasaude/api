@@ -9,4 +9,5 @@ class RabiesCampaign < ApplicationRecord
   def inspect = "#<RabiesCampaign id=#{id} stage=#{stage}>"
   def to_s = inspect
   def pretty_print(pp) = pp.text(inspect)
+  def as_json(*) = { "id" => id, "stage" => stage }
 end

@@ -57,17 +57,20 @@ class AddRabiesVaccinations < ActiveRecord::Migration[8.1]
   # spec provar o preenchimento.
   def backfill_shortfalls(connection = self.connection)
     connection.execute("ALTER TABLE vector_stock_shortfalls DISABLE TRIGGER vector_stock_shortfalls_guard")
-    connection.execute(<<~SQL.squish)
-      UPDATE vector_stock_shortfalls AS shortfall
-         SET source = 'inspection',
-             occurred_on = (visit.occurred_at AT TIME ZONE 'UTC' AT TIME ZONE '#{TIME_ZONE}')::date
-        FROM vector_inspection_measures AS measure
-        JOIN vector_inspections AS inspection ON inspection.id = measure.vector_inspection_id
-        JOIN home_visits AS visit ON visit.id = inspection.home_visit_id
-       WHERE measure.id = shortfall.vector_inspection_measure_id
-         AND (shortfall.source IS NULL OR shortfall.occurred_on IS NULL)
-    SQL
-    connection.execute("ALTER TABLE vector_stock_shortfalls ENABLE TRIGGER vector_stock_shortfalls_guard")
+    begin
+      connection.execute(<<~SQL.squish)
+        UPDATE vector_stock_shortfalls AS shortfall
+           SET source = 'inspection',
+               occurred_on = (visit.occurred_at AT TIME ZONE 'UTC' AT TIME ZONE '#{TIME_ZONE}')::date
+          FROM vector_inspection_measures AS measure
+          JOIN vector_inspections AS inspection ON inspection.id = measure.vector_inspection_id
+          JOIN home_visits AS visit ON visit.id = inspection.home_visit_id
+         WHERE measure.id = shortfall.vector_inspection_measure_id
+           AND (shortfall.source IS NULL OR shortfall.occurred_on IS NULL)
+      SQL
+    ensure
+      connection.execute("ALTER TABLE vector_stock_shortfalls ENABLE TRIGGER vector_stock_shortfalls_guard")
+    end
   end
 
   private
