@@ -4846,3 +4846,141 @@ BEGIN
   END LOOP;
 END
 $do$;
+
+-- Módulo 35b — cuidado (ADR 0054; plano, Task 4; contrato §1, §4–§7, Q16,
+-- Q18): a demanda, a observação do agressor, o inquérito, o exame, o desfecho
+-- do cão, a estada, a castração e a eutanásia nunca somem (DELETE e TRUNCATE
+-- recusados). A eutanásia, a castração e o desfecho são só acréscimo
+-- (rota_reencryption_only: UPDATE recusado, salvo a re-cifra da nota). A
+-- demanda só anda para a frente (open → scheduled → inspected → closed). A
+-- observação só vai de open a closed, uma vez (depois, nada muda), e
+-- animal_id e place só mudam enquanto open. O inquérito só anda
+-- draft → open → closed. A estada só muda na saída (exit_kind, exited_on e
+-- adopter_patient_id, de NULL a valor, uma vez). A re-cifra da nota da
+-- inspeção e da observação passa antes das outras regras. As colunas são
+-- lidas por to_jsonb: este arquivo roda de novo em migrações antigas, e a
+-- função só roda com a tabela já criada (as oito nascem na 20261123900003).
+CREATE OR REPLACE FUNCTION rota_zoonoses_demand_guard() RETURNS trigger AS $fn$
+DECLARE
+  old_row jsonb := to_jsonb(OLD);
+  new_row jsonb := to_jsonb(NEW);
+  states text[] := ARRAY['open', 'scheduled', 'inspected', 'closed'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'zoonoses_demands: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (new_row - 'inspection_note') = (old_row - 'inspection_note') THEN
+    RETURN NEW;
+  END IF;
+  IF array_position(states, new_row ->> 'state') < array_position(states, old_row ->> 'state') THEN
+    RAISE EXCEPTION 'zoonoses_demands: the state never goes back';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_bite_observation_guard() RETURNS trigger AS $fn$
+DECLARE
+  old_row jsonb := to_jsonb(OLD);
+  new_row jsonb := to_jsonb(NEW);
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'bite_observations: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (new_row - 'outcome_note') = (old_row - 'outcome_note') THEN
+    RETURN NEW;
+  END IF;
+  IF (old_row ->> 'state') = 'closed' THEN
+    RAISE EXCEPTION 'bite_observations: a closed observation never changes';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_leish_survey_guard() RETURNS trigger AS $fn$
+DECLARE
+  old_stage text := to_jsonb(OLD) ->> 'stage';
+  new_stage text := to_jsonb(NEW) ->> 'stage';
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'leish_surveys: DELETE refused';
+  END IF;
+  IF new_stage IS DISTINCT FROM old_stage
+     AND NOT ((old_stage = 'draft' AND new_stage = 'open') OR (old_stage = 'open' AND new_stage = 'closed')) THEN
+    RAISE EXCEPTION 'leish_surveys: the stage only goes draft → open → closed';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_shelter_stay_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['exit_kind', 'exited_on', 'adopter_patient_id', 'version', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'shelter_stays: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'shelter_stays: only the exit changes';
+  END IF;
+  IF (to_jsonb(OLD) ->> 'exited_on') IS NOT NULL THEN
+    RAISE EXCEPTION 'shelter_stays: a stay is closed once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.zoonoses_demands') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS zoonoses_demands_guard ON zoonoses_demands';
+    EXECUTE 'CREATE TRIGGER zoonoses_demands_guard BEFORE UPDATE OR DELETE ON zoonoses_demands
+      FOR EACH ROW EXECUTE FUNCTION rota_zoonoses_demand_guard()';
+  END IF;
+  IF to_regclass('public.bite_observations') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS bite_observations_guard ON bite_observations';
+    EXECUTE 'CREATE TRIGGER bite_observations_guard BEFORE UPDATE OR DELETE ON bite_observations
+      FOR EACH ROW EXECUTE FUNCTION rota_bite_observation_guard()';
+  END IF;
+  IF to_regclass('public.leish_surveys') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS leish_surveys_guard ON leish_surveys';
+    EXECUTE 'CREATE TRIGGER leish_surveys_guard BEFORE UPDATE OR DELETE ON leish_surveys
+      FOR EACH ROW EXECUTE FUNCTION rota_leish_survey_guard()';
+  END IF;
+  IF to_regclass('public.shelter_stays') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS shelter_stays_guard ON shelter_stays';
+    EXECUTE 'CREATE TRIGGER shelter_stays_guard BEFORE UPDATE OR DELETE ON shelter_stays
+      FOR EACH ROW EXECUTE FUNCTION rota_shelter_stay_guard()';
+  END IF;
+  IF to_regclass('public.euthanasias') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS euthanasias_reencryption_only ON euthanasias';
+    EXECUTE 'CREATE TRIGGER euthanasias_reencryption_only BEFORE UPDATE OR DELETE ON euthanasias
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason_note'')';
+  END IF;
+  IF to_regclass('public.leish_dog_outcomes') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS leish_dog_outcomes_reencryption_only ON leish_dog_outcomes';
+    EXECUTE 'CREATE TRIGGER leish_dog_outcomes_reencryption_only BEFORE UPDATE OR DELETE ON leish_dog_outcomes
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''note'')';
+  END IF;
+  IF to_regclass('public.neuterings') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS neuterings_append_only ON neuterings';
+    EXECUTE 'CREATE TRIGGER neuterings_append_only BEFORE UPDATE OR DELETE ON neuterings
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['zoonoses_demands', 'bite_observations', 'leish_surveys', 'leish_tests', 'leish_dog_outcomes',
+                              'shelter_stays', 'neuterings', 'euthanasias'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END IF;
+  END LOOP;
+  IF to_regclass('public.leish_tests') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS leish_tests_no_delete ON leish_tests';
+    EXECUTE 'CREATE TRIGGER leish_tests_no_delete BEFORE DELETE ON leish_tests
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_23_900003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -369,6 +369,34 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
     t.index ["singleton"], name: "idx_billing_settings_singleton", unique: true
     t.check_constraint "origin_cnpj::text ~ '^[0-9]{14}$'::text AND (management::text = ANY (ARRAY['M'::text, 'E'::text]))", name: "ck_billing_settings_values"
     t.check_constraint "singleton", name: "ck_billing_settings_singleton"
+  end
+
+  create_table "bite_observations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "animal_id"
+    t.uuid "closed_by_user_id"
+    t.datetime "created_at", null: false
+    t.uuid "disease_notification_id", null: false
+    t.date "ends_on", null: false
+    t.date "exposure_on", null: false
+    t.string "outcome"
+    t.text "outcome_note"
+    t.date "outcome_on"
+    t.string "place", default: "home", null: false
+    t.string "species", null: false
+    t.string "state", default: "open", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["animal_id"], name: "idx_bite_observations_animal", where: "(animal_id IS NOT NULL)"
+    t.index ["disease_notification_id"], name: "idx_bite_observations_notification", unique: true
+    t.index ["ends_on"], name: "idx_bite_observations_open", where: "((state)::text = 'open'::text)"
+    t.check_constraint "(state::text = 'closed'::text) = (outcome IS NOT NULL) AND (outcome IS NOT NULL) = (outcome_on IS NOT NULL)", name: "ck_bite_observations_outcome"
+    t.check_constraint "ends_on > exposure_on", name: "ck_bite_observations_period"
+    t.check_constraint "outcome IS NULL OR (outcome::text = ANY (ARRAY['healthy'::text, 'died'::text, 'missing'::text, 'rabies_signs'::text, 'sent_to_exam'::text, 'euthanized'::text]))", name: "ck_bite_observations_outcome_list"
+    t.check_constraint "outcome_on IS NULL OR outcome_on >= exposure_on", name: "ck_bite_observations_outcome_on"
+    t.check_constraint "place::text = ANY (ARRAY['home'::text, 'shelter'::text])", name: "ck_bite_observations_place"
+    t.check_constraint "species::text = ANY (ARRAY['dog'::text, 'cat'::text])", name: "ck_bite_observations_species"
+    t.check_constraint "state::text = ANY (ARRAY['open'::text, 'closed'::text])", name: "ck_bite_observations_state"
+    t.check_constraint "version >= 1", name: "ck_bite_observations_version"
   end
 
   create_table "call_locations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1391,6 +1419,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
     t.check_constraint "tooth = ANY (ARRAY[11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 61, 62, 63, 64, 65, 71, 72, 73, 74, 75, 81, 82, 83, 84, 85])", name: "ck_endodontic_treatments_tooth"
   end
 
+  create_table "euthanasias", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "animal_id", null: false
+    t.uuid "bite_observation_id"
+    t.datetime "created_at", null: false
+    t.string "legal_basis", null: false, array: true
+    t.date "performed_on", null: false
+    t.uuid "professional_id", null: false
+    t.string "reason", null: false
+    t.text "reason_note", null: false
+    t.uuid "shelter_stay_id"
+    t.index ["animal_id"], name: "idx_euthanasias_animal", unique: true
+    t.index ["bite_observation_id"], name: "idx_euthanasias_observation", where: "(bite_observation_id IS NOT NULL)"
+    t.index ["performed_on"], name: "idx_euthanasias_day"
+    t.index ["shelter_stay_id"], name: "idx_euthanasias_stay", where: "(shelter_stay_id IS NOT NULL)"
+    t.check_constraint "cardinality(legal_basis) >= 1 AND legal_basis <@ ARRAY['cfmv_1000_2012'::text::character varying, 'law_14228_2021'::text::character varying]", name: "ck_euthanasias_legal_basis"
+    t.check_constraint "reason::text = ANY (ARRAY['leishmaniasis'::text, 'rabies_suspect'::text, 'untreatable_suffering'::text, 'public_health_risk'::text, 'other'::text])", name: "ck_euthanasias_reason"
+  end
+
   create_table "exam_catalog_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.integer "acknowledge_days"
     t.boolean "active", default: true, null: false
@@ -1652,7 +1698,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
     t.uuid "user_id", null: false
     t.index ["client_uuid"], name: "idx_field_sync_receipts_client_uuid", unique: true
     t.check_constraint "(result_version IS NULL) OR (result_version >= 1)", name: "ck_field_sync_receipts_result_version"
-    t.check_constraint "(item_type)::text = ANY (ARRAY['home_visit'::character varying::text, 'home_visit_withdrawal'::character varying::text, 'collective_activity'::character varying::text, 'patient'::character varying::text, 'household'::character varying::text, 'individual_registration'::character varying::text, 'family'::character varying::text, 'ovitrap_installation'::character varying::text, 'ovitrap_collection'::character varying::text])", name: "ck_field_sync_receipts_item_type"
+    t.check_constraint "item_type::text = ANY (ARRAY['home_visit'::character varying::text, 'home_visit_withdrawal'::character varying::text, 'collective_activity'::character varying::text, 'patient'::character varying::text, 'household'::character varying::text, 'individual_registration'::character varying::text, 'family'::character varying::text, 'ovitrap_installation'::character varying::text, 'ovitrap_collection'::character varying::text, 'animal'::character varying::text, 'rabies_vaccination'::character varying::text, 'leish_collection'::character varying::text, 'collar'::character varying::text])", name: "ck_field_sync_receipts_item_type"
   end
 
   create_table "field_sync_tombstones", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1662,8 +1708,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
     t.uuid "micro_area_id", null: false
     t.string "reason", null: false
     t.index ["micro_area_id", "created_at"], name: "idx_field_sync_tombstones_micro_area"
-    t.check_constraint "(entity_type)::text = ANY (ARRAY['household'::character varying::text, 'registration'::character varying::text])", name: "ck_field_sync_tombstones_entity_type"
-    t.check_constraint "(reason)::text = ANY (ARRAY['moved'::character varying::text, 'erased'::character varying::text])", name: "ck_field_sync_tombstones_reason"
+    t.check_constraint "entity_type::text = ANY (ARRAY['household'::character varying::text, 'registration'::character varying::text, 'animal'::character varying::text, 'leish_survey'::character varying::text])", name: "ck_field_sync_tombstones_entity_type"
+    t.check_constraint "reason::text = ANY (ARRAY['moved'::character varying::text, 'erased'::character varying::text, 'out_of_scope'::character varying::text])", name: "ck_field_sync_tombstones_reason"
   end
 
   create_table "health_team_members", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2570,6 +2616,73 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
     t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'sending'::text, 'accepted'::text, 'rejected'::text, 'failed'::text, 'correction_pending'::text])", name: "ck_ledi_outbox_status"
   end
 
+  create_table "leish_dog_outcomes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "animal_id", null: false
+    t.datetime "created_at", null: false
+    t.date "decided_on", null: false
+    t.string "decision", null: false
+    t.uuid "euthanasia_id"
+    t.uuid "leish_test_id", null: false
+    t.text "note"
+    t.index ["animal_id"], name: "idx_leish_dog_outcomes_animal"
+    t.index ["euthanasia_id"], name: "idx_leish_dog_outcomes_euthanasia", unique: true, where: "(euthanasia_id IS NOT NULL)"
+    t.index ["leish_test_id"], name: "idx_leish_dog_outcomes_test", unique: true
+    t.check_constraint "(decision::text = 'euthanasia'::text) = (euthanasia_id IS NOT NULL)", name: "ck_leish_dog_outcomes_euthanasia"
+    t.check_constraint "decision::text = ANY (ARRAY['tutor_treatment'::text, 'euthanasia'::text, 'refused'::text])", name: "ck_leish_dog_outcomes_decision"
+  end
+
+  create_table "leish_surveys", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_block_ids", default: [], null: false, array: true
+    t.datetime "created_at", null: false
+    t.integer "dog_population", null: false
+    t.date "ends_on", null: false
+    t.string "kind", null: false
+    t.string "name", null: false
+    t.uuid "neighborhood_id", null: false
+    t.integer "parameters_version", null: false
+    t.string "stage", default: "draft", null: false
+    t.date "starts_on", null: false
+    t.integer "target_dogs", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["stage", "starts_on"], name: "idx_leish_surveys_stage"
+    t.check_constraint "cardinality(city_block_ids) >= 1", name: "ck_leish_surveys_blocks"
+    t.check_constraint "char_length(name::text) >= 1 AND char_length(name::text) <= 80", name: "ck_leish_surveys_name"
+    t.check_constraint "dog_population > 0", name: "ck_leish_surveys_dog_population"
+    t.check_constraint "kind::text = ANY (ARRAY['sample'::text, 'census'::text, 'focus'::text])", name: "ck_leish_surveys_kind"
+    t.check_constraint "parameters_version >= 0", name: "ck_leish_surveys_parameters_version"
+    t.check_constraint "stage::text = ANY (ARRAY['draft'::text, 'open'::text, 'closed'::text])", name: "ck_leish_surveys_stage"
+    t.check_constraint "starts_on <= ends_on", name: "ck_leish_surveys_period"
+    t.check_constraint "target_dogs > 0", name: "ck_leish_surveys_target_dogs"
+    t.check_constraint "version >= 1", name: "ck_leish_surveys_version"
+  end
+
+  create_table "leish_tests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "animal_id", null: false
+    t.uuid "client_uuid"
+    t.date "collected_on", null: false
+    t.datetime "created_at", null: false
+    t.date "dpp_on"
+    t.string "dpp_result"
+    t.date "elisa_on"
+    t.string "elisa_request"
+    t.string "elisa_result"
+    t.string "label", null: false
+    t.uuid "leish_survey_id"
+    t.uuid "result_by_user_id"
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["animal_id", "collected_on"], name: "idx_leish_tests_animal"
+    t.index ["client_uuid"], name: "idx_leish_tests_client_uuid", unique: true, where: "(client_uuid IS NOT NULL)"
+    t.index ["label"], name: "idx_leish_tests_label", unique: true
+    t.index ["leish_survey_id", "collected_on"], name: "idx_leish_tests_survey", where: "(leish_survey_id IS NOT NULL)"
+    t.check_constraint "dpp_result IS NULL OR (dpp_result::text = ANY (ARRAY['reactive'::text, 'non_reactive'::text, 'invalid'::text]))", name: "ck_leish_tests_dpp_result"
+    t.check_constraint "elisa_request IS NULL OR char_length(elisa_request::text) >= 1 AND char_length(elisa_request::text) <= 30", name: "ck_leish_tests_elisa_request"
+    t.check_constraint "elisa_result IS NULL OR (elisa_result::text = ANY (ARRAY['reactive'::text, 'non_reactive'::text, 'inconclusive'::text]))", name: "ck_leish_tests_elisa_result"
+    t.check_constraint "elisa_result IS NULL OR COALESCE(dpp_result::text = 'reactive'::text, false)", name: "ck_leish_tests_elisa_after_dpp"
+    t.check_constraint "version >= 1", name: "ck_leish_tests_version"
+  end
+
   create_table "liraa_draw_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "city_block_id", null: false
     t.datetime "created_at", null: false
@@ -2720,6 +2833,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
     t.index ["seed_key"], name: "idx_neighborhoods_seed_key", unique: true, where: "(seed_key IS NOT NULL)"
     t.check_constraint "length(btrim(name::text)) > 0 AND name::text = btrim(name::text)", name: "ck_neighborhoods_name"
     t.check_constraint "source::text = ANY (ARRAY['seed'::text, 'manual'::text])", name: "ck_neighborhoods_source"
+  end
+
+  create_table "neuterings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "animal_id", null: false
+    t.datetime "created_at", null: false
+    t.date "performed_on", null: false
+    t.uuid "professional_id", null: false
+    t.uuid "shelter_stay_id"
+    t.index ["animal_id"], name: "idx_neuterings_animal", unique: true
+    t.index ["performed_on"], name: "idx_neuterings_day"
   end
 
   create_table "nurse_requestable_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4014,6 +4137,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
     t.index ["operator_id"], name: "index_sessions_on_operator_id"
     t.index ["user_id"], name: "index_sessions_on_user_id"
     t.check_constraint "(user_id IS NULL) <> (operator_id IS NULL)", name: "ck_sessions_exactly_one_actor"
+  end
+
+  create_table "shelter_stays", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "adopter_patient_id"
+    t.uuid "animal_id", null: false
+    t.uuid "bite_observation_id"
+    t.datetime "created_at", null: false
+    t.date "entered_on", null: false
+    t.string "entry_kind", null: false
+    t.string "exit_kind"
+    t.date "exited_on"
+    t.uuid "health_unit_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["animal_id", "entered_on"], name: "idx_shelter_stays_animal"
+    t.index ["animal_id"], name: "idx_shelter_stays_open", unique: true, where: "(exited_on IS NULL)"
+    t.index ["bite_observation_id"], name: "idx_shelter_stays_observation", where: "(bite_observation_id IS NOT NULL)"
+    t.index ["health_unit_id", "entered_on"], name: "idx_shelter_stays_unit"
+    t.check_constraint "(exit_kind IS NULL) = (exited_on IS NULL)", name: "ck_shelter_stays_exit"
+    t.check_constraint "adopter_patient_id IS NULL OR exit_kind::text = 'adopted'::text", name: "ck_shelter_stays_adopter"
+    t.check_constraint "bite_observation_id IS NULL OR entry_kind::text = 'observation'::text", name: "ck_shelter_stays_observation"
+    t.check_constraint "entry_kind::text = ANY (ARRAY['collection'::text, 'voluntary_surrender'::text, 'observation'::text, 'other'::text])", name: "ck_shelter_stays_entry_kind"
+    t.check_constraint "exit_kind IS NULL OR (exit_kind::text = ANY (ARRAY['returned'::text, 'adopted'::text, 'death'::text, 'euthanasia'::text, 'transferred'::text]))", name: "ck_shelter_stays_exit_kind_list"
+    t.check_constraint "exited_on IS NULL OR exited_on >= entered_on", name: "ck_shelter_stays_period"
+    t.check_constraint "version >= 1", name: "ck_shelter_stays_version"
   end
 
   create_table "signature_oauth_states", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -5455,6 +5603,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
     t.check_constraint "week::text ~ '^[0-9]{4}-[0-9]{2}$'::text", name: "ck_weekly_negative_reports_week"
   end
 
+  create_table "zoonoses_demands", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "assigned_user_id"
+    t.datetime "created_at", null: false
+    t.date "inspected_on"
+    t.text "inspection_note"
+    t.uuid "ombudsman_forwarding_id", null: false
+    t.string "outcome"
+    t.date "scheduled_on"
+    t.string "state", default: "open", null: false
+    t.string "subtype", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["ombudsman_forwarding_id"], name: "idx_zoonoses_demands_forwarding", unique: true
+    t.index ["state", "created_at"], name: "idx_zoonoses_demands_state"
+    t.check_constraint "outcome IS NULL OR (outcome::text = ANY (ARRAY['resolved'::text, 'guidance'::text, 'not_found'::text, 'referred'::text]))", name: "ck_zoonoses_demands_outcome_list"
+    t.check_constraint "state::text = 'closed'::text OR outcome IS NULL", name: "ck_zoonoses_demands_outcome"
+    t.check_constraint "state::text = ANY (ARRAY['open'::text, 'scheduled'::text, 'inspected'::text, 'closed'::text])", name: "ck_zoonoses_demands_state"
+    t.check_constraint "subtype::text = ANY (ARRAY['scorpion'::text, 'bat'::text, 'rodent'::text, 'tick'::text, 'aggressive_animal'::text, 'neurological_animal'::text, 'sporotrichosis'::text, 'other'::text])", name: "ck_zoonoses_demands_subtype"
+    t.check_constraint "version >= 1", name: "ck_zoonoses_demands_version"
+  end
+
   create_table "zoonoses_parameter_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.uuid "created_by_user_id", null: false
@@ -5510,6 +5679,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
   add_foreign_key "billing_periods", "users", column: "closed_by_user_id"
   add_foreign_key "billing_periods", "users", column: "reopened_by_user_id"
   add_foreign_key "billing_settings", "users", column: "updated_by_user_id"
+  add_foreign_key "bite_observations", "animals"
+  add_foreign_key "bite_observations", "disease_notifications"
+  add_foreign_key "bite_observations", "users", column: "closed_by_user_id"
   add_foreign_key "call_locations", "health_units"
   add_foreign_key "call_locations", "users", column: "updated_by_user_id"
   add_foreign_key "campaign_recipients", "campaigns"
@@ -5665,6 +5837,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
   add_foreign_key "endodontic_treatments", "consultations", column: "opened_in_consultation_id"
   add_foreign_key "endodontic_treatments", "health_units"
   add_foreign_key "endodontic_treatments", "patients"
+  add_foreign_key "euthanasias", "animals"
+  add_foreign_key "euthanasias", "bite_observations"
+  add_foreign_key "euthanasias", "professionals"
+  add_foreign_key "euthanasias", "shelter_stays"
   add_foreign_key "exam_files", "exam_providers"
   add_foreign_key "exam_files", "users", column: "uploaded_by_user_id"
   add_foreign_key "exam_order_events", "exam_orders"
@@ -5852,6 +6028,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
   add_foreign_key "lab_supply_movements", "lab_supply_lots"
   add_foreign_key "lab_supply_movements", "users", column: "recorded_by_user_id"
   add_foreign_key "ledi_outbox", "ledi_outbox", column: "replaces_outbox_id"
+  add_foreign_key "leish_dog_outcomes", "animals"
+  add_foreign_key "leish_dog_outcomes", "euthanasias"
+  add_foreign_key "leish_dog_outcomes", "leish_tests"
+  add_foreign_key "leish_surveys", "neighborhoods"
+  add_foreign_key "leish_tests", "animals"
+  add_foreign_key "leish_tests", "leish_surveys"
+  add_foreign_key "leish_tests", "users", column: "result_by_user_id"
   add_foreign_key "liraa_draw_items", "city_blocks"
   add_foreign_key "liraa_draw_items", "households"
   add_foreign_key "liraa_draw_items", "liraa_draw_items", column: "substitute_of_id"
@@ -5871,6 +6054,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
   add_foreign_key "micro_areas", "professionals", column: "acs_professional_id"
   add_foreign_key "neighborhood_coverages", "health_units"
   add_foreign_key "neighborhood_coverages", "neighborhoods"
+  add_foreign_key "neuterings", "animals"
+  add_foreign_key "neuterings", "professionals"
+  add_foreign_key "neuterings", "shelter_stays"
   add_foreign_key "nurse_requestable_items", "users", column: "created_by_user_id"
   add_foreign_key "nursing_protocol_version_items", "nursing_protocol_versions"
   add_foreign_key "nursing_protocol_versions", "nursing_protocols"
@@ -6038,6 +6224,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
   add_foreign_key "regulation_requests", "patients"
   add_foreign_key "regulation_requests", "users", column: "requester_user_id"
   add_foreign_key "regulation_requests", "care_providers"
+  add_foreign_key "shelter_stays", "animals"
+  add_foreign_key "shelter_stays", "bite_observations"
+  add_foreign_key "shelter_stays", "health_units"
+  add_foreign_key "shelter_stays", "patients", column: "adopter_patient_id"
   add_foreign_key "tfd_cases", "regulation_requests"
   add_foreign_key "transport_trip_passengers", "regulation_requests"
   add_foreign_key "regulation_risk_deadlines", "users", column: "updated_by_user_id"
@@ -6257,5 +6447,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900002) do
   add_foreign_key "waiting_room_displays", "users", column: "created_by_user_id"
   add_foreign_key "weekly_negative_reports", "health_units"
   add_foreign_key "weekly_negative_reports", "users", column: "recorded_by_user_id"
+  add_foreign_key "zoonoses_demands", "ombudsman_forwardings"
+  add_foreign_key "zoonoses_demands", "users", column: "assigned_user_id"
   add_foreign_key "zoonoses_parameter_versions", "users", column: "created_by_user_id"
 end

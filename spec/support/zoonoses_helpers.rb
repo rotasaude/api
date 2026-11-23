@@ -55,6 +55,42 @@ module ZoonosesHelpers
                      status: "active", created_by_user: zoonoses_author }.merge(over))
   end
 
+  # Observação direto na linha (o caminho real, Zoonoses::OpenObservation,
+  # nasce na Task 7). Notificação de acidente com animal pelo comando do 25;
+  # `state: "closed"` nasce já com o desfecho (o trigger só vigia o UPDATE).
+  def bite_observation!(notification: nil, place: "home", state: "open", **over)
+    notification ||= begin
+      # A lista nacional de doenças (platform) e o interruptor da vigilância, só se faltarem.
+      Surveillance::DiseaseList::Load.call unless Surveillance::Diseases.find(Zoonoses::Catalog::OBSERVATION_DISEASE)
+      notification!(patient: tutor!, disease_code: Zoonoses::Catalog::OBSERVATION_DISEASE)
+    end
+    exposure = over.fetch(:exposure_on, Time.zone.today - 3)
+    closed = state == "closed"
+    BiteObservation.create!({ disease_notification: notification, species: "dog", exposure_on: exposure, ends_on: exposure + 10,
+                              place: place, state: state, outcome: ("healthy" if closed), outcome_on: (exposure + 10 if closed),
+                              closed_by_user: (zoonoses_author if closed) }.merge(over))
+  end
+
+  # Inquérito direto na linha (Task 13 traz o comando); o bairro é o do primeiro quarteirão.
+  def leish_survey!(blocks:, kind: "sample", stage: "open", **over)
+    blocks = Array(blocks)
+    LeishSurvey.create!({ name: "Inquérito #{SecureRandom.hex(3)}", kind: kind, neighborhood: blocks.first.neighborhood,
+                          city_block_ids: blocks.map(&:id), dog_population: 400, target_dogs: 80, starts_on: Time.zone.today,
+                          ends_on: Time.zone.today + 30, stage: stage, parameters_version: 0 }.merge(over))
+  end
+
+  # Estada direto na linha (Task 8 traz o comando); na UVZ, se a unidade não vier.
+  def shelter_stay!(animal:, entry_kind: "collection", **over)
+    ShelterStay.create!({ animal: animal, health_unit: uvz_unit!, entry_kind: entry_kind, entered_on: Time.zone.today }.merge(over))
+  end
+
+  # Eutanásia crua (a veterinária é a do `by`; Task 8 traz o comando, com a
+  # morte do animal e as ligações).
+  def euthanasia!(animal:, by: veterinarian!, **over)
+    Euthanasia.create!({ animal: animal, performed_on: Time.zone.today, professional: by.professional, reason: "untreatable_suffering",
+                         reason_note: "Sofrimento sem tratamento possível.", legal_basis: %w[cfmv_1000_2012] }.merge(over))
+  end
+
   private
 
   def zoonoses_author = (@zoonoses_author ||= zoonoses_team!)

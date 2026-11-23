@@ -141,7 +141,9 @@ RSpec.describe "Esquema do aparelho de campo e da sincronização (ADR 0052)", t
     refused(/ck_field_sync_tombstones_reason/) do
       FieldSyncTombstone.new(entity_type: "household", entity_id: SecureRandom.uuid, micro_area: area, reason: "gone").save!(validate: false)
     end
-    refused(/ck_field_sync_tombstones_reason/) do
+    # Módulo 35b (Q21): o banco aceita out_of_scope (a lápide do animal e do inquérito); o catálogo
+    # (FieldSync::Catalog::TOMBSTONE_REASONS) é que decide o que o app grava.
+    accepted do
       FieldSyncTombstone.new(entity_type: "household", entity_id: SecureRandom.uuid, micro_area: area, reason: "out_of_scope").save!(validate: false)
     end
     refused(/field_sync_tombstones/) { stone.update_columns(reason: "erased") }

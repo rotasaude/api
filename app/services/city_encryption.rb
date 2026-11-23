@@ -237,7 +237,11 @@ module CityEncryption
     # endereço da ocorrência da demanda de zoonoses.
     [ Animal, :microchip ], [ OmbudsmanManifestation, :place_address ],
     # A nota do evento adverso e o motivo da anulação da dose antirrábica.
-    [ RabiesVaccination, :adverse_note ], [ RabiesVaccination, :cancel_reason ]
+    [ RabiesVaccination, :adverse_note ], [ RabiesVaccination, :cancel_reason ],
+    # A nota da inspeção da demanda, a do desfecho da observação, a do
+    # desfecho do cão reagente e o motivo da eutanásia.
+    [ ZoonosesDemand, :inspection_note ], [ BiteObservation, :outcome_note ],
+    [ LeishDogOutcome, :note ], [ Euthanasia, :reason_note ]
   ].freeze
 
   module_function
