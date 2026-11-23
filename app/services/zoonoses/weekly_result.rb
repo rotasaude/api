@@ -1,8 +1,10 @@
 # Resultado semanal da campanha antirrábica (módulo 35b, ADR 0054; contrato
 # §3, Q5, Q19): uma linha por semana epidemiológica (Surveillance::EpiWeek, a
-# regra da Q22 do 35a), da semana de `starts_on` à de min(ends_on, hoje) —
-# estendida até a semana da última dose, se a campanha seguiu aberta depois do
-# fim (nenhuma dose fica de fora). Cães e gatos vacinados na semana e o
+# regra da Q22 do 35a), da semana de `starts_on` à mais tardia entre a de
+# min(ends_on, hoje) e a da última dose (não anulada) da campanha: a dose vale
+# de starts_on a hoje, sem o limite de ends_on (contrato §3, Q20), então a
+# campanha que segue aberta depois do fim tem dose depois de ends_on, e
+# nenhuma dose fica de fora. Cães e gatos vacinados na semana e o
 # acumulado, sem as doses anuladas; a meta; a cobertura sobre a meta
 # (acumulado ÷ meta × 100, uma casa decimal; nil com meta 0) e, só quando há
 # estimativa de população nos parâmetros (dog/cat_population_estimate > 0), a

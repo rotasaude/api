@@ -1,8 +1,10 @@
 require "rails_helper"
 
 # Módulo 35b, Task 7 (ADR 0054; contrato §3, Q5, Q19): o resultado semanal da
-# campanha antirrábica, por semana epidemiológica (Surveillance::EpiWeek), de
-# starts_on a min(ends_on, hoje). Cães e gatos da semana e o acumulado, sem as
+# campanha antirrábica, por semana epidemiológica (Surveillance::EpiWeek), da
+# semana de starts_on à mais tardia entre a de min(ends_on, hoje) e a da última
+# dose: a dose vale de starts_on a hoje, sem o limite de ends_on (contrato §3,
+# Q20), e a campanha aberta depois do fim não perde dose. Cães e gatos da semana e o acumulado, sem as
 # doses anuladas; a cobertura sobre a meta (nil com meta 0) e sobre a
 # estimativa de população (só quando houver estimativa), uma casa decimal.
 # Nenhuma contagem é suprimida (Q5).
@@ -78,6 +80,17 @@ RSpec.describe Zoonoses::WeeklyResult, type: :model do
     doses!(campaign, on: Date.new(2026, 1, 1), count: 1)
     rows = weekly(campaign, today: Date.new(2026, 2, 1))
     expect(rows.map { _1.values_at(:epi_week, :dogs, :dogs_total) }).to eq([ [ "2025-53", 1, 1 ], [ "2026-01", 0, 1 ] ])
+  end
+
+  it "campanha aberta depois de ends_on com dose depois do fim: as linhas vão até a semana da dose e o acumulado a inclui" do
+    campaign = campaign!
+    doses!(campaign, on: starts_on + 2, count: 3)
+    doses!(campaign, on: starts_on + 27 + 10, count: 2) # terça-feira da SE 41 (2026-10-13), depois do fim (sábado da SE 39)
+
+    rows = weekly(campaign)
+    expect(rows.pluck(:epi_week)).to eq(%w[2026-36 2026-37 2026-38 2026-39 2026-40 2026-41])
+    expect(rows.last).to include(dogs: 2, dogs_total: 5, dog_coverage: 16.7)
+    expect(rows[3]).to include(dogs: 0, dogs_total: 3)
   end
 
   it "campanha em curso para na semana de hoje; ainda não começada → []" do

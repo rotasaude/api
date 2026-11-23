@@ -4760,8 +4760,9 @@ $do$;
 -- etapa da campanha só anda planned → open → closed (sem voltar nem pular de
 -- closed). A dose é imutável fora da anulação, de NULL a valor, uma vez
 -- (molde do rota_immunization_guard), e do lote da baixa (stock_lot_id), de
--- NULL a valor, uma vez: o comando grava a dose, baixa o estoque e anota o
--- lote do movimento; na falta o lote fica NULL (contrato §1/§3). A re-cifra
+-- NULL a valor, uma vez, e só na dose ainda não anulada: o comando grava a
+-- dose, baixa o estoque e anota o lote do movimento; na falta o lote fica
+-- NULL (contrato §1/§3). A re-cifra
 -- da nota adversa e do motivo da anulação passa antes das outras regras. A coleira só muda na retirada
 -- (removed_on e removal_reason, de NULL a valor, uma vez). As colunas são
 -- lidas por to_jsonb: este arquivo roda de novo em migrações antigas, e a
@@ -4798,8 +4799,13 @@ BEGIN
   IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
     RAISE EXCEPTION 'rabies_vaccinations: only cancelled_at, cancel_reason and stock_lot_id change';
   END IF;
-  IF new_lot IS DISTINCT FROM old_lot AND (old_lot IS NOT NULL OR new_lot IS NULL) THEN
-    RAISE EXCEPTION 'rabies_vaccinations: the stock lot is set once';
+  IF new_lot IS DISTINCT FROM old_lot THEN
+    IF old_lot IS NOT NULL OR new_lot IS NULL THEN
+      RAISE EXCEPTION 'rabies_vaccinations: the stock lot is set once';
+    END IF;
+    IF (to_jsonb(OLD) ->> 'cancelled_at') IS NOT NULL THEN
+      RAISE EXCEPTION 'rabies_vaccinations: a cancelled dose takes no stock lot';
+    END IF;
   END IF;
   IF (to_jsonb(NEW) ->> 'cancelled_at', to_jsonb(NEW) ->> 'cancel_reason')
        IS DISTINCT FROM (to_jsonb(OLD) ->> 'cancelled_at', to_jsonb(OLD) ->> 'cancel_reason')

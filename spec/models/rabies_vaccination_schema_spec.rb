@@ -213,9 +213,20 @@ RSpec.describe "Esquema da vacinação do módulo 35b", type: :model do
       expect(dose.reload.cancelled_at).to be_nil
       shortfall = vaccination!
       accepted { shortfall.update!(cancelled_at: Time.current, cancel_reason: "Dose lançada no animal errado") }
-      refused(/rabies_vaccinations: a dose is cancelled once/) do
-        raw_update(shortfall, cancelled_at: nil, cancel_reason: nil, stock_lot_id: lot!.id)
+      refused(/rabies_vaccinations: a dose is cancelled once/) { raw_update(shortfall, cancelled_at: nil, cancel_reason: nil) }
+    end
+
+    it "dose anulada não recebe lote; anular e anotar o lote na mesma escrita, da dose ativa, passa" do
+      cancelled = vaccination!
+      accepted { cancelled.update!(cancelled_at: Time.current, cancel_reason: "Dose lançada no animal errado") }
+      refused(/rabies_vaccinations: a cancelled dose takes no stock lot/) { raw_update(cancelled, stock_lot_id: lot!.id) }
+      refused(/rabies_vaccinations: a cancelled dose takes no stock lot/) do
+        raw_update(cancelled, cancelled_at: nil, cancel_reason: nil, stock_lot_id: lot!.id)
       end
+      expect(cancelled.reload.stock_lot_id).to be_nil
+
+      active = vaccination!
+      accepted { active.update!(stock_lot_id: lot!.id, cancelled_at: Time.current, cancel_reason: "Dose lançada no animal errado") }
     end
 
     it "a re-cifra regrava só as colunas cifradas; sem a marca, a mesma escrita é recusada" do
