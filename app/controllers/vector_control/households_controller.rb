@@ -7,6 +7,10 @@
 #     uma vez por microárea presente na página; nunca morador.
 #   - POST /households/assign_block e PATCH /households/:id/profile (só a
 #     coordenação): o perfil, nunca o 24a.
+#   - Q39 (35b): a lista, a atribuição e o PATCH abrem com o vector_control
+#     ou o zoonoses utilizável (require_vector_supplies!); sem o
+#     vector_control, o PATCH só aceita city_block_id (o risco → 403
+#     feature_disabled feature vector_control).
 #   - GET /households/:id (Q13(5)): `{ id, neighborhood_id, vector }` para a
 #     coordenação e para o agente de endemias nas microáreas atribuídas a ele
 #     (outra microárea → 404; outro profissional de campo → 403
@@ -14,8 +18,18 @@
 #     TerritoryRegistry::Json.household do 24a não muda.
 module VectorControl
   class HouseholdsController < BaseController
+    # Q39 (35b, opção A): a lista, a atribuição em lote e o perfil abrem com o
+    # vector_control OU o zoonoses utilizável (o inquérito da leishmaniose
+    # precisa do domicílio no quarteirão). O GET /households/:id (o `vector`
+    # do agente) segue só com o vector_control.
+    COORDINATION = %i[index assign_block update_profile].freeze
+    # Sem o vector_control, o perfil só recebe o quarteirão.
+    VECTOR_ONLY_PROFILE_KEYS = (SaveProfile::KEYS - %w[city_block_id]).freeze
+
+    skip_before_action :require_vector_control!, only: COORDINATION
+    before_action :require_vector_supplies!, only: COORDINATION
     before_action(only: %i[assign_block update_profile]) { query_only! }
-    before_action :coordinator!, only: %i[index assign_block update_profile]
+    before_action :coordinator!, only: COORDINATION
 
     def index
       return unless query_only!(:neighborhood_id, :city_block_id, :without_block, :before, :limit)
@@ -72,6 +86,9 @@ module VectorControl
     def update_profile
       household = uuid?(params[:id]) ? Household.includes(:micro_area).find_by(id: params[:id]) : nil
       return not_found unless household
+      if (body.keys & VECTOR_ONLY_PROFILE_KEYS).any? && !Gate.usable?(Current.city)
+        return render_vector_feature_disabled
+      end
 
       result = SaveProfile.call(household: household, params: body, by: Current.user)
       return render_failure(result) if result.failure?
