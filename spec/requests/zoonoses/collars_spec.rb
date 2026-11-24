@@ -61,6 +61,9 @@ RSpec.describe "Zoonoses — coleiras", type: :request do
     collar = collar!(product: product, placed_on: today - 3)
     json_post_to("/zoonoses/collars/#{collar.id}/remove", { reason: "stolen" })
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "reason" } ])
+    json_post_to("/zoonoses/collars/#{collar.id}/remove", { reason: "replaced" })
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "reason" } ])
+    expect(collar.reload.removed_on).to be_nil
     json_post_to("/zoonoses/collars/#{collar.id}/remove", { reason: "lost", removed_on: (today + 1).iso8601 })
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "date_out_of_range", "path" => "removed_on" } ])
     json_post_to("/zoonoses/collars/#{collar.id}/remove", { reason: "lost", note: "x" })

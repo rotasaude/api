@@ -1,5 +1,6 @@
 # Retirada da coleira (módulo 35b, ADR 0054; contrato §6, Q20). Só da equipe
-# (team?, senão missing_role); `reason` do catálogo (REMOVAL_REASONS, senão
+# (team?, senão missing_role); `reason` do catálogo sem `replaced`
+# (MANUAL_REASONS: lost, death, other; `replaced` só vem da PlaceCollar; senão
 # path reason) e `removed_on` (padrão hoje; depois de hoje →
 # date_out_of_range; antes da colocação → path removed_on).
 #
@@ -10,6 +11,7 @@
 module Zoonoses
   module RemoveCollar
     EVENT = "collar.removed".freeze
+    MANUAL_REASONS = (Catalog::REMOVAL_REASONS - %w[replaced]).freeze
 
     module_function
 
@@ -17,7 +19,8 @@ module Zoonoses
     #    | fail(:missing_role | :collar_changed)
     def call(collar:, reason:, removed_on:, by:, today: Time.zone.today)
       return Result.fail(:missing_role) unless Access.team?(by)
-      return invalid("reason") unless Catalog::REMOVAL_REASONS.include?(reason)
+      # `replaced` só nasce da PlaceCollar (a coleira nova); a retirada manual não o aceita.
+      return invalid("reason") unless MANUAL_REASONS.include?(reason)
 
       on = removed_on.nil? ? today : (removed_on.is_a?(Date) ? removed_on : parse_date(removed_on))
       return invalid("removed_on") unless on
