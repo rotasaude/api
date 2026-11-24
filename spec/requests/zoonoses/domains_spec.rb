@@ -8,9 +8,8 @@ require "json_schemer"
 RSpec.describe "Zoonoses — domínios", type: :request do
   # O esquema é o do contracts v1.4.0, em cópia verbatim (a presa em
   # config/field_sync/ vem na Task 20, que então aposenta esta).
-  CONTRACTS_V14 = Rails.root.join("spec/fixtures/field_sync_v1_4_0").freeze
-  REFERENCE_KEYS = %w[species sexes sizes animal_statuses dpp_results products open_campaign parameters limits].freeze
-
+  let(:contracts) { Rails.root.join("spec/fixtures/field_sync_v1_4_0") }
+  let(:reference_keys) { %w[species sexes sizes animal_statuses dpp_results products open_campaign parameters limits] }
   let!(:city) { zoonoses_city! }
   let(:coordinator) { zoonoses_coordinator! }
   let(:labels) { YAML.load_file(Rails.root.join("config/zoonoses/domains.yml")) }
@@ -60,8 +59,11 @@ RSpec.describe "Zoonoses — domínios", type: :request do
   it "Zoonoses::Json.domains valida contra $defs/zoonoses_domains do reference-response v1.4.0 (as chaves da referência)" do
     zoonoses_product!(code: "RAB")
     zoonoses_product!(use: "collar", code: "COL")
-    schemer = JSONSchemer.schema(JSON.parse(File.binread(CONTRACTS_V14.join("reference-response-v1.json")))).ref("#/$defs/zoonoses_domains")
-    validate = ->(payload) { schemer.validate(payload.slice(*REFERENCE_KEYS)).map { |error| error.fetch("error") } }
+    schemer = JSONSchemer.schema(JSON.parse(File.binread(contracts.join("reference-response-v1.json")))).ref("#/$defs/zoonoses_domains")
+    # Só saem as listas do dashboard (as do domains.yml fora do esquema):
+    # o resto é o §11 inteiro, e o additionalProperties: false vale.
+    dashboard = labels.keys - reference_keys
+    validate = ->(payload) { schemer.validate(payload.except(*dashboard)).map { |error| error.fetch("error") } }
 
     without = JSON.parse(Zoonoses::Json.domains.to_json)
     expect(validate.call(without)).to eq([])
@@ -72,11 +74,16 @@ RSpec.describe "Zoonoses — domínios", type: :request do
     expect(validate.call(payload)).to eq([])
     expect(payload["products"].size).to eq(2)
     expect(payload["open_campaign"]).not_to be_nil
-    expect(payload.keys).to include(*REFERENCE_KEYS)
+    expect(payload.keys).to include(*reference_keys)
+    expect(dashboard).not_to be_empty
+
+    stray = payload.merge("stray_key" => 1)
+    expect(validate.call(stray)).not_to eq([])
+    expect(validate.call(payload.merge("limits" => payload["limits"].merge("x" => 1)))).not_to eq([])
   end
 
   it "os rótulos do domains.yml são os do domains-v1.json (zoonoses) do contracts v1.4.0, nas listas da referência" do
-    zoonoses = JSON.parse(File.binread(CONTRACTS_V14.join("domains-v1.json"))).fetch("zoonoses")
+    zoonoses = JSON.parse(File.binread(contracts.join("domains-v1.json"))).fetch("zoonoses")
     %w[species sexes sizes animal_statuses dpp_results leish_survey_kinds product_uses].each do |list|
       expect(labels[list]).to eq(zoonoses.fetch(list)), list
     end

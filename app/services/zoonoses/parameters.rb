@@ -22,7 +22,7 @@ module Zoonoses
     end
 
     FRACTION = (BigDecimal("0.1")..BigDecimal("1"))
-    # Faixa de cada chave: Range de inteiros, FRACTION (até duas casas),
+    # Faixa de cada chave: Range de inteiros, FRACTION,
     # :table (leish_sample_table) ou :estimate (inteiro >= 0 ou null).
     RANGES = {
       "observation_days" => (10..30),
@@ -85,7 +85,7 @@ module Zoonoses
       return false unless (value.is_a?(Integer) || value.is_a?(Float)) && value.to_f.finite?
 
       decimal = BigDecimal(value.to_s)
-      FRACTION.cover?(decimal) && decimal.round(2) == decimal
+      FRACTION.cover?(decimal)
     end
 
     def table?(rows)

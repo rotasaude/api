@@ -79,7 +79,7 @@ RSpec.describe "Zoonoses — parâmetros técnicos", type: :request do
     stepped_up!(coordinator)
     {
       "collar_months" => [ 0, 13 ], "leish_focus_min_dogs" => [ 9, 1001 ], "dogs_per_block" => [ 0, 101 ],
-      "rabies_coverage_target" => [ 0.09, 1.01, 0.815 ], "dog_population_estimate" => [ -1, 1.5, "7" ],
+      "rabies_coverage_target" => [ 0.09, 1.01 ], "dog_population_estimate" => [ -1, 1.5, "7" ],
       "cat_population_estimate" => [ -1 ]
     }.each do |key, bad_values|
       bad_values.each do |value|
@@ -100,6 +100,12 @@ RSpec.describe "Zoonoses — parâmetros técnicos", type: :request do
     put_values(factory.merge("cat_population_estimate" => nil, "dog_population_estimate" => 0))
     expect(response).to have_http_status(:ok)
     expect(ZoonosesParameterVersion.count).to eq(1)
+    [ [ "collar_months", 1 ], [ "collar_months", 12 ], [ "leish_focus_min_dogs", 10 ], [ "leish_focus_min_dogs", 1000 ],
+      [ "dogs_per_block", 1 ], [ "dogs_per_block", 100 ], [ "rabies_coverage_target", 0.1 ], [ "rabies_coverage_target", 1 ] ].each do |key, value|
+      put_values(factory.merge(key => value))
+      expect(response).to have_http_status(:ok), "#{key}=#{value}"
+    end
+    expect(ZoonosesParameterVersion.count).to eq(9)
   end
 
   it "tabela da amostra: o padrão de fábrica passa; população decrescente, amostra maior e linha torta → path leish_sample_table" do
