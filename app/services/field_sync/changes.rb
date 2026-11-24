@@ -56,6 +56,27 @@
 # perfil), com o perfil no t (HOUSEHOLD_VECTOR_T). O gate entra no
 # scope_digest (FieldSync::Scope): ligar ou desligar → reset: true. Nenhuma
 # trilha nova: quarteirão, ovitrampa, item e bloqueio não têm pessoa.
+#
+# Módulo 35b (ADR 0054; contrato §11; Q9, Q20, Q21; plano, Review Focus 5): SÓ
+# com Zoonoses::Gate.field_usable? (lido aqui, fora de transação), o fluxo ganha
+#   - animal: os active dos domicílios do escopo (sem domicílio não vai), com
+#     t = GREATEST do animal, do domicílio (a entrada no escopo), da última
+#     dose criada ou anulada e da última coleira posta (a retirada manual toca
+#     o animal): a dose, a anulação e a coleira reemitem o animal com a mesma
+#     version, e o app sobrescreve (Q20; Q29 do 35a). Corpo do
+#     Json.animal_bodies: nunca o número do microchip, o tutor só
+#     { patient_id, display_name } — e a página com tutor entra na trilha
+#     (o tutor em patient_ids);
+#   - leish_survey: os open que cruzam os quarteirões dos perfis dos domicílios
+#     ativos do escopo, com household_ids = esses domicílios (Q21; nunca
+#     city_block_ids); t = GREATEST do inquérito e do instante mais recente dos
+#     domicílios com perfil do escopo (a mudança de perfil ou de domicílio
+#     reemite o inquérito com os household_ids novos);
+# e as lápides `animal`/`leish_survey` (out_of_scope, gravadas pelos triggers
+# do bloco "Módulo 35b — app de campo" do db/city_triggers.sql) saem em
+# removals, salvo a de quem continua no escopo. Desligado, nenhuma das duas
+# (nem as lápides delas). O interruptor entra no scope_digest
+# (FieldSync::Scope, ZOONOSES_MARK): ligar ou desligar → reset: true.
 module FieldSync
   module Changes
     Row = Data.define(:kind, :id, :at)
@@ -149,6 +170,39 @@ module FieldSync
        WHERE tb.status IN ('active', 'closed')
     SQL
 
+    # 35b: o inquérito de LV cruza um domicílio ATIVO do escopo com perfil num
+    # quarteirão dele (`survey` é o alias da linha de leish_surveys).
+    SURVEY_IN_SCOPE = lambda do |survey|
+      <<~SQL.squish
+        SELECT 1 FROM household_vector_profiles pe JOIN households he ON he.id = pe.household_id
+         WHERE he.micro_area_id IN (:ids) AND he.status = 'active' AND pe.city_block_id = ANY(#{survey}.city_block_ids)
+      SQL
+    end
+    ZOONOSES_STREAM = <<~SQL.squish.freeze
+      UNION ALL
+      SELECT 'animal', a.id,
+             GREATEST(a.updated_at, ha.updated_at,
+                      (SELECT max(COALESCE(v.cancelled_at, v.created_at)) FROM rabies_vaccinations v WHERE v.animal_id = a.id),
+                      (SELECT max(c.created_at) FROM collars c WHERE c.animal_id = a.id))
+        FROM animals a JOIN households ha ON ha.id = a.household_id
+       WHERE a.status = 'active' AND ha.micro_area_id IN (:ids)
+      UNION ALL
+      SELECT 'leish_survey', ls.id,
+             GREATEST(ls.updated_at,
+                      (SELECT max(GREATEST(hz.updated_at, pz.updated_at)) FROM household_vector_profiles pz
+                         JOIN households hz ON hz.id = pz.household_id WHERE hz.micro_area_id IN (:ids)))
+        FROM leish_surveys ls
+       WHERE ls.stage = 'open' AND EXISTS (#{SURVEY_IN_SCOPE.call('ls')})
+    SQL
+    # A lápide do 35b de quem continua no escopo fica fora (como a do 24b).
+    ZOONOSES_TOMBSTONES = <<~SQL.squish.freeze
+      AND NOT (s.entity_type = 'animal' AND EXISTS (SELECT 1 FROM animals a2 JOIN households h4 ON h4.id = a2.household_id
+                                                     WHERE a2.id = s.entity_id AND a2.status = 'active' AND h4.micro_area_id IN (:ids)))
+      AND NOT (s.entity_type = 'leish_survey' AND EXISTS (SELECT 1 FROM leish_surveys l2 WHERE l2.id = s.entity_id AND l2.stage = 'open'
+                                                           AND EXISTS (#{SURVEY_IN_SCOPE.call('l2')})))
+    SQL
+    WITHOUT_ZOONOSES_TOMBSTONES = "AND s.entity_type IN ('household', 'registration')".freeze
+
     # Corpos das entidades do 35a no download (changes-response-v1, §13): só
     # ids, números, datas e situação; nunca morador, caso ou notificação.
     module VectorBodies
@@ -214,19 +268,22 @@ module FieldSync
 
     module_function
 
-    # `vector_control:` = o gate do 35a, lido fora de transação (Q6).
-    def page(user:, device:, cursor:, limit:, now: Time.current, vector_control: VectorControl::Gate.usable?(Current.city))
+    # `vector_control:` = o gate do 35a, lido fora de transação (Q6);
+    # `zoonoses:` = Zoonoses::Gate.field_usable? (35b), idem.
+    def page(user:, device:, cursor:, limit:, now: Time.current, vector_control: VectorControl::Gate.usable?(Current.city),
+             zoonoses: Zoonoses::Gate.field_usable?(Current.city))
       raise ArgumentError, "limit: #{Catalog::PAGE_LIMIT}" unless limit.is_a?(Integer) && Catalog::PAGE_LIMIT.cover?(limit)
 
       position = cursor.nil? ? nil : Cursor.decode(cursor)
-      scope = Scope.for(user, vector_control: vector_control)
+      scope = Scope.for(user, vector_control: vector_control, zoonoses: zoonoses)
       reset = !position.nil? && position[:scope_digest] != scope[:digest]
       position = nil if reset
 
-      rows = stream(scope[:micro_area_ids], position, cutoff: now - Catalog::CUTOFF, limit: limit + 1, vector_control: vector_control)
+      rows = stream(scope[:micro_area_ids], position, cutoff: now - Catalog::CUTOFF, limit: limit + 1, vector_control: vector_control,
+                                                                                                       zoonoses: zoonoses)
       more = rows.size > limit
       rows = rows.first(limit)
-      items, removals, viewed = render(rows, vector_control: vector_control)
+      items, removals, viewed = render(rows, vector_control: vector_control, zoonoses: zoonoses, micro_area_ids: scope[:micro_area_ids])
       who = more ? nil : who_to_visit(scope[:micro_area_ids], now)
       viewed[:patient_ids].concat(who[:micro_areas].flat_map { |area| area[:people].map { |person| person[:patient_id] } }) if who
       trail!(user, device, viewed)
@@ -238,7 +295,7 @@ module FieldSync
     end
 
     # [Row] na ordem do fluxo, até `limit` linhas depois da posição.
-    def stream(ids, position, cutoff:, limit:, vector_control: false)
+    def stream(ids, position, cutoff:, limit:, vector_control: false, zoonoses: false)
       return [] if ids.empty?
 
       binds = { ids: ids, cutoff: cutoff.utc.strftime(TIME_FORMAT), limit: limit, format: SQL_TIME_FORMAT }
@@ -261,7 +318,9 @@ module FieldSync
            WHERE s.micro_area_id IN (:ids)
              AND NOT (s.entity_type = 'household' AND EXISTS (SELECT 1 FROM households h2 WHERE h2.id = s.entity_id AND h2.micro_area_id IN (:ids)))
              AND NOT (s.entity_type = 'registration' AND EXISTS (SELECT 1 FROM individual_registrations r2 WHERE r2.id = s.entity_id AND r2.micro_area_id IN (:ids)))
+             #{zoonoses ? ZOONOSES_TOMBSTONES : WITHOUT_ZOONOSES_TOMBSTONES}
           #{VECTOR_STREAM if vector_control}
+          #{ZOONOSES_STREAM if zoonoses}
         ) stream
         WHERE stream.t <= CAST(:cutoff AS timestamp) #{keyset}
         ORDER BY stream.t, stream.id
@@ -272,8 +331,10 @@ module FieldSync
     end
 
     # -> [items, removals, { household_ids:, patient_ids: }] na ordem do fluxo.
-    def render(rows, vector_control: false)
+    def render(rows, vector_control: false, zoonoses: false, micro_area_ids: [])
       by_kind = rows.group_by(&:kind).transform_values { |list| list.map(&:id) }
+      animals = zoonoses ? Json.animal_bodies(Animal.where(id: by_kind.fetch("animal", [])).to_a) : {}
+      surveys = zoonoses ? survey_bodies(by_kind.fetch("leish_survey", []), micro_area_ids) : {}
       areas = MicroArea.includes(:team, :acs_professional).where(id: by_kind.fetch("micro_area", [])).index_by(&:id)
       households, responsibles = households(by_kind.fetch("household", []), vector_control: vector_control)
       vector = vector_control ? vector_bodies(by_kind) : {}
@@ -300,6 +361,13 @@ module FieldSync
         when *VectorBodies::KINDS
           body = vector.dig(row.kind, row.id) or next
           items << { type: row.kind, id: row.id, version: body[:version], body: body }
+        when "animal"
+          body = animals[row.id] or next
+          items << { type: "animal", id: row.id, version: body[:version], body: body }
+          viewed[:patient_ids] << body.dig(:tutor, :patient_id) if body[:tutor]
+        when "leish_survey"
+          body = surveys[row.id] or next
+          items << { type: "leish_survey", id: row.id, version: body[:version], body: body }
         when "tombstone"
           stone = stones[row.id] or next
           removal = { type: stone.entity_type, id: stone.entity_id, reason: stone.reason }
@@ -366,6 +434,24 @@ module FieldSync
       VectorBodies::KINDS.to_h { |kind| [ kind, VectorBodies.public_send(kind, by_kind.fetch(kind, [])) ] }
     end
 
+    # { id => <leish_survey> } com household_ids = os domicílios ativos do
+    # escopo com perfil nos quarteirões (Q21); sem nenhum (corrida com a
+    # mudança de perfil), o inquérito fica fora da página (minItems 1).
+    def survey_bodies(ids, micro_area_ids)
+      return {} if ids.empty?
+
+      LeishSurvey.where(id: ids).to_a.each_with_object({}) do |survey, bodies|
+        household_ids = HouseholdVectorProfile.joins(:household)
+                                              .where(city_block_id: survey.city_block_ids,
+                                                     households: { status: "active", micro_area_id: micro_area_ids })
+                                              .order(:household_id).distinct.pluck(:household_id)
+        next if household_ids.empty?
+
+        bodies[survey.id] = { id: survey.id, version: survey.version, name: survey.name, kind: survey.kind, household_ids: household_ids,
+                              starts_on: survey.starts_on.iso8601, ends_on: survey.ends_on.iso8601 }
+      end
+    end
+
     def provisional?(patient) = Json.provisional?(patient)
 
     def trail!(user, device, viewed)
@@ -376,6 +462,7 @@ module FieldSync
       Upload::DeviceTrail.new(device).records_viewed!(user: user, household_ids: household_ids, patient_ids: patient_ids)
     end
 
-    private_class_method :stream, :render, :households, :registrations, :vector_bodies, :who_to_visit, :provisional?, :trail!
+    private_class_method :stream, :render, :households, :registrations, :vector_bodies, :survey_bodies, :who_to_visit, :provisional?,
+                         :trail!
   end
 end

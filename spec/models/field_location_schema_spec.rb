@@ -119,9 +119,11 @@ RSpec.describe "Esquema da coordenada e do livro do app de campo (ADR 0053)", ty
 
   it "a migração é irreversível e espelha o catálogo" do
     expect { AddFieldLocations.new.down }.to raise_error(ActiveRecord::IrreversibleMigration)
-    # A 20261116900003 (módulo 35a, W-4) acrescenta os dois itens de ovitrampa no fim.
+    # A 20261116900003 (módulo 35a, W-4) acrescenta os dois itens de ovitrampa no
+    # fim, e a 20261123900003 (módulo 35b, §11) os quatro de zoonoses.
+    later = %w[ovitrap_installation ovitrap_collection animal rabies_vaccination leish_collection collar]
     expect([ AddFieldLocations::ITEM_TYPES, AddFieldLocations::REVOKED_REASONS ])
-      .to eq([ FieldSync::Catalog::ITEM_TYPES - %w[ovitrap_installation ovitrap_collection], FieldSync::Catalog::REVOKED_REASONS ])
+      .to eq([ FieldSync::Catalog::ITEM_TYPES - later, FieldSync::Catalog::REVOKED_REASONS ])
     expect(AddFieldLocations::REVOKED_WITH_AUTHOR).to match_array(FieldSync::Catalog::REVOKED_BY_PERSON)
   end
 end

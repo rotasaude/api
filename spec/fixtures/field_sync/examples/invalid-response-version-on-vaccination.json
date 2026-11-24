@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee03-0000-4000-9000-000000000003",
+      "status": "accepted",
+      "type": "rabies_vaccination",
+      "id": "0b1c2d3e-4f5a-4b6c-8d7e-3f4a5b6c7d8e",
+      "version": 1
+    }
+  ]
+}

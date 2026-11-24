@@ -292,12 +292,44 @@
         "active": { "type": "boolean" }
       }
     },
+    "animal": { "type": "object", "additionalProperties": false,
+      "description": "Animal do domicílio (35b §11). Nunca o número do microchip (Q9): só has_microchip. Tutor só { patient_id, display_name }. last_rabies_vaccination_on e collar_due_on são derivados: mudam sem version nova (D10).",
+      "required": ["id", "version", "household_id", "species", "name", "sex", "size", "coat", "breed", "birth_estimate_on", "status", "neutered", "tutor", "community", "last_rabies_vaccination_on", "collar_due_on", "has_microchip"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" }, "version": { "type": "integer", "minimum": 1 },
+        "household_id": { "$ref": "#/$defs/uuid" },
+        "species": { "enum": ["dog", "cat", "other"] },
+        "name": { "type": ["string", "null"], "minLength": 1, "maxLength": 60 },
+        "sex": { "enum": ["male", "female", "unknown"] },
+        "size": { "enum": ["small", "medium", "large", null] },
+        "coat": { "type": ["string", "null"], "minLength": 1, "maxLength": 40 },
+        "breed": { "type": ["string", "null"], "minLength": 1, "maxLength": 60 },
+        "birth_estimate_on": { "$ref": "#/$defs/date_or_null" },
+        "status": { "enum": ["active", "deceased", "missing", "transferred"] },
+        "neutered": { "type": "boolean" },
+        "tutor": { "anyOf": [
+          { "type": "object", "additionalProperties": false, "required": ["patient_id", "display_name"],
+            "properties": { "patient_id": { "$ref": "#/$defs/uuid" }, "display_name": { "type": "string", "minLength": 1 } } },
+          { "type": "null" }] },
+        "community": { "type": "boolean" },
+        "last_rabies_vaccination_on": { "$ref": "#/$defs/date_or_null" },
+        "collar_due_on": { "$ref": "#/$defs/date_or_null" },
+        "has_microchip": { "type": "boolean" } } },
+    "leish_survey": { "type": "object", "additionalProperties": false,
+      "description": "Só inquéritos open com domicílio no escopo do agente (Q21); household_ids = esses domicílios. O fechamento e a saída do escopo vêm por removal out_of_scope (Q21). Sem quarteirão, população, meta nem resultado.",
+      "required": ["id", "version", "name", "kind", "household_ids", "starts_on", "ends_on"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" }, "version": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "kind": { "enum": ["sample", "census", "focus"] },
+        "household_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/uuid" } },
+        "starts_on": { "$ref": "#/$defs/date" }, "ends_on": { "$ref": "#/$defs/date" } } },
     "change_item": {
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "id", "body"],
       "properties": {
-        "type": { "enum": ["micro_area", "household", "registration", "city_block", "ovitrap", "liraa_item", "transmission_block"] },
+        "type": { "enum": ["micro_area", "household", "registration", "city_block", "ovitrap", "liraa_item", "transmission_block", "animal", "leish_survey"] },
         "id": { "$ref": "#/$defs/uuid" },
         "version": { "type": "integer", "minimum": 1 },
         "body": { "type": "object" }
@@ -316,16 +348,20 @@
         { "if": { "required": ["type"], "properties": { "type": { "const": "liraa_item" } } },
           "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/liraa_item" } } } },
         { "if": { "required": ["type"], "properties": { "type": { "const": "transmission_block" } } },
-          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/transmission_block" } } } }
+          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/transmission_block" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "animal" } } },
+          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/animal" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "leish_survey" } } },
+          "then": { "required": ["version"], "properties": { "body": { "$ref": "#/$defs/leish_survey" } } } }
       ]
     },
     "removal": {
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "id", "reason"],
-      "description": "No 24b só moved tem produtor (field_sync_tombstones). erased e out_of_scope ficam no enum mas são reservados no v1 (Q9): o api não os emite ainda, e o app já os trata (apaga o item).",
+      "description": "No 24b só moved tem produtor (field_sync_tombstones). erased e out_of_scope ficam no enum mas são reservados no v1 (Q9): o api não os emite ainda, e o app já os trata (apaga o item). animal e leish_survey (35b): sempre out_of_scope; o animal sai quando deixa o escopo ou o estado active, e o inquérito quando fecha ou deixa o escopo (Q21).",
       "properties": {
-        "type": { "enum": ["household", "registration"] },
+        "type": { "enum": ["household", "registration", "animal", "leish_survey"] },
         "id": { "$ref": "#/$defs/uuid" },
         "reason": { "enum": ["moved", "erased", "out_of_scope"] }
       }

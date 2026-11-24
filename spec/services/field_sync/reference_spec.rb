@@ -158,4 +158,60 @@ RSpec.describe FieldSync::Reference, type: :model do
       expect(keys.last).to eq("#{keys.first}/vector_control")
     end
   end
+
+  # Módulo 35b, Task 17 (contrato §11; Q10, Q11, Q20): zoonoses_domains só com
+  # Zoonoses::Gate.field_usable?, a parte do §11 do Zoonoses::Json.domains (o
+  # corpo de GET /zoonoses/domains); o gate entra no reference_version e na
+  # chave do cache; abrir a campanha muda o reference_version.
+  describe "zoonoses_domains (v1.4.0)" do
+    def zoonoses!(enabled)
+      Platform::Features.set!(city: Current.city, key: Zoonoses::Gate::KEY, enabled: enabled, maintainer: ledi_maintainer!)
+      CityCatalog.reset_cache!
+    end
+
+    def section_keys
+      JSON.parse(File.read(FieldSync::Schemas::DIR.join("reference-response-v1.json"))).dig("$defs", "zoonoses_domains", "properties").keys
+    end
+
+    it "só com field_usable?, igual à parte do §11 do Zoonoses::Json.domains; abrir campanha muda o reference_version" do
+      zoonoses_product!(code: "RAB")
+      zoonoses_product!(use: "collar", code: "COL")
+      vector_product!(code: "PYR")
+      off = build
+      expect(off).not_to have_key("zoonoses_domains")
+
+      zoonoses!(true)
+      on = build
+      expect(FieldSync::Schemas.errors("reference-response-v1", on)).to eq([])
+      expect(on.fetch("zoonoses_domains")).to eq(JSON.parse(Zoonoses::Json.domains.slice(*section_keys.map(&:to_sym)).to_json))
+      expect(on.fetch("zoonoses_domains").keys).to eq(section_keys)
+      expect(on.dig("zoonoses_domains", "products").map { _1["code"] }).to eq(%w[COL RAB])
+      expect(on.dig("zoonoses_domains", "open_campaign")).to be_nil
+      expect(on).not_to have_key("vector_control_domains")
+      expect(on["reference_version"]).not_to eq(off["reference_version"])
+      expect(described_class.version(user: acs, city: Current.city)).to eq(on["reference_version"])
+
+      campaign = RabiesCampaign.create!(name: "Campanha 2026", year: Time.zone.today.year, starts_on: Time.zone.today,
+                                        ends_on: Time.zone.today + 30, stage: "open")
+      opened = build
+      expect(FieldSync::Schemas.errors("reference-response-v1", opened)).to eq([])
+      expect(opened.dig("zoonoses_domains", "open_campaign")).to eq("id" => campaign.id, "name" => "Campanha 2026",
+                                                                    "starts_on" => Time.zone.today.iso8601,
+                                                                    "ends_on" => (Time.zone.today + 30).iso8601)
+      expect(opened["reference_version"]).not_to eq(on["reference_version"])
+
+      Platform::Features.set!(city: Current.city, key: HomeVisits::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+      CityCatalog.reset_cache!
+      expect(build).not_to have_key("zoonoses_domains")
+    end
+
+    it "a chave do cache leva o estado do gate" do
+      keys = []
+      allow(Rails.cache).to receive(:fetch) { |cache_key, **_options, &block| keys << cache_key && block.call }
+      described_class.version(user: acs, city: Current.city)
+      zoonoses!(true)
+      described_class.version(user: acs, city: Current.city)
+      expect(keys.last).to eq("#{keys.first}/zoonoses")
+    end
+  end
 end

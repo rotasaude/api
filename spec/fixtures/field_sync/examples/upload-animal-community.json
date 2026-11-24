@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee12-0000-4000-9000-000000000012",
+      "type": "animal",
+      "body": {
+        "household_id": "9e0f1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "species": "dog",
+        "sex": "unknown",
+        "community": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee15-0000-4000-9000-000000000015",
+      "type": "collar",
+      "body": {
+        "vector_product_id": "f2a3b4c5-d6e7-4f8a-9b0c-2d3e4f5a6b7c",
+        "placed_on": "2026-11-21"
+      }
+    }
+  ]
+}

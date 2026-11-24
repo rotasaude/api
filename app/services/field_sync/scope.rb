@@ -11,7 +11,9 @@
 # encerrada, ACS trocado, microárea desativada) → o digest muda → reset.
 # Módulo 35a (W-14, Q6): com `vector_control:` utilizável, o texto do digest
 # ganha ",vector_control"; ligar ou desligar o interruptor chega ao aparelho
-# como reset: true (as linhas antigas do 35a vêm na carga nova).
+# como reset: true (as linhas antigas do 35a vêm na carga nova). Módulo 35b
+# (§11; plano, Review Focus 5): com `zoonoses:` (Zoonoses::Gate.field_usable?),
+# o texto ganha ",zoonoses" depois; desligado, o digest é o da v1.3.0.
 module FieldSync
   module Scope
     FIELD_KINDS = [ HomeVisits::Access::SCOPE_KINDS.fetch(:acs), HomeVisits::Access::SCOPE_KINDS.fetch(:field) ].freeze
@@ -19,15 +21,16 @@ module FieldSync
     module_function
 
     VECTOR_MARK = ",vector_control".freeze
+    ZOONOSES_MARK = ",zoonoses".freeze
 
     # -> { micro_area_ids: [uuid ordenados], digest: "<64 hex>" }
-    def for(user, vector_control: false)
+    def for(user, vector_control: false, zoonoses: false)
       ids = teams(user).flat_map do |team|
         scope = HomeVisits::Access.scope(user, team)
         FIELD_KINDS.include?(scope[:kind]) ? scope[:micro_area_ids] : []
       end
       ids = ids.empty? ? [] : MicroArea.where(id: ids, active: true).pluck(:id).sort
-      { micro_area_ids: ids, digest: Digest::SHA256.hexdigest("#{ids.join(',')}#{VECTOR_MARK if vector_control}") }
+      { micro_area_ids: ids, digest: Digest::SHA256.hexdigest("#{ids.join(',')}#{VECTOR_MARK if vector_control}#{ZOONOSES_MARK if zoonoses}") }
     end
 
     def teams(user)

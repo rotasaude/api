@@ -1,0 +1,120 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee40-0000-4000-9000-000000000040",
+      "status": "rejected",
+      "type": "animal",
+      "error": "microchip_taken",
+      "path": "microchip"
+    },
+    {
+      "client_uuid": "c0ffee41-0000-4000-9000-000000000041",
+      "status": "rejected",
+      "type": "animal",
+      "error": "registry_number_taken",
+      "path": "registry_number"
+    },
+    {
+      "client_uuid": "c0ffee42-0000-4000-9000-000000000042",
+      "status": "rejected",
+      "type": "animal",
+      "error": "animal_not_active",
+      "path": "animal_id"
+    },
+    {
+      "client_uuid": "c0ffee43-0000-4000-9000-000000000043",
+      "status": "rejected",
+      "type": "animal",
+      "error": "cbo_not_allowed"
+    },
+    {
+      "client_uuid": "c0ffee44-0000-4000-9000-000000000044",
+      "status": "rejected",
+      "type": "animal",
+      "error": "out_of_scope",
+      "path": "household_id"
+    },
+    {
+      "client_uuid": "c0ffee45-0000-4000-9000-000000000045",
+      "status": "rejected",
+      "type": "animal",
+      "error": "tutor_not_found",
+      "path": "tutor_client_uuid"
+    },
+    {
+      "client_uuid": "c0ffee46-0000-4000-9000-000000000046",
+      "status": "rejected",
+      "type": "rabies_vaccination",
+      "error": "already_vaccinated_in_campaign",
+      "path": "animal_id"
+    },
+    {
+      "client_uuid": "c0ffee47-0000-4000-9000-000000000047",
+      "status": "rejected",
+      "type": "rabies_vaccination",
+      "error": "campaign_not_open",
+      "path": "campaign_id"
+    },
+    {
+      "client_uuid": "c0ffee48-0000-4000-9000-000000000048",
+      "status": "rejected",
+      "type": "rabies_vaccination",
+      "error": "product_not_allowed",
+      "path": "vector_product_id"
+    },
+    {
+      "client_uuid": "c0ffee49-0000-4000-9000-000000000049",
+      "status": "rejected",
+      "type": "rabies_vaccination",
+      "error": "date_out_of_range",
+      "path": "vaccinated_on"
+    },
+    {
+      "client_uuid": "c0ffee50-0000-4000-9000-000000000050",
+      "status": "rejected",
+      "type": "leish_collection",
+      "error": "survey_not_open",
+      "path": "leish_survey_id"
+    },
+    {
+      "client_uuid": "c0ffee51-0000-4000-9000-000000000051",
+      "status": "rejected",
+      "type": "leish_collection",
+      "error": "household_not_in_survey",
+      "path": "leish_survey_id"
+    },
+    {
+      "client_uuid": "c0ffee52-0000-4000-9000-000000000052",
+      "status": "rejected",
+      "type": "leish_collection",
+      "error": "animal_not_dog",
+      "path": "animal_id"
+    },
+    {
+      "client_uuid": "c0ffee53-0000-4000-9000-000000000053",
+      "status": "rejected",
+      "type": "leish_collection",
+      "error": "cbo_not_allowed"
+    },
+    {
+      "client_uuid": "c0ffee54-0000-4000-9000-000000000054",
+      "status": "rejected",
+      "type": "leish_collection",
+      "error": "not_found",
+      "path": "animal_client_uuid"
+    },
+    {
+      "client_uuid": "c0ffee55-0000-4000-9000-000000000055",
+      "status": "rejected",
+      "type": "collar",
+      "error": "animal_not_dog",
+      "path": "animal_client_uuid"
+    },
+    {
+      "client_uuid": "c0ffee56-0000-4000-9000-000000000056",
+      "status": "rejected",
+      "type": "collar",
+      "error": "feature_disabled"
+    }
+  ]
+}

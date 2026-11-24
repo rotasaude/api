@@ -88,8 +88,9 @@ RSpec.describe "Esquema da vigilância do módulo 35a", type: :model do
              AddVectorSurveillance::DISEASE_GROUPS, AddVectorSurveillance::CASE_ADDED_BY ])
       .to eq([ Ovitrap::STATUSES, Ovitrap::ORIGINS, VectorTask::STATES, LiraaSurvey::STATUSES, LiraaDrawItem::STATUSES,
                TransmissionBlock::DISEASE_GROUPS, TransmissionBlockCase::ADDED_BY ])
-    expect(AddVectorSurveillance::ITEM_TYPES).to eq(FieldSync::Catalog::ITEM_TYPES)
-    expect(FieldSync::Catalog::ITEM_TYPES.last(2)).to eq(%w[ovitrap_installation ovitrap_collection])
+    # A 20261123900003 (módulo 35b, §11) acrescenta os quatro itens de zoonoses no fim.
+    expect(AddVectorSurveillance::ITEM_TYPES).to eq(FieldSync::Catalog::ITEM_TYPES - %w[animal rabies_vaccination leish_collection collar])
+    expect(AddVectorSurveillance::ITEM_TYPES.last(2)).to eq(%w[ovitrap_installation ovitrap_collection])
     expect { AddVectorSurveillance.new.down }.to raise_error(ActiveRecord::IrreversibleMigration)
   end
 

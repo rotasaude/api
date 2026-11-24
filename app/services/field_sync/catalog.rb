@@ -8,9 +8,10 @@ module FieldSync
     QR_PREFIX = "rotasaude-field:v1:".freeze
     MAX_ACTIVE_DEVICES = 3
     DEVICE_NAME = (1..60)
-    # Módulo 35a (W-4): a instalação e a coleta da ovitrampa, no fim.
+    # Módulo 35a (W-4): a instalação e a coleta da ovitrampa, no fim. Módulo
+    # 35b (§11): o animal, a vacina antirrábica, a coleta de LV e a coleira.
     ITEM_TYPES = %w[home_visit home_visit_withdrawal collective_activity patient household individual_registration family
-                    ovitrap_installation ovitrap_collection].freeze
+                    ovitrap_installation ovitrap_collection animal rabies_vaccination leish_collection collar].freeze
     MAX_ITEMS = 50
     MAX_BODY_BYTES = 2.megabytes
     PAGE_LIMIT = (1..500)
@@ -19,8 +20,11 @@ module FieldSync
     RATE = 120
     LAST_USED_EVERY = 1.minute
     REMOVAL_REASONS = %w[moved erased out_of_scope].freeze
-    TOMBSTONE_ENTITY_TYPES = %w[household registration].freeze
-    TOMBSTONE_REASONS = %w[moved erased].freeze # gravadas; out_of_scope só existe no download
+    # Módulo 35b (Q21): o animal que sai do escopo ou de active e o inquérito
+    # de LV que fecha ou sai do escopo gravam lápide out_of_scope (triggers do
+    # bloco "Módulo 35b — app de campo" do db/city_triggers.sql).
+    TOMBSTONE_ENTITY_TYPES = %w[household registration animal leish_survey].freeze
+    TOMBSTONE_REASONS = %w[moved erased out_of_scope].freeze
     REVOKED_REASONS = %w[user admin replaced membership_ended user_disabled].freeze
     # Módulo 24c (Q17): revogação que o tablet não escolheu (substituição do
     # aparelho, fim de vínculo, usuário desativado) responde device_suspended,

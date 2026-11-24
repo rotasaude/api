@@ -66,6 +66,28 @@
 #     ordem, Q10); `reinstall` é ignorado com `remove: true` (Q7(5));
 #     reinstall false sem remove → rejected invalid_request path reinstall (Q33).
 #
+# Módulo 35b (ADR 0054; contrato §11, §12; Q19, Q20, Q21, Q22, Q29, Q36), só
+# com Zoonoses::Gate.field_usable? (lido aqui, fora da transação; senão
+# `rejected feature_disabled`) e só o ACS ou o ACE (cbo_not_allowed; a coleta,
+# só o ACE):
+#   - animal (Zoonoses::SaveAnimal, origin field): o corpo inteiro (Q20; a
+#     chave opcional ausente vale nula); criação sem animal_id, edição com
+#     animal_id + version (→ expected_version), do animal cujo domicílio atual
+#     o agente alcança (senão out_of_scope; desconhecido → not_found
+#     animal_id); status_on é do api (o dia da gravação). Tutor por
+#     tutor_patient_id ou tutor_client_uuid: o paciente de um `patient` ou de
+#     um `individual_registration` com new_patient aceito antes (Q29; senão
+#     `tutor_not_found` path tutor_client_uuid). accepted com `version`; edição
+#     vencida → stale_version com o <animal> atual (Json.animal_bodies), sem
+#     mescla, e a trilha do tutor mostrado;
+#   - rabies_vaccination (Zoonoses::RecordVaccination, modalidade house),
+#     leish_collection (Zoonoses::RecordLeishTest, origin field; `label` no
+#     accepted e no duplicate, Q21) e collar (Zoonoses::PlaceCollar, origin
+#     field) citam o animal por animal_id ou animal_client_uuid (o livro);
+#     produto sem a finalidade → `product_not_allowed` path vector_product_id
+#     (README v1.4.0). A falta de estoque não é recusa (§3); a segunda dose na
+#     campanha só o api barra (Q19).
+#
 # Nada de nome, CPF, CNS, motivo, medida, observação ou coordenada no resultado
 # de erro, no log ou em evento: só código, path, ids e a forma
 # `candidate`/`current` do 24a.
@@ -78,13 +100,19 @@ module FieldSync
     RESULT_TYPES = { "home_visit" => "HomeVisit", "home_visit_withdrawal" => "HomeVisit",
                      "collective_activity" => "CollectiveActivity", "patient" => "Patient", "household" => "Household",
                      "individual_registration" => "IndividualRegistration", "family" => "Family",
-                     "ovitrap_installation" => "Ovitrap", "ovitrap_collection" => "Ovitrap" }.freeze
+                     "ovitrap_installation" => "Ovitrap", "ovitrap_collection" => "Ovitrap",
+                     "animal" => "Animal", "rabies_vaccination" => "RabiesVaccination", "leish_collection" => "LeishTest",
+                     "collar" => "Collar" }.freeze
     # Q26, Q51: quem cita uma pessoa pode citar o item que a registrou ou o cadastro dela.
     PERSON_ITEMS = %w[patient individual_registration].freeze
     # Citações pelo livro (Q27; family no 24c; ovitrap no 35a): <tipo>_client_uuid
     # → <tipo>_id, pelo recibo de um destes itens.
     CITATIONS = { "patient" => PERSON_ITEMS, "household" => %w[household], "family" => %w[family],
-                  "ovitrap" => %w[ovitrap_installation] }.freeze
+                  "ovitrap" => %w[ovitrap_installation], "animal" => %w[animal] }.freeze
+    # Os itens do 35b com produto (a recusa product_not_allowed).
+    PRODUCT_ITEMS = %w[rabies_vaccination collar].freeze
+    # O corpo inteiro do animal (Q20): ausente = nulo.
+    ANIMAL_OPTIONAL = %w[name size coat breed birth_estimate_month tutor_patient_id].freeze
     LOCATION_POINTER = %r{\A/body/location(/|\z)}
     VECTOR_POINTER = %r{\A/body/vector_inspection(/|\z)}
     # Palavras do esquema que são falha do próprio objeto (Q46): o `required`
@@ -156,7 +184,8 @@ module FieldSync
                   endemic: VectorControl::Access.field_agent_somewhere?(user),
                   collective: CollectiveActivities::Gate.usable?(Current.city),
                   registry: TerritoryRegistry::Gate.usable?(Current.city),
-                  vector: VectorControl::Gate.usable?(Current.city) }
+                  vector: VectorControl::Gate.usable?(Current.city),
+                  zoonoses: Zoonoses::Gate.field_usable?(Current.city) }
       items.map { |item| process(item, context) }
     end
 
@@ -204,7 +233,8 @@ module FieldSync
 
       # A versão daquele recebimento (Q5): nula no recibo anterior à coluna e nos tipos sem versão.
       { status: "duplicate", id: receipt.result_id, version: receipt.result_version, receipt: false,
-        vector_inspection_id: (inspection_id(receipt.result_id) if type == "home_visit") }
+        vector_inspection_id: (inspection_id(receipt.result_id) if type == "home_visit"),
+        label: (LeishTest.where(id: receipt.result_id).pick(:label) if type == "leish_collection") }
     end
 
     def dispatch(type, uuid, body, context, shown)
@@ -218,6 +248,10 @@ module FieldSync
       when "family" then family(body, context)
       when "ovitrap_installation" then ovitrap_installation(uuid, body, context)
       when "ovitrap_collection" then ovitrap_collection(body, context)
+      when "animal" then animal(body, context)
+      when "rabies_vaccination" then rabies_vaccination(uuid, body, context)
+      when "leish_collection" then leish_collection(uuid, body, context)
+      when "collar" then collar(uuid, body, context)
       else raise ArgumentError, "type fora do esquema"
       end
     end
@@ -415,7 +449,120 @@ module FieldSync
       accepted(ovitrap.id)
     end
 
+    # Módulo 35b (§11, Q20, Q29): o animal pelo corpo inteiro. Na edição, o
+    # animal cujo domicílio atual o agente alcança (o stale_version mostra o
+    # tutor só a quem alcança); o SaveAnimal confere o domicílio de antes e o
+    # de depois.
+    def animal(body, context)
+      refusal = zoonoses_refusal(context)
+      return refusal if refusal
+
+      user = context[:user]
+      params, missing = cite(body.except("tutor_client_uuid"), user)
+      return missing if missing
+
+      if body.key?("tutor_client_uuid")
+        tutor_id = cited_patient_id(body["tutor_client_uuid"], user)
+        return rejected("tutor_not_found", "tutor_client_uuid") unless tutor_id
+
+        params["tutor_patient_id"] = tutor_id
+      end
+      ANIMAL_OPTIONAL.each { |key| params[key] = nil unless params.key?(key) }
+
+      existing = nil
+      if params.key?("animal_id")
+        existing = Animal.find_by(id: params["animal_id"])
+        return rejected("not_found", "animal_id") unless existing
+        return rejected("out_of_scope") unless field_household?(existing.household_id, user)
+
+        params["expected_version"] = params.delete("version")
+      end
+      result = Zoonoses::SaveAnimal.call(params: params.except("animal_id", "status_on"), by: user, animal: existing, origin: "field")
+      return stale_animal(existing) if result.failure? && result.reason == :animal_changed
+      return failure(result) if result.failure?
+
+      saved = result.payload[:animal]
+      accepted(saved.id, version: saved.version)
+    end
+
+    def rabies_vaccination(uuid, body, context)
+      refusal = zoonoses_refusal(context)
+      return refusal if refusal
+
+      params, missing = cite(body, context[:user])
+      return missing if missing
+
+      result = Zoonoses::RecordVaccination.call(params: params.merge("modality" => "house", "client_uuid" => uuid), by: context[:user],
+                                                origin: "field", zoonoses_field: context[:zoonoses] == true)
+      return zoonoses_failure("rabies_vaccination", result) if result.failure?
+
+      accepted(result.payload[:vaccination].id)
+    end
+
+    # Só o ACE (a regra fina, ACS no escopo → cbo_not_allowed, é do comando).
+    def leish_collection(uuid, body, context)
+      refusal = zoonoses_refusal(context, collector: true)
+      return refusal if refusal
+
+      params, missing = cite(body, context[:user])
+      return missing if missing
+
+      result = Zoonoses::RecordLeishTest.call(params: params.merge("client_uuid" => uuid), by: context[:user], origin: "field")
+      return failure(result) if result.failure?
+
+      test = result.payload[:test]
+      accepted(test.id, label: test.label)
+    end
+
+    def collar(uuid, body, context)
+      refusal = zoonoses_refusal(context)
+      return refusal if refusal
+
+      params, missing = cite(body, context[:user])
+      return missing if missing
+
+      result = Zoonoses::PlaceCollar.call(params: params.merge("client_uuid" => uuid), by: context[:user], origin: "field",
+                                          zoonoses_field: context[:zoonoses] == true)
+      return zoonoses_failure("collar", result) if result.failure?
+
+      accepted(result.payload[:collar].id)
+    end
+
     # --- apoio -------------------------------------------------------------------
+
+    # Os itens do 35b: o gate de campo e só o ACS ou o ACE (a coleta, só o ACE).
+    def zoonoses_refusal(context, collector: false)
+      return rejected("feature_disabled") unless context[:zoonoses]
+      return nil if context[:endemic]
+      return nil if context[:acs] && !collector
+
+      rejected("cbo_not_allowed")
+    end
+
+    # O produto sem a finalidade do item (ou desconhecido) → product_not_allowed (README v1.4.0).
+    def zoonoses_failure(type, result)
+      if PRODUCT_ITEMS.include?(type) && result.reason == :invalid_request && result.details[:path] == "vector_product_id"
+        return rejected("product_not_allowed", "vector_product_id")
+      end
+
+      failure(result)
+    end
+
+    def field_household?(household_id, user)
+      household = household_id && Household.includes(micro_area: :team).find_by(id: household_id)
+      household.present? && Zoonoses::Access.field_agent?(user, household)
+    end
+
+    # O <animal> atual (Q20, D3), com a trilha do tutor mostrado.
+    def stale_animal(animal)
+      animal.reload
+      current = Json.animal_bodies([ animal ]).fetch(animal.id)
+      { status: "stale_version", id: animal.id, current_version: animal.version, current: current, receipt: false,
+        viewed: (if current[:tutor]
+                   { household_ids: [ animal.household_id ].compact, patient_ids: [ current.dig(:tutor, :patient_id) ] }
+                 end) }
+    end
+
 
     # Os itens de ovitrampa: gate utilizável e só o agente de endemias.
     def vector_refusal(context)
@@ -529,10 +676,12 @@ module FieldSync
       context[:trail].records_viewed!(user: context[:user], **viewed) if viewed
     end
 
-    # `version`: só household, family (a do domicílio) e individual_registration;
-    # `vector_inspection_id`: só home_visit com boletim.
-    def accepted(id, version: nil, replayed: false, vector_inspection_id: nil)
-      { status: replayed ? "duplicate" : "accepted", id: id, version: version, vector_inspection_id: vector_inspection_id, receipt: true }
+    # `version`: só household, family (a do domicílio), individual_registration
+    # e animal; `vector_inspection_id`: só home_visit com boletim; `label`: só
+    # leish_collection.
+    def accepted(id, version: nil, replayed: false, vector_inspection_id: nil, label: nil)
+      { status: replayed ? "duplicate" : "accepted", id: id, version: version, vector_inspection_id: vector_inspection_id, label: label,
+        receipt: true }
     end
 
     # O código e o path do Result; candidates só no duplicate_suspected,
@@ -557,6 +706,7 @@ module FieldSync
         json["id"] = outcome[:id]
         json["version"] = outcome[:version] if outcome[:version]
         json["vector_inspection_id"] = outcome[:vector_inspection_id] if outcome[:vector_inspection_id]
+        json["label"] = outcome[:label] if outcome[:label]
       when "stale_version"
         json.merge!("id" => outcome[:id], "current_version" => outcome[:current_version], "current" => outcome[:current])
       else
@@ -615,7 +765,8 @@ module FieldSync
 
     def invalid_envelope(path) = Result.fail(:invalid_request, details: { path: path })
     private_class_method :process, :lock!, :ledger, :dispatch, :home_visit, :withdrawal, :collective_activity, :patient, :household,
-                         :family, :registration, :ovitrap_installation, :ovitrap_collection, :vector_refusal, :inspection_id, :registry_refusal, :cite, :person_search?, :cited_id, :cited_patient_id, :acs?, :stale_household, :stale_registration,
+                         :family, :registration, :ovitrap_installation, :ovitrap_collection, :animal, :rabies_vaccination,
+                         :leish_collection, :collar, :zoonoses_refusal, :zoonoses_failure, :field_household?, :stale_animal, :vector_refusal, :inspection_id, :registry_refusal, :cite, :person_search?, :cited_id, :cited_patient_id, :acs?, :stale_household, :stale_registration,
                          :registration_duplicate, :already_registered, :trail!, :accepted, :failure, :rejected, :result_json, :invalid_item, :schema_path,
                          :invalid_envelope
   end

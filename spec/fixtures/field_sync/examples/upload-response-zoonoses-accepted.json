@@ -1,0 +1,50 @@
+{
+  "results": [
+    {
+      "client_uuid": "c0ffee02-0000-4000-9000-000000000002",
+      "status": "accepted",
+      "type": "animal",
+      "id": "a7b8c9d0-e1f2-4a3b-8c4d-6e7f8a9b0c1d",
+      "version": 1
+    },
+    {
+      "client_uuid": "c0ffee03-0000-4000-9000-000000000003",
+      "status": "accepted",
+      "type": "rabies_vaccination",
+      "id": "0b1c2d3e-4f5a-4b6c-8d7e-3f4a5b6c7d8e"
+    },
+    {
+      "client_uuid": "c0ffee04-0000-4000-9000-000000000004",
+      "status": "accepted",
+      "type": "leish_collection",
+      "id": "1c2d3e4f-5a6b-4c7d-9e8f-4a5b6c7d8e9f",
+      "label": "LV-2026-F1A2B3-0001"
+    },
+    {
+      "client_uuid": "c0ffee05-0000-4000-9000-000000000005",
+      "status": "accepted",
+      "type": "collar",
+      "id": "2d3e4f5a-6b7c-4d8e-8f9a-5b6c7d8e9f0a"
+    },
+    {
+      "client_uuid": "c0ffee04-0000-4000-9000-000000000004",
+      "status": "duplicate",
+      "type": "leish_collection",
+      "id": "1c2d3e4f-5a6b-4c7d-9e8f-4a5b6c7d8e9f",
+      "label": "LV-2026-F1A2B3-0001"
+    },
+    {
+      "client_uuid": "c0ffee02-0000-4000-9000-000000000002",
+      "status": "duplicate",
+      "type": "animal",
+      "id": "a7b8c9d0-e1f2-4a3b-8c4d-6e7f8a9b0c1d"
+    },
+    {
+      "client_uuid": "c0ffee06-0000-4000-9000-000000000006",
+      "status": "accepted",
+      "type": "leish_collection",
+      "id": "c0ffee60-0000-4000-9000-000000000060",
+      "label": "LV-2026-AVUL-0007"
+    }
+  ]
+}

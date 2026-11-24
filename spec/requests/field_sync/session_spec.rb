@@ -81,6 +81,24 @@ RSpec.describe "App de campo — autenticação e GET /field/v1/session", type: 
     expect(v1_2_0_session_errors(json_body)).not_to be_empty # a v1.2.0 recusa a chave: por isso ela só sai true
   end
 
+  # Módulo 35b, Task 17 (contrato §11; Q10): features.zoonoses =
+  # Zoonoses::Gate.field_usable?, só true (ausente = false), como o
+  # vector_control.
+  it "features.zoonoses acompanha o Zoonoses::Gate.field_usable? (v1.4.0): ausente desligado, true ligado" do
+    session_get
+    expect(json_body.fetch("features")).not_to have_key("zoonoses")
+    Platform::Features.set!(city: city, key: Zoonoses::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    session_get
+    expect(FieldSync::Schemas.errors("session-response-v1", json_body)).to eq([])
+    expect(json_body.dig("features", "zoonoses")).to be(true)
+    expect(json_body.fetch("features")).not_to have_key("vector_control")
+    Platform::Features.set!(city: city, key: HomeVisits::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    expect(FieldSync::Json.session(user: acs, member: HealthTeamMember.active.find_by!(professional: acs.professional), city: city)
+                          .fetch(:features)).not_to have_key(:zoonoses)
+  end
+
   it "last_used_at muda no máximo uma vez por minuto" do
     session_get
     first = device.reload.last_used_at

@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee14-0000-4000-9000-000000000014",
+      "type": "leish_collection",
+      "body": {
+        "leish_survey_id": "f1a2b3c4-d5e6-4f7a-8b8c-0d1e2f3a4b5c",
+        "collected_on": "2026-11-21",
+        "dpp_result": "reactive",
+        "dpp_on": "2026-11-21"
+      }
+    }
+  ]
+}

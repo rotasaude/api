@@ -65,7 +65,8 @@
         "home_visits": { "type": "boolean" },
         "collective_activities": { "type": "boolean" },
         "territory_registry": { "type": "boolean" },
-        "vector_control": { "type": "boolean", "description": "Vigilância ambiental de endemias (35a). Opcional: ausente = false (api anterior ao 35a)." }
+        "vector_control": { "type": "boolean", "description": "Vigilância ambiental de endemias (35a). Opcional: ausente = false (api anterior ao 35a)." },
+        "zoonoses": { "type": "boolean", "description": "Centro de zoonoses (35b): Zoonoses::Gate.field_usable?. Opcional: ausente = false (api anterior ao 35b)." }
       }
     },
     "min_date": { "$ref": "#/$defs/date", "description": "Primeiro dia aceito pelo prazo do SIAPS (§3, C2)." },

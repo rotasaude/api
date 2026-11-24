@@ -53,4 +53,24 @@ RSpec.describe "App de campo — GET /field/v1/reference", type: :request do
     expect(response).to have_http_status(:ok)
     expect(reference).to eq(json_body)
   end
+
+  # Módulo 35b, Task 17 (Q10): o zoonoses_domains da referência é a parte do
+  # §11 do corpo de GET /zoonoses/domains (um serializador só).
+  it "zoonoses_domains só com field_usable? e igual à parte do §11 de GET /zoonoses/domains" do
+    zoonoses_product!(code: "RAB")
+    get "/field/v1/reference", headers: auth
+    expect(json_body).not_to have_key("zoonoses_domains")
+    Platform::Features.set!(city: city, key: Zoonoses::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+
+    get "/field/v1/reference", headers: auth
+    expect(response).to have_http_status(:ok)
+    expect(FieldSync::Schemas.errors("reference-response-v1", json_body)).to eq([])
+    reference = json_body.fetch("zoonoses_domains")
+    sign_in_as(zoonoses_coordinator!)
+    get "/zoonoses/domains"
+    expect(response).to have_http_status(:ok)
+    expect(json_body.slice(*reference.keys)).to eq(reference)
+    expect(reference.keys).to eq(%w[species sexes sizes animal_statuses dpp_results products open_campaign parameters limits])
+  end
 end

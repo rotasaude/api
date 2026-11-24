@@ -39,6 +39,8 @@ module FieldSync
       features = { home_visits: HomeVisits::Gate.usable?(city), collective_activities: CollectiveActivities::Gate.usable?(city),
                    territory_registry: TerritoryRegistry::Gate.usable?(city) }
       features[:vector_control] = true if VectorControl::Gate.usable?(city)
+      # Módulo 35b (§11; Q10): o mesmo molde, com Zoonoses::Gate.field_usable?.
+      features[:zoonoses] = true if Zoonoses::Gate.field_usable?(city)
       { contract: Catalog::CONTRACT, server_time: now.iso8601, user: { id: user.id, name: user.professional.professional_name },
         professional: { id: user.professional.id, cbo: member.cbo_code, has_cns: user.professional.cns.present? },
         teams: field_teams(user).map { |team, role| team_json(user, team, role) },
@@ -89,6 +91,31 @@ module FieldSync
 
     # Os responsáveis das famílias de um <household> (a trilha de quem o mostra).
     def household_responsible_ids(body) = body.fetch(:families).map { |family| family.dig(:responsible, :patient_id) }
+
+    # <animal> do app (módulo 35b, contrato §11; Q9, Q20): a única montagem do
+    # download (FieldSync::Changes) e do `current` do stale_version
+    # (FieldSync::Upload). Nunca o número do microchip (só has_microchip) nem o
+    # registro; o tutor só { patient_id, display_name } (quem mostra grava a
+    # trilha). last_rabies_vaccination_on = a última dose não anulada;
+    # collar_due_on = o vencimento da coleira ATIVA (null sem ela). As duas
+    # mudam sem version nova (o app sobrescreve). -> { animal_id => body }
+    def animal_bodies(animals)
+      return {} if animals.empty?
+
+      ids = animals.map(&:id)
+      last = RabiesVaccination.where(animal_id: ids, cancelled_at: nil).group(:animal_id).maximum(:vaccinated_on)
+      due = Collar.active.where(animal_id: ids).pluck(:animal_id, :due_on).to_h
+      tutors = Patient.where(id: animals.filter_map(&:tutor_patient_id)).index_by(&:id)
+      animals.to_h do |animal|
+        tutor = tutors[animal.tutor_patient_id]
+        [ animal.id, { id: animal.id, version: animal.version, household_id: animal.household_id, species: animal.species, name: animal.name,
+                       sex: animal.sex, size: animal.size, coat: animal.coat, breed: animal.breed,
+                       birth_estimate_on: animal.birth_estimate_on&.iso8601, status: animal.status, neutered: animal.neutered,
+                       tutor: tutor && { patient_id: tutor.id, display_name: tutor.display_name }, community: animal.community,
+                       last_rabies_vaccination_on: last[animal.id]&.iso8601, collar_due_on: due[animal.id]&.iso8601,
+                       has_microchip: !animal.microchip.nil? } ]
+      end
+    end
 
     # A guarda da Q41 (HomeVisits::People): no_cpf_reason é cifrado, então o
     # fluxo do download corta só por `unidentified` (indexado) e esta

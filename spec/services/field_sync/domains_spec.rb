@@ -178,6 +178,65 @@ RSpec.describe "FieldSync domains-v1.json × api (Ruling A5)" do
     end
   end
 
+  # Módulo 35b, Task 17 (contrato §11, §12; Q20, Q29, Q36): a seção zoonoses
+  # do domains-v1.json é a do config/zoonoses/domains.yml (rótulos, códigos e
+  # ORDEM), dos limites do Zoonoses::Json.domains e das constantes do
+  # Zoonoses::Catalog; os dez códigos novos estão em errors.item, e todo código
+  # que os comandos chamados pelo app recusam também.
+  describe "centro de zoonoses (zoonoses, v1.4.0)" do
+    let(:zoonoses) { domains.fetch("zoonoses") }
+    let(:labels) { YAML.load_file(Rails.root.join("config/zoonoses/domains.yml")) }
+
+    it "as listas: rótulos, códigos e ordem do domains.yml e do Catalog" do
+      lists = %w[species sexes sizes animal_statuses dpp_results leish_survey_kinds product_uses]
+      expect(zoonoses.keys).to match_array(lists + %w[limits rules])
+      expect(zoonoses.slice(*lists)).to eq(labels.slice(*lists).transform_values { |rows| rows.map { _1.transform_values(&:to_s) } })
+      expect(zoonoses.slice(*lists).transform_values { |rows| rows.map { _1["code"] } }).to eq(
+        "species" => Zoonoses::Catalog::SPECIES, "sexes" => Zoonoses::Catalog::SEXES, "sizes" => Zoonoses::Catalog::SIZES,
+        "animal_statuses" => Zoonoses::Catalog::ANIMAL_STATUSES, "dpp_results" => Zoonoses::Catalog::DPP_RESULTS,
+        "leish_survey_kinds" => Zoonoses::Catalog::SURVEY_KINDS, "product_uses" => Zoonoses::Catalog::PRODUCT_USES
+      )
+    end
+
+    it "limits = os do Zoonoses::Json.domains (Catalog) e as regras do §11/§12" do
+      expect(zoonoses.fetch("limits")).to eq(Zoonoses::Json.domains.fetch(:limits).stringify_keys)
+      expect(zoonoses.dig("limits", "microchip_digits")).to eq(15)
+      expect("9" * 15).to match(Zoonoses::Catalog::MICROCHIP)
+      rules = zoonoses.fetch("rules")
+      expect(rules.fetch("registrar_cbos")).to eq(Zoonoses::Catalog::FIELD_CBOS)
+      expect(rules.fetch("leish_collection_cbos")).to eq([ TerritoryRegistry::Catalog::ENDEMIC_AGENT_CBO ])
+      expect(rules.fetch("dog_only")).to match_array(%w[leish_collection collar])
+      expect(rules.fetch("vaccination_modality")).to eq("house")
+      expect(Zoonoses::Catalog::MODALITIES).to include("house")
+      expect(rules.fetch("collar_due_window_days")).to eq(Zoonoses::Catalog::COLLAR_DUE_WINDOW)
+      expect(rules.fetch("adverse_note_requires_event")).to be(true)
+      expect(rules.fetch("microchip_on_create_only")).to eq(Zoonoses::SaveAnimal::CREATE_ONLY.include?("microchip"))
+      expect(rules.fetch("stock_shortfall_rejects")).to be(false)
+      label = JSON.parse(File.read(FieldSync::Schemas::DIR.join("upload-response-v1.json"))).dig("$defs", "result", "properties", "label", "pattern")
+      expect(label).to eq(Zoonoses::Catalog::LABEL.source.sub('\\A', "^").sub('\\z', "$").gsub('\\d', "[0-9]"))
+      expect(FieldSync::Catalog::ITEM_TYPES.last(4)).to eq(%w[animal rabies_vaccination leish_collection collar])
+      expect(FieldSync::Upload::RESULT_TYPES.values_at(*FieldSync::Catalog::ITEM_TYPES.last(4))).to eq(%w[Animal RabiesVaccination LeishTest Collar])
+    end
+
+    it "errors.item tem os dez códigos novos e todo código que os comandos chamados pelo app recusam" do
+      novos = %w[microchip_taken registry_number_taken already_vaccinated_in_campaign campaign_not_open survey_not_open animal_not_dog
+                 animal_not_active date_out_of_range household_not_in_survey tutor_not_found]
+      expect(novos.size).to eq(10)
+      expect(novos - domains.dig("errors", "item")).to eq([])
+      files = %w[app/commands/zoonoses/save_animal.rb app/commands/zoonoses/record_vaccination.rb app/commands/zoonoses/record_leish_test.rb
+                 app/commands/zoonoses/place_collar.rb]
+      codes = files.flat_map do |file|
+        source = File.read(Rails.root.join(file), encoding: "utf-8")
+        source.scan(/\bfail\(\s*:([a-z_]+)/m).flatten + source.scan(/\? :([a-z_]+) : :([a-z_]+)/).flatten + source.scan(/\[ :([a-z_]+_taken),/).flatten
+      end.uniq
+      expect(codes).to include("microchip_taken", "registry_number_taken", "cbo_not_allowed", "household_not_in_survey")
+      # Só do dashboard (o app nunca chega nelas): o papel, a correção do
+      # teste, o ELISA e a versão esperada; animal_changed vira stale_version.
+      dashboard_only = %w[missing_role expected_version_required test_changed elisa_without_reactive_dpp animal_changed]
+      expect(codes - dashboard_only - domains.dig("errors", "item")).to eq([])
+    end
+  end
+
   it "pessoa: sexo e justificativa sem CPF do 24a" do
     expect(domains.dig("patient", "sexo").map { |row| row["code"] }).to match_array(TerritoryRegistry::Catalog::SEX_TO_LEDI.keys)
     expect(domains.dig("patient", "justificativa_nao_possui_cpf", "codes")).to eq(TerritoryRegistry::Catalog::NO_CPF_REASONS)

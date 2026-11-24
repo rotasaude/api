@@ -5007,3 +5007,95 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 35b — app de campo (ADR 0054; plano, Task 17; contrato §11, Q21): as
+-- lápides `out_of_scope` do download (field_sync_tombstones), uma por
+-- microárea afetada, com o relógio da gravação (clock_timestamp, como o
+-- created_at que o Rails grava; o fluxo do FieldSync::Changes corta em
+-- agora − 2 s). Generosas de propósito: o fluxo tira a lápide de quem
+-- continua no escopo do aparelho (o animal active de domicílio do escopo; o
+-- inquérito open com domicílio ativo do escopo nos quarteirões), então basta
+-- gravar sempre que algo PODE ter saído:
+--   - animal active com domicílio que deixa active ou muda de domicílio → a
+--     microárea do domicílio de antes;
+--   - domicílio que muda de microárea → os animais active dele e os
+--     inquéritos open do quarteirão do perfil, na microárea de antes; que fica
+--     inativo → os inquéritos, na microárea dele;
+--   - perfil do imóvel que muda de quarteirão (ou some) → os inquéritos open
+--     do quarteirão de antes, na microárea do domicílio;
+--   - inquérito que deixa open → cada microárea com domicílio ativo com
+--     perfil nos quarteirões dele.
+-- Só ids: nunca dado do cidadão. Cada trigger só nasce com as tabelas criadas.
+CREATE OR REPLACE FUNCTION rota_field_tombstone_animal() RETURNS trigger AS $fn$
+BEGIN
+  IF OLD.status = 'active' AND OLD.household_id IS NOT NULL
+     AND (NEW.status <> 'active' OR NEW.household_id IS DISTINCT FROM OLD.household_id) THEN
+    INSERT INTO field_sync_tombstones (entity_type, entity_id, micro_area_id, reason, created_at)
+    SELECT 'animal', OLD.id, h.micro_area_id, 'out_of_scope', clock_timestamp() FROM households h WHERE h.id = OLD.household_id;
+  END IF;
+  RETURN NULL;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_field_tombstone_household() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.micro_area_id IS DISTINCT FROM OLD.micro_area_id THEN
+    INSERT INTO field_sync_tombstones (entity_type, entity_id, micro_area_id, reason, created_at)
+    SELECT 'animal', a.id, OLD.micro_area_id, 'out_of_scope', clock_timestamp()
+      FROM animals a WHERE a.household_id = OLD.id AND a.status = 'active';
+  END IF;
+  IF NEW.micro_area_id IS DISTINCT FROM OLD.micro_area_id OR (OLD.status = 'active' AND NEW.status <> 'active') THEN
+    INSERT INTO field_sync_tombstones (entity_type, entity_id, micro_area_id, reason, created_at)
+    SELECT 'leish_survey', s.id, OLD.micro_area_id, 'out_of_scope', clock_timestamp()
+      FROM household_vector_profiles p JOIN leish_surveys s ON s.stage = 'open' AND p.city_block_id = ANY(s.city_block_ids)
+     WHERE p.household_id = OLD.id;
+  END IF;
+  RETURN NULL;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_field_tombstone_profile() RETURNS trigger AS $fn$
+BEGIN
+  IF OLD.city_block_id IS NOT NULL AND (TG_OP = 'DELETE' OR NEW.city_block_id IS DISTINCT FROM OLD.city_block_id) THEN
+    INSERT INTO field_sync_tombstones (entity_type, entity_id, micro_area_id, reason, created_at)
+    SELECT 'leish_survey', s.id, h.micro_area_id, 'out_of_scope', clock_timestamp()
+      FROM households h JOIN leish_surveys s ON s.stage = 'open' AND OLD.city_block_id = ANY(s.city_block_ids)
+     WHERE h.id = OLD.household_id;
+  END IF;
+  RETURN NULL;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_field_tombstone_leish_survey() RETURNS trigger AS $fn$
+BEGIN
+  IF OLD.stage = 'open' AND NEW.stage <> 'open' THEN
+    INSERT INTO field_sync_tombstones (entity_type, entity_id, micro_area_id, reason, created_at)
+    SELECT 'leish_survey', NEW.id, areas.micro_area_id, 'out_of_scope', clock_timestamp()
+      FROM (SELECT DISTINCT h.micro_area_id FROM household_vector_profiles p JOIN households h ON h.id = p.household_id
+             WHERE p.city_block_id = ANY(NEW.city_block_ids) AND h.status = 'active') areas;
+  END IF;
+  RETURN NULL;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.animals') IS NOT NULL AND to_regclass('public.field_sync_tombstones') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS animals_field_tombstone ON animals';
+    EXECUTE 'CREATE TRIGGER animals_field_tombstone AFTER UPDATE OF status, household_id ON animals
+      FOR EACH ROW EXECUTE FUNCTION rota_field_tombstone_animal()';
+  END IF;
+  IF to_regclass('public.leish_surveys') IS NOT NULL AND to_regclass('public.household_vector_profiles') IS NOT NULL
+     AND to_regclass('public.animals') IS NOT NULL AND to_regclass('public.field_sync_tombstones') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS households_field_tombstone ON households';
+    EXECUTE 'CREATE TRIGGER households_field_tombstone AFTER UPDATE OF micro_area_id, status ON households
+      FOR EACH ROW EXECUTE FUNCTION rota_field_tombstone_household()';
+    EXECUTE 'DROP TRIGGER IF EXISTS household_vector_profiles_field_tombstone ON household_vector_profiles';
+    EXECUTE 'CREATE TRIGGER household_vector_profiles_field_tombstone AFTER UPDATE OF city_block_id OR DELETE ON household_vector_profiles
+      FOR EACH ROW EXECUTE FUNCTION rota_field_tombstone_profile()';
+    EXECUTE 'DROP TRIGGER IF EXISTS leish_surveys_field_tombstone ON leish_surveys';
+    EXECUTE 'CREATE TRIGGER leish_surveys_field_tombstone AFTER UPDATE OF stage ON leish_surveys
+      FOR EACH ROW EXECUTE FUNCTION rota_field_tombstone_leish_survey()';
+  END IF;
+END
+$do$;

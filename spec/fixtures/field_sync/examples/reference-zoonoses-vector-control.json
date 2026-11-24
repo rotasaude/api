@@ -1,0 +1,465 @@
+{
+  "reference_version": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+  "registration_dictionaries": {
+    "version": "8.7.0",
+    "domains": {
+      "renda_familiar": [
+        {
+          "code": 3,
+          "label": "1/2 a 1 salário mínimo"
+        }
+      ],
+      "abastecimento_de_agua": [
+        {
+          "code": 117,
+          "label": "Rede encanada até o domicílio"
+        },
+        {
+          "code": 214,
+          "label": "Poço/nascente no domicílio"
+        },
+        {
+          "code": 118,
+          "label": "Cisterna"
+        }
+      ]
+    },
+    "sections": {
+      "living_conditions": []
+    }
+  },
+  "string_domains": {
+    "uf": [
+      {
+        "code": "41",
+        "label": "PARANÁ"
+      }
+    ],
+    "tipo_logradouro": [
+      {
+        "code": "081",
+        "label": "RUA"
+      }
+    ]
+  },
+  "neighborhoods": [
+    {
+      "id": "c0ffee40-0000-4000-8000-000000000040",
+      "name": "Vila Nova"
+    }
+  ],
+  "health_units": [
+    {
+      "id": "6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b",
+      "cnes": "2384299",
+      "name": "UBS Vila Nova"
+    },
+    {
+      "id": "c0ffee41-0000-4000-8000-000000000041",
+      "cnes": null,
+      "name": "Ponto de apoio Jardim Esperança"
+    }
+  ],
+  "team_professionals": [
+    {
+      "team_id": "3f1c2a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+      "professional_id": "5d6e7f8a-9b0c-4d1e-9f2a-3b4c5d6e7f8a",
+      "name": "Carla Mendes",
+      "cbo": "515105",
+      "has_cns": true
+    }
+  ],
+  "home_visit_domains": {
+    "motivo_visita": [],
+    "desfecho": [],
+    "turno": [],
+    "tipo_glicemia": [],
+    "tipo_de_imovel": [],
+    "non_residential_property_types": [],
+    "non_residential_reasons": [],
+    "male_forbidden_reasons": [],
+    "without_person_allowed_reasons": [],
+    "responsible_document_reasons": [],
+    "reasons_max": 36,
+    "measurement_ranges": {}
+  },
+  "collective_activity_domains": {
+    "activity_types": [],
+    "meeting_topics": [],
+    "target_audience": [],
+    "health_topics": [],
+    "health_practices": [],
+    "procedures": [],
+    "rules": {
+      "list_max": {
+        "meeting_topics": 7,
+        "target_audience": 17,
+        "health_topics": 16,
+        "health_practices": 14
+      },
+      "by_type": {
+        "1": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "forbidden",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "2": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "forbidden",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "3": {
+          "meeting_topics": "required",
+          "target_audience": "forbidden",
+          "health_topics": "forbidden",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "4": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        },
+        "5": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "optional",
+          "participants": "required"
+        },
+        "6": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "optional",
+          "health_practices": "required",
+          "participants": "required"
+        },
+        "7": {
+          "meeting_topics": "forbidden",
+          "target_audience": "required",
+          "health_topics": "required",
+          "health_practices": "forbidden",
+          "participants": "optional"
+        }
+      },
+      "health_topics_with_meeting_topic": [
+        6
+      ],
+      "practices_only_in_type": [
+        {
+          "type": 6,
+          "practices": [
+            2,
+            9,
+            33
+          ]
+        }
+      ],
+      "procedure_practices": [
+        30
+      ],
+      "smoking_practices": [
+        25,
+        26,
+        27,
+        28
+      ],
+      "participant_measurements": {
+        "weight_kg": {
+          "min": 0.5,
+          "max": 500,
+          "decimals": 3
+        },
+        "height_cm": {
+          "min": 20,
+          "max": 250,
+          "decimals": 1
+        }
+      }
+    }
+  },
+  "vector_control_domains": {
+    "activities": [
+      {
+        "code": "li",
+        "label": "LI — Levantamento de índice"
+      },
+      {
+        "code": "li_t",
+        "label": "LI+T — Levantamento de índice e tratamento"
+      },
+      {
+        "code": "pe",
+        "label": "PE — Ponto estratégico"
+      },
+      {
+        "code": "ie",
+        "label": "IE — Imóvel especial"
+      },
+      {
+        "code": "transmission_block",
+        "label": "Bloqueio de transmissão"
+      },
+      {
+        "code": "liraa",
+        "label": "LIRAa"
+      }
+    ],
+    "work_types": [
+      {
+        "code": "routine",
+        "label": "Rotina"
+      },
+      {
+        "code": "pending",
+        "label": "Recuperação de pendência"
+      }
+    ],
+    "situations": [
+      {
+        "code": "worked",
+        "label": "Trabalhado"
+      },
+      {
+        "code": "closed",
+        "label": "Fechado"
+      },
+      {
+        "code": "refused",
+        "label": "Recusado"
+      },
+      {
+        "code": "vacant",
+        "label": "Desocupado"
+      }
+    ],
+    "deposit_groups": [
+      {
+        "code": "A1",
+        "label": "A1 — Depósito de água elevado"
+      },
+      {
+        "code": "A2",
+        "label": "A2 — Depósito de armazenamento ao nível do solo"
+      },
+      {
+        "code": "B",
+        "label": "B — Depósito móvel"
+      },
+      {
+        "code": "C",
+        "label": "C — Depósito fixo"
+      },
+      {
+        "code": "D1",
+        "label": "D1 — Pneu e outro material rodante"
+      },
+      {
+        "code": "D2",
+        "label": "D2 — Lixo, sucata e entulho"
+      },
+      {
+        "code": "E",
+        "label": "E — Depósito natural"
+      }
+    ],
+    "measure_methods": [
+      {
+        "code": "mechanical",
+        "label": "Mecânico (eliminação)"
+      },
+      {
+        "code": "focal",
+        "label": "Focal (larvicida)"
+      },
+      {
+        "code": "perifocal",
+        "label": "Perifocal (adulticida residual)"
+      },
+      {
+        "code": "spatial",
+        "label": "Espacial (UBV)"
+      }
+    ],
+    "risk_classes": [
+      {
+        "code": "green",
+        "label": "Verde (baixo)"
+      },
+      {
+        "code": "yellow",
+        "label": "Amarelo (médio)"
+      },
+      {
+        "code": "red",
+        "label": "Vermelho (alto)"
+      },
+      {
+        "code": "gray",
+        "label": "Cinza (difícil acesso, com agendamento)"
+      },
+      {
+        "code": "purple",
+        "label": "Roxo (difícil acesso, exige intervenção legal ou VISA)"
+      }
+    ],
+    "products": [
+      {
+        "id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        "code": "SPN",
+        "name": "Espinosade 7,48% DT (larvicida)",
+        "unit": "un",
+        "charge_size": "1.00",
+        "uses": [
+          "focal"
+        ]
+      },
+      {
+        "id": "1b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e",
+        "code": "CDM",
+        "name": "Clotianidina + deltametrina PM (adulticida residual)",
+        "unit": "g",
+        "charge_size": "12.50",
+        "uses": [
+          "perifocal"
+        ]
+      }
+    ],
+    "cadences": [
+      {
+        "neighborhood_id": null,
+        "risk_class": null,
+        "strategic_point": true,
+        "days": 15
+      },
+      {
+        "neighborhood_id": "c0ffee40-0000-4000-8000-000000000040",
+        "risk_class": "red",
+        "strategic_point": false,
+        "days": 30
+      }
+    ],
+    "parameters": {
+      "default_days": 60,
+      "strategic_point_days": 15,
+      "ovitrap_collection_days_min": 3,
+      "ovitrap_collection_days_max": 10
+    },
+    "limits": {
+      "deposit_count_max": 999,
+      "charges_max": 999,
+      "samples_max": 99,
+      "larvae_collected_max": 10,
+      "measures_max": 20
+    }
+  },
+  "zoonoses_domains": {
+    "species": [
+      {
+        "code": "dog",
+        "label": "Cão"
+      },
+      {
+        "code": "cat",
+        "label": "Gato"
+      },
+      {
+        "code": "other",
+        "label": "Outro"
+      }
+    ],
+    "sexes": [
+      {
+        "code": "male",
+        "label": "Macho"
+      },
+      {
+        "code": "female",
+        "label": "Fêmea"
+      },
+      {
+        "code": "unknown",
+        "label": "Não informado"
+      }
+    ],
+    "sizes": [
+      {
+        "code": "small",
+        "label": "Pequeno"
+      },
+      {
+        "code": "medium",
+        "label": "Médio"
+      },
+      {
+        "code": "large",
+        "label": "Grande"
+      }
+    ],
+    "animal_statuses": [
+      {
+        "code": "active",
+        "label": "Ativo"
+      },
+      {
+        "code": "deceased",
+        "label": "Óbito"
+      },
+      {
+        "code": "missing",
+        "label": "Desaparecido"
+      },
+      {
+        "code": "transferred",
+        "label": "Transferido"
+      }
+    ],
+    "dpp_results": [
+      {
+        "code": "reactive",
+        "label": "Reagente"
+      },
+      {
+        "code": "non_reactive",
+        "label": "Não reagente"
+      },
+      {
+        "code": "invalid",
+        "label": "Inválido"
+      }
+    ],
+    "products": [
+      {
+        "id": "e1f2a3b4-c5d6-4e7f-8a9b-1c2d3e4f5a6b",
+        "code": "VAR",
+        "name": "Vacina antirrábica animal",
+        "use": "rabies_vaccine"
+      },
+      {
+        "id": "f2a3b4c5-d6e7-4f8a-9b0c-2d3e4f5a6b7c",
+        "code": "CDT4",
+        "name": "Coleira deltametrina 4%",
+        "use": "collar"
+      }
+    ],
+    "open_campaign": null,
+    "parameters": {
+      "collar_months": 6
+    },
+    "limits": {
+      "name_max": 60,
+      "coat_max": 40,
+      "breed_max": 60,
+      "microchip_digits": 15,
+      "registry_number_max": 20,
+      "adverse_note_min": 10,
+      "adverse_note_max": 500
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee11-0000-4000-9000-000000000011",
+      "type": "animal",
+      "body": {
+        "animal_id": "b8c9d0e1-f2a3-4b4c-9d5e-7f8a9b0c1d2e",
+        "version": 2,
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "species": "cat",
+        "sex": "male",
+        "name": "Frajola",
+        "community": false,
+        "status": "missing",
+        "status_on": "2026-11-20"
+      }
+    }
+  ]
+}

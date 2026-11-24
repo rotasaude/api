@@ -42,6 +42,14 @@
         {
           "file": "invalid-session-vector-control-string.json",
           "expect": "/features/vector_control boolean"
+        },
+        {
+          "file": "session-zoonoses-agent.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-session-zoonoses-string.json",
+          "expect": "/features/zoonoses boolean"
         }
       ]
     },
@@ -367,6 +375,170 @@
         {
           "file": "invalid-ovitrap-collection-egg-count.json",
           "expect": "/items/0/body/egg_count schema"
+        },
+        {
+          "file": "upload-animal-new.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-animal-update.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-animal-community.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-zoonoses-same-batch.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-rabies-vaccination.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-leish-collection.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-leish-collection-off-survey.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-collar.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-animal-without-species.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-animal-without-sex.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-animal-without-community.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-rabies-vaccination-without-campaign-id.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-rabies-vaccination-without-vaccinated-on.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-rabies-vaccination-without-vector-product-id.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-rabies-vaccination-without-adverse-event.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-leish-collection-without-collected-on.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-collar-without-vector-product-id.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-collar-without-placed-on.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-animal-neutered-in-body.json",
+          "expect": "/items/0/body/neutered schema"
+        },
+        {
+          "file": "invalid-rabies-vaccination-modality-in-body.json",
+          "expect": "/items/0/body/modality schema"
+        },
+        {
+          "file": "invalid-leish-collection-label-in-body.json",
+          "expect": "/items/0/body/label schema"
+        },
+        {
+          "file": "invalid-collar-due-on-in-body.json",
+          "expect": "/items/0/body/due_on schema"
+        },
+        {
+          "file": "invalid-animal-two-households.json",
+          "expect": "/items/0/body oneOf"
+        },
+        {
+          "file": "invalid-animal-without-household.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-animal-two-tutors.json",
+          "expect": "/items/0/body not"
+        },
+        {
+          "file": "invalid-animal-community-with-tutor.json",
+          "expect": "/items/0/body/tutor_patient_id schema"
+        },
+        {
+          "file": "invalid-animal-microchip-on-update.json",
+          "expect": "/items/0/body/microchip schema"
+        },
+        {
+          "file": "invalid-animal-microchip-14-digits.json",
+          "expect": "/items/0/body/microchip pattern"
+        },
+        {
+          "file": "invalid-animal-status-on-create.json",
+          "expect": "/items/0/body/status schema"
+        },
+        {
+          "file": "invalid-animal-version-without-id.json",
+          "expect": "/items/0/body/version dependentRequired"
+        },
+        {
+          "file": "invalid-animal-birth-month-13.json",
+          "expect": "/items/0/body/birth_estimate_month pattern"
+        },
+        {
+          "file": "invalid-animal-name-61-chars.json",
+          "expect": "/items/0/body/name maxLength"
+        },
+        {
+          "file": "invalid-rabies-vaccination-two-animals.json",
+          "expect": "/items/0/body oneOf"
+        },
+        {
+          "file": "invalid-rabies-vaccination-without-animal.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-rabies-vaccination-note-short.json",
+          "expect": "/items/0/body/adverse_note minLength"
+        },
+        {
+          "file": "invalid-rabies-vaccination-note-without-event.json",
+          "expect": "/items/0/body/adverse_note schema"
+        },
+        {
+          "file": "invalid-leish-collection-without-animal.json",
+          "expect": "/items/0/body required"
+        },
+        {
+          "file": "invalid-leish-collection-dpp-without-date.json",
+          "expect": "/items/0/body/dpp_result dependentRequired"
+        },
+        {
+          "file": "invalid-leish-collection-dpp-inconclusive.json",
+          "expect": "/items/0/body/dpp_result enum"
+        },
+        {
+          "file": "invalid-collar-two-animals.json",
+          "expect": "/items/0/body oneOf"
+        },
+        {
+          "file": "invalid-collar-without-animal.json",
+          "expect": "/items/0/body required"
         }
       ]
     },
@@ -536,6 +708,54 @@
         {
           "file": "invalid-response-ovitrap-id.json",
           "expect": "/results/0/ovitrap_id schema"
+        },
+        {
+          "file": "upload-response-zoonoses-accepted.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-zoonoses-rejected.json",
+          "expect": "valid"
+        },
+        {
+          "file": "upload-response-leish-label-five-digits.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-response-leish-collection-without-label.json",
+          "expect": "/results/0 required"
+        },
+        {
+          "file": "invalid-response-label-on-collar.json",
+          "expect": "/results/0/label schema"
+        },
+        {
+          "file": "invalid-response-label-lowercase-hex.json",
+          "expect": "/results/0/label pattern"
+        },
+        {
+          "file": "invalid-response-label-seven-digits.json",
+          "expect": "/results/0/label pattern"
+        },
+        {
+          "file": "invalid-response-animal-accepted-without-version.json",
+          "expect": "/results/0 required"
+        },
+        {
+          "file": "invalid-response-version-on-vaccination.json",
+          "expect": "/results/0/version schema"
+        },
+        {
+          "file": "upload-response-stale-animal.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-response-stale-animal-with-microchip.json",
+          "expect": "/results/0/current/microchip schema"
+        },
+        {
+          "file": "invalid-response-stale-vaccination.json",
+          "expect": "/results/0/type enum"
         }
       ]
     },
@@ -645,6 +865,150 @@
         {
           "file": "invalid-changes-household-vector-risk-blue.json",
           "expect": "/items/0/body/vector/risk_class enum"
+        },
+        {
+          "file": "changes-zoonoses-page.json",
+          "expect": "valid"
+        },
+        {
+          "file": "changes-zoonoses-removals.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-changes-animal-with-microchip.json",
+          "expect": "/items/1/body/microchip schema"
+        },
+        {
+          "file": "invalid-changes-animal-tutor-with-cpf.json",
+          "expect": "/items/1/body/tutor/cpf schema"
+        },
+        {
+          "file": "invalid-changes-leish-survey-with-target-dogs.json",
+          "expect": "/items/3/body/target_dogs schema"
+        },
+        {
+          "file": "invalid-changes-animal-species-bird.json",
+          "expect": "/items/1/body/species enum"
+        },
+        {
+          "file": "invalid-changes-animal-without-item-version.json",
+          "expect": "/items/1 required"
+        },
+        {
+          "file": "invalid-changes-leish-survey-without-item-version.json",
+          "expect": "/items/3 required"
+        },
+        {
+          "file": "invalid-changes-leish-survey-no-households.json",
+          "expect": "/items/3/body/household_ids minItems"
+        },
+        {
+          "file": "invalid-changes-removal-animal-deceased.json",
+          "expect": "/removals/0/reason enum"
+        },
+        {
+          "file": "invalid-changes-animal-without-id.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-version.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-household-id.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-species.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-name.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-sex.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-size.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-coat.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-breed.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-birth-estimate-on.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-status.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-neutered.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-tutor.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-community.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-last-rabies-vaccination-on.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-collar-due-on.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-without-has-microchip.json",
+          "expect": "/items/1/body required"
+        },
+        {
+          "file": "invalid-changes-animal-tutor-without-patient-id.json",
+          "expect": "/items/1/body/tutor required"
+        },
+        {
+          "file": "invalid-changes-animal-tutor-without-display-name.json",
+          "expect": "/items/1/body/tutor required"
+        },
+        {
+          "file": "invalid-changes-leish-survey-without-id.json",
+          "expect": "/items/3/body required"
+        },
+        {
+          "file": "invalid-changes-leish-survey-without-version.json",
+          "expect": "/items/3/body required"
+        },
+        {
+          "file": "invalid-changes-leish-survey-without-name.json",
+          "expect": "/items/3/body required"
+        },
+        {
+          "file": "invalid-changes-leish-survey-without-kind.json",
+          "expect": "/items/3/body required"
+        },
+        {
+          "file": "invalid-changes-leish-survey-without-household-ids.json",
+          "expect": "/items/3/body required"
+        },
+        {
+          "file": "invalid-changes-leish-survey-without-starts-on.json",
+          "expect": "/items/3/body required"
+        },
+        {
+          "file": "invalid-changes-leish-survey-without-ends-on.json",
+          "expect": "/items/3/body required"
         }
       ]
     },
@@ -694,6 +1058,38 @@
         {
           "file": "invalid-reference-product-without-uses.json",
           "expect": "/vector_control_domains/products/0/uses minItems"
+        },
+        {
+          "file": "reference-zoonoses.json",
+          "expect": "valid"
+        },
+        {
+          "file": "reference-zoonoses-vector-control.json",
+          "expect": "valid"
+        },
+        {
+          "file": "invalid-reference-zoonoses-without-open-campaign.json",
+          "expect": "/zoonoses_domains required"
+        },
+        {
+          "file": "invalid-reference-zoonoses-product-use-focal.json",
+          "expect": "/zoonoses_domains/products/0/use enum"
+        },
+        {
+          "file": "invalid-reference-zoonoses-collar-months-13.json",
+          "expect": "/zoonoses_domains/parameters/collar_months maximum"
+        },
+        {
+          "file": "invalid-reference-zoonoses-campaign-with-goal.json",
+          "expect": "/zoonoses_domains/open_campaign/goal_dogs schema"
+        },
+        {
+          "file": "invalid-reference-zoonoses-species-empty.json",
+          "expect": "/zoonoses_domains/species minItems"
+        },
+        {
+          "file": "invalid-reference-vector-product-use-collar.json",
+          "expect": "/vector_control_domains/products/0/uses/0 enum"
         }
       ]
     }

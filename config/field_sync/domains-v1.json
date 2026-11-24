@@ -1,6 +1,6 @@
 {
   "schema": "rotasaude.field_sync.domains.v1",
-  "description": "Domínios e regras cruzadas da visita (contrato do 24b §3 e §10) e da atividade coletiva (§4 e §11), em dado, para o app de campo montar os formulários sem copiar regra à mão. Códigos LEDI inteiros (IDL 8.7.0); os do 24a em texto. Rótulos e ordem do dicionário oficial (Q39). Controle vetorial do 35a (vector_control: listas com rótulos, limites e regras do §3 e do §6). Quem decide é o api: isto é o espelho. proof registra o commit do api com a prova técnica e o acréscimo do contrato (§10–§11) contra os quais os domínios foram conferidos.",
+  "description": "Domínios e regras cruzadas da visita (contrato do 24b §3 e §10) e da atividade coletiva (§4 e §11), em dado, para o app de campo montar os formulários sem copiar regra à mão. Códigos LEDI inteiros (IDL 8.7.0); os do 24a em texto. Rótulos e ordem do dicionário oficial (Q39). Controle vetorial do 35a (vector_control: listas com rótulos, limites e regras do §3 e do §6). Zoonoses do 35b (zoonoses: listas com rótulos, limites e regras do §3, §6, §11 e §12; os dez códigos de errors.item do animal, da vacina antirrábica e da coleta de leishmaniose). Quem decide é o api: isto é o espelho. proof registra o commit do api com a prova técnica e o acréscimo do contrato (§10–§11) contra os quais os domínios foram conferidos.",
   "proof": { "api_commit": "fcf23c87", "date": "2026-11-12", "contract": "docs 714578a §10–§11" },
   "home_visit": {
     "turno": [{ "code": 1, "label": "Manhã" }, { "code": 2, "label": "Tarde" }, { "code": 3, "label": "Noite" }],
@@ -463,7 +463,17 @@
       "collection_out_of_range",
       "reading_not_open",
       "ovitrap_not_active",
-      "sample_label_taken"
+      "sample_label_taken",
+      "microchip_taken",
+      "registry_number_taken",
+      "already_vaccinated_in_campaign",
+      "campaign_not_open",
+      "survey_not_open",
+      "animal_not_dog",
+      "animal_not_active",
+      "date_out_of_range",
+      "household_not_in_survey",
+      "tutor_not_found"
     ]
   },
   "location": {
@@ -560,6 +570,56 @@
       "sample_label_collision": "sample_label_taken",
       "ovitrap_collection_reinstall_default": true,
       "ovitrap_remove_ignores_reinstall": true
+    }
+  },
+  "zoonoses": {
+    "species": [
+      { "code": "dog", "label": "Cão" },
+      { "code": "cat", "label": "Gato" },
+      { "code": "other", "label": "Outro" }
+    ],
+    "sexes": [
+      { "code": "male", "label": "Macho" },
+      { "code": "female", "label": "Fêmea" },
+      { "code": "unknown", "label": "Não informado" }
+    ],
+    "sizes": [
+      { "code": "small", "label": "Pequeno" },
+      { "code": "medium", "label": "Médio" },
+      { "code": "large", "label": "Grande" }
+    ],
+    "animal_statuses": [
+      { "code": "active", "label": "Ativo" },
+      { "code": "deceased", "label": "Óbito" },
+      { "code": "missing", "label": "Desaparecido" },
+      { "code": "transferred", "label": "Transferido" }
+    ],
+    "dpp_results": [
+      { "code": "reactive", "label": "Reagente" },
+      { "code": "non_reactive", "label": "Não reagente" },
+      { "code": "invalid", "label": "Inválido" }
+    ],
+    "leish_survey_kinds": [
+      { "code": "sample", "label": "Amostral" },
+      { "code": "census", "label": "Censitário" },
+      { "code": "focus", "label": "Foco" }
+    ],
+    "product_uses": [
+      { "code": "rabies_vaccine", "label": "Vacina antirrábica animal" },
+      { "code": "collar", "label": "Coleira inseticida" }
+    ],
+    "limits": { "name_max": 60, "coat_max": 40, "breed_max": 60, "microchip_digits": 15, "registry_number_max": 20,
+                "adverse_note_min": 10, "adverse_note_max": 500 },
+    "rules": {
+      "registrar_cbos": ["515140", "515105"],
+      "leish_collection_cbos": ["515140"],
+      "dog_only": ["leish_collection", "collar"],
+      "vaccination_modality": "house",
+      "collar_due_window_days": 15,
+      "adverse_note_requires_event": true,
+      "leish_label": "LV-<ano>-<6 primeiros hex do id do inquérito, maiúsculos>-<seq de 4 a 6 dígitos, com zeros à esquerda>; fora de inquérito, LV-<ano>-AVUL-<seq de 4 a 6 dígitos, com zeros à esquerda>",
+      "microchip_on_create_only": true,
+      "stock_shortfall_rejects": false
     }
   }
 }

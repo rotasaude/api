@@ -6,18 +6,20 @@
 # `#/$defs/item`, Task 20). Os erros saem só com ponteiro e palavra-chave do
 # esquema, nunca com o valor (o corpo traz pessoa, motivo e medida).
 #
-# Os SHA são os da tag field-sync-v1.3.0 do rotasaude/contracts (módulo 35a,
-# ADR 0054; §13), conferidos na tag publicada em 2026-11-18 (contracts c022e80).
+# Os SHA são os da v1.4.0 do rotasaude/contracts (módulo 35b, ADR 0054; §11),
+# no commit 15379c1, ainda sem tag; a Task 20 prende os da tag
+# field-sync-v1.4.0. A v1.3.0 (tag de 2026-11-18, contracts c022e80) segue
+# aceita: nada do pedido dela passou a ser recusado.
 module FieldSync
   module Schemas
     DIR = Rails.root.join("config/field_sync")
     SHA256 = {
-      "session-response-v1" => "ab8b9778841b8c1dea6215b794c2e85b6a0fb6093a74dccd6e12fd5d617d8c74",
-      "upload-request-v1" => "5fa0c171be285754c9a1e237eafdbc61b467edd6af9f026efb2552f8b96024e3",
-      "upload-response-v1" => "ae211029fda7662b29658f6e94df1cba5c01275db2e98ecc870ebfc50f2337aa",
-      "changes-response-v1" => "980a9992ebb549094260a1d02d3daea237ce0e0e1b63d892391600832d66c40b",
-      "reference-response-v1" => "d2db3e6ebe806210d15f872ee2012db2db7902acaee25ee25bf028b33d26890e",
-      "domains-v1" => "d8b92593e29c72c36c96b64ade69d9e8f8663456bc7f5328cf4c20a9263d6038"
+      "session-response-v1" => "0ecca17934764f012c92f8a2d2f2092a77174867402b4e92c24879a48343e6b9",
+      "upload-request-v1" => "1e22ad13bfe061e1aba5b7874d849a451426269974ce99efee5d0ea1319945e9",
+      "upload-response-v1" => "04d30d759f88d1caafcb6a5ef37f3af2cc75695ef721e5a306d541e5967565a3",
+      "changes-response-v1" => "5154ae0f90b4537fb02a38b1a8d7853991874516dd1dd25834fae29feb36796b",
+      "reference-response-v1" => "13e3eb16e2606b8085751e8c930660145732df49a5cef5dba6a28291a1edc29a",
+      "domains-v1" => "4346776b7aaee1e8cbfece2228a3fe93a38891533525ccf4f85d2d91a58f7e1b"
     }.freeze
 
     class Tampered < StandardError; end

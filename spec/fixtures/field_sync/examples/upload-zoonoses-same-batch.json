@@ -1,0 +1,65 @@
+{
+  "items": [
+    {
+      "client_uuid": "c0ffee01-0000-4000-9000-000000000001",
+      "type": "patient",
+      "body": {
+        "new_patient": {
+          "full_name": "Benedita Aparecida Rocha",
+          "birth_date": "1948-05-02",
+          "sex": "female",
+          "mother_name": "Maria José Rocha",
+          "no_cpf_reason": "2",
+          "cns": "702000000000001"
+        }
+      }
+    },
+    {
+      "client_uuid": "c0ffee02-0000-4000-9000-000000000002",
+      "type": "animal",
+      "body": {
+        "household_id": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+        "species": "dog",
+        "sex": "female",
+        "size": "medium",
+        "name": "Pipoca",
+        "coat": "Caramelo",
+        "breed": "SRD",
+        "birth_estimate_month": "2022-03",
+        "community": false,
+        "tutor_client_uuid": "c0ffee01-0000-4000-9000-000000000001"
+      }
+    },
+    {
+      "client_uuid": "c0ffee03-0000-4000-9000-000000000003",
+      "type": "rabies_vaccination",
+      "body": {
+        "campaign_id": "d0e1f2a3-b4c5-4d6e-9f7a-9b0c1d2e3f4a",
+        "vaccinated_on": "2026-11-21",
+        "vector_product_id": "e1f2a3b4-c5d6-4e7f-8a9b-1c2d3e4f5a6b",
+        "adverse_event": false,
+        "animal_client_uuid": "c0ffee02-0000-4000-9000-000000000002"
+      }
+    },
+    {
+      "client_uuid": "c0ffee04-0000-4000-9000-000000000004",
+      "type": "leish_collection",
+      "body": {
+        "leish_survey_id": "f1a2b3c4-d5e6-4f7a-8b8c-0d1e2f3a4b5c",
+        "collected_on": "2026-11-21",
+        "dpp_result": "reactive",
+        "dpp_on": "2026-11-21",
+        "animal_client_uuid": "c0ffee02-0000-4000-9000-000000000002"
+      }
+    },
+    {
+      "client_uuid": "c0ffee05-0000-4000-9000-000000000005",
+      "type": "collar",
+      "body": {
+        "vector_product_id": "f2a3b4c5-d6e7-4f8a-9b0c-2d3e4f5a6b7c",
+        "placed_on": "2026-11-21",
+        "animal_client_uuid": "c0ffee02-0000-4000-9000-000000000002"
+      }
+    }
+  ]
+}

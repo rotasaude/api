@@ -7,7 +7,8 @@
 # A coleira não tem versão: "sai uma vez" (trigger) decide. Coleira já
 # retirada, ou trocada entretanto → 409 collar_changed. Ordem de trava: o
 # animal da coleira FOR UPDATE → a coleira FOR UPDATE (a da AnimalDeath e da
-# PlaceCollar). `collar.removed` só com o id.
+# PlaceCollar). `collar.removed` só com o id. O animal active é tocado
+# (updated_at, sem version) para o download do app reemiti-lo (Task 17).
 module Zoonoses
   module RemoveCollar
     EVENT = "collar.removed".freeze
@@ -27,12 +28,15 @@ module Zoonoses
       return Result.fail(:date_out_of_range, details: { path: "removed_on" }) if on > today
 
       Collar.transaction(requires_new: true) do
-        Animal.lock.find_by(id: collar.animal_id)
+        animal = Animal.lock.find_by(id: collar.animal_id)
         locked = Collar.lock.find_by(id: collar.id)
         next Result.fail(:collar_changed) if locked.nil? || locked.removed?
         next invalid("removed_on") if on < locked.placed_on
 
         locked.update!(removed_on: on, removal_reason: reason)
+        # A coleira não tem updated_at: tocar o animal (sem version nova) o
+        # reemite no download do app com collar_due_on nulo (Task 17, Q20).
+        animal.touch if animal&.status == "active"
         DomainEvents.publish(EVENT, collar_id: locked.id)
         Result.ok(collar: locked)
       end

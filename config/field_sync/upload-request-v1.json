@@ -52,7 +52,7 @@
       "required": ["client_uuid", "type", "body"],
       "properties": {
         "client_uuid": { "$ref": "#/$defs/uuid", "description": "Gerado pelo app, um por item; chave de idempotência (field_sync_receipts). Só itens aceitos vão ao livro." },
-        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "family", "individual_registration", "ovitrap_installation", "ovitrap_collection"] },
+        "type": { "enum": ["home_visit", "home_visit_withdrawal", "collective_activity", "patient", "household", "family", "individual_registration", "ovitrap_installation", "ovitrap_collection", "animal", "rabies_vaccination", "leish_collection", "collar"] },
         "body": { "type": "object" }
       },
       "allOf": [
@@ -64,7 +64,11 @@
         { "if": { "required": ["type"], "properties": { "type": { "const": "family" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/family_body" } } } },
         { "if": { "required": ["type"], "properties": { "type": { "const": "individual_registration" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/individual_registration_body" } } } },
         { "if": { "required": ["type"], "properties": { "type": { "const": "ovitrap_installation" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/ovitrap_installation_body" } } } },
-        { "if": { "required": ["type"], "properties": { "type": { "const": "ovitrap_collection" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/ovitrap_collection_body" } } } }
+        { "if": { "required": ["type"], "properties": { "type": { "const": "ovitrap_collection" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/ovitrap_collection_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "animal" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/animal_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "rabies_vaccination" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/rabies_vaccination_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "leish_collection" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/leish_collection_body" } } } },
+        { "if": { "required": ["type"], "properties": { "type": { "const": "collar" } } }, "then": { "properties": { "body": { "$ref": "#/$defs/collar_body" } } } }
       ]
     },
     "home_visit_body": {
@@ -407,6 +411,89 @@
         "remove": { "type": "boolean", "description": "Padrão false; true → status removed (com condition lost → lost); com remove true, reinstall é ignorado (CV-9)." }
       },
       "oneOf": [{ "required": ["ovitrap_id"] }, { "required": ["ovitrap_client_uuid"] }]
+    },
+    "animal_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "corpo inteiro na criação e na edição (D4): ausente = vazio, salvo microchip e registry_number, que só vão na criação (Q9); household_client_uuid cita um item household aceito antes; tutor opcional também com domicílio (tutor não identificado, Q22), proibido com community true; tutor_client_uuid cita um item patient ou um individual_registration com new_patient do mesmo lote (Q29); status/status_on só na edição, e o animal que deixa active sai do download (D6); neutered nunca vem (§7)",
+      "required": ["species", "sex", "community"],
+      "properties": {
+        "animal_id": { "$ref": "#/$defs/uuid" },
+        "version": { "type": "integer", "minimum": 1 },
+        "household_id": { "$ref": "#/$defs/uuid" },
+        "household_client_uuid": { "$ref": "#/$defs/uuid" },
+        "species": { "enum": ["dog", "cat", "other"] },
+        "sex": { "enum": ["male", "female", "unknown"] },
+        "size": { "enum": ["small", "medium", "large"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "coat": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "breed": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "birth_estimate_month": { "type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$" },
+        "tutor_patient_id": { "$ref": "#/$defs/uuid" },
+        "tutor_client_uuid": { "$ref": "#/$defs/uuid" },
+        "community": { "type": "boolean" },
+        "microchip": { "type": "string", "pattern": "^[0-9]{15}$" },
+        "registry_number": { "type": "string", "minLength": 1, "maxLength": 20 },
+        "status": { "enum": ["active", "deceased", "missing", "transferred"] },
+        "status_on": { "$ref": "#/$defs/date" }
+      },
+      "dependentRequired": { "animal_id": ["version"], "version": ["animal_id"], "status": ["status_on"], "status_on": ["status"] },
+      "oneOf": [{ "required": ["household_id"] }, { "required": ["household_client_uuid"] }],
+      "allOf": [
+        { "not": { "required": ["tutor_patient_id", "tutor_client_uuid"] } },
+        { "if": { "required": ["community"], "properties": { "community": { "const": true } } },
+          "then": { "properties": { "tutor_patient_id": false, "tutor_client_uuid": false } } },
+        { "if": { "required": ["animal_id"] },
+          "then": { "properties": { "microchip": false, "registry_number": false } },
+          "else": { "properties": { "status": false, "status_on": false } } }
+      ]
+    },
+    "rabies_vaccination_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "modalidade sempre house (§11); adverse_note só com adverse_event true (Q20); falta de estoque não é recusa (§3); a segunda dose na campanha só o api barra (Q19)",
+      "required": ["campaign_id", "vaccinated_on", "vector_product_id", "adverse_event"],
+      "properties": {
+        "animal_id": { "$ref": "#/$defs/uuid" },
+        "animal_client_uuid": { "$ref": "#/$defs/uuid", "description": "cita um item animal aceito antes, no mesmo lote ou em outro (resolve pelo livro de idempotência; falta → not_found)" },
+        "campaign_id": { "$ref": "#/$defs/uuid" },
+        "vaccinated_on": { "$ref": "#/$defs/date" },
+        "vector_product_id": { "$ref": "#/$defs/uuid" },
+        "adverse_event": { "type": "boolean" },
+        "adverse_note": { "type": "string", "minLength": 10, "maxLength": 500 }
+      },
+      "oneOf": [{ "required": ["animal_id"] }, { "required": ["animal_client_uuid"] }],
+      "if": { "required": ["adverse_event"], "properties": { "adverse_event": { "const": false } } },
+      "then": { "properties": { "adverse_note": false } }
+    },
+    "leish_collection_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "etiqueta dada pelo api no resultado (label, D2); sem leish_survey_id = avulsa",
+      "required": ["collected_on"],
+      "properties": {
+        "leish_survey_id": { "$ref": "#/$defs/uuid" },
+        "animal_id": { "$ref": "#/$defs/uuid" },
+        "animal_client_uuid": { "$ref": "#/$defs/uuid", "description": "cita um item animal aceito antes, no mesmo lote ou em outro (resolve pelo livro de idempotência; falta → not_found)" },
+        "collected_on": { "$ref": "#/$defs/date" },
+        "dpp_result": { "enum": ["reactive", "non_reactive", "invalid"] },
+        "dpp_on": { "$ref": "#/$defs/date" }
+      },
+      "dependentRequired": { "dpp_result": ["dpp_on"], "dpp_on": ["dpp_result"] },
+      "oneOf": [{ "required": ["animal_id"] }, { "required": ["animal_client_uuid"] }]
+    },
+    "collar_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "due_on é do api (placed_on + collar_months)",
+      "required": ["vector_product_id", "placed_on"],
+      "properties": {
+        "animal_id": { "$ref": "#/$defs/uuid" },
+        "animal_client_uuid": { "$ref": "#/$defs/uuid", "description": "cita um item animal aceito antes, no mesmo lote ou em outro (resolve pelo livro de idempotência; falta → not_found)" },
+        "vector_product_id": { "$ref": "#/$defs/uuid" },
+        "placed_on": { "$ref": "#/$defs/date" }
+      },
+      "oneOf": [{ "required": ["animal_id"] }, { "required": ["animal_client_uuid"] }]
     }
   }
 }

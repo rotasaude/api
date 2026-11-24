@@ -6,10 +6,13 @@ require "json_schemer"
 # do app (contracts v1.4.0) mais as listas do domains.yml para o dashboard.
 # Para reader? e o agente de campo; com o gate desligado → 403 feature_disabled.
 RSpec.describe "Zoonoses — domínios", type: :request do
-  # O esquema é o do contracts v1.4.0, em cópia verbatim (a presa em
-  # config/field_sync/ vem na Task 20, que então aposenta esta).
-  let(:contracts) { Rails.root.join("spec/fixtures/field_sync_v1_4_0") }
-  let(:reference_keys) { %w[species sexes sizes animal_statuses dpp_results products open_campaign parameters limits] }
+  # O esquema é a cópia do contracts v1.4.0 presa em config/field_sync/
+  # (FieldSync::Schemas::SHA256, Task 17); as chaves da referência saem do
+  # próprio $defs/zoonoses_domains.
+  let(:contracts) { Rails.root.join("config/field_sync") }
+  let(:reference_keys) do
+    JSON.parse(File.binread(contracts.join("reference-response-v1.json"))).dig("$defs", "zoonoses_domains", "properties").keys
+  end
   let!(:city) { zoonoses_city! }
   let(:coordinator) { zoonoses_coordinator! }
   let(:labels) { YAML.load_file(Rails.root.join("config/zoonoses/domains.yml")) }
