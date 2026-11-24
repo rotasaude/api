@@ -57,14 +57,14 @@ RSpec.describe "Zoonoses — vacinação", type: :request do
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
   end
 
-  it "casa a casa pelo dashboard: gate de campo desligado → 403 feature_disabled; ligado → 201 com o domicílio do animal" do
+  it "casa a casa pelo dashboard: gate de campo desligado → 403 feature_disabled com feature home_visits; ligado → 201 com o domicílio do animal" do
     household = registry_household!
     animal = animal!(household: household)
     Platform::Features.set!(city: city, key: HomeVisits::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
     CityCatalog.reset_cache!
     expect(Zoonoses::Gate.usable?(city)).to be(true)
     vaccinate(body(modality: "house", species: :omit, animal_id: animal.id))
-    expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled" } ])
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "home_visits" } ])
 
     Platform::Features.set!(city: city, key: HomeVisits::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
     CityCatalog.reset_cache!

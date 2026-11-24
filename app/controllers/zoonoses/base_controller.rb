@@ -36,13 +36,16 @@ module Zoonoses
 
     private
 
+    # feature_disabled de um pré-requisito lido pelo comando (o gate de campo)
+    # leva o `feature`, como o require_zoonoses!.
     def render_failure(result)
-      render_refusal(result.reason, path: result.details[:path])
+      render_refusal(result.reason, path: result.details[:path], feature: result.details[:feature])
     end
 
-    def render_refusal(error, path: nil)
+    def render_refusal(error, path: nil, feature: nil)
       payload = { error: error.to_s }
       payload[:path] = path if path
+      payload[:feature] = feature if feature
       render json: payload, status: FAILURE_STATUS.fetch(error.to_sym, :unprocessable_entity)
     end
 

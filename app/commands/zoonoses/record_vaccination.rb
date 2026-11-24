@@ -10,7 +10,8 @@
 #     "field", Task 17), só `house` e o agente no escopo do domicílio do
 #     animal (Access.field_agent?, senão out_of_scope).
 #   - house: o gate de campo (`zoonoses_field:`, Gate.field_usable? lido FORA
-#     da transação, senão feature_disabled), campanha open, animal com
+#     da transação, senão feature_disabled com feature home_visits: o
+#     zoonoses já abriu a rota), campanha open, animal com
 #     domicílio (o da dose; sem domicílio → path animal_id).
 #   - fixed_post: campanha open; animal opcional — sem animal, `species`
 #     (dog | cat) obrigatória (Q4: nunca nome de tutor digitado).
@@ -60,7 +61,8 @@ module Zoonoses
       params = params.to_h.stringify_keys
       attrs = parse(params, origin)
       return attrs if attrs.is_a?(Result)
-      return Result.fail(:feature_disabled) if attrs[:modality] == "house" && !zoonoses_field
+      # O zoonoses já é utilizável (a rota abriu): o que falta ao gate de campo é a visita domiciliar.
+      return Result.fail(:feature_disabled, details: { feature: HomeVisits::Gate::KEY }) if attrs[:modality] == "house" && !zoonoses_field
 
       record(attrs, by, origin, today)
     rescue ActiveRecord::RecordNotUnique => e

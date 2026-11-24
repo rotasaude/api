@@ -57,7 +57,7 @@ RSpec.describe Zoonoses::RecordVaccination, type: :model do
   it "casa a casa com gate de campo desligado → feature_disabled; ligado, pelo app no escopo → ok com o domicílio do animal" do
     household = registry_household!
     animal = animal!(household: household)
-    expect(refusal(record(modality: "house", animal_id: animal.id, zoonoses_field: false))).to eq([ :feature_disabled, {} ])
+    expect(refusal(record(modality: "house", animal_id: animal.id, zoonoses_field: false))).to eq([ :feature_disabled, { feature: "home_visits" } ])
 
     agent = registry_acs_of(household)
     result = record(by: agent, origin: "field", modality: "house", animal_id: animal.id, client_uuid: SecureRandom.uuid)
