@@ -59,3 +59,16 @@ RSpec.describe "filter_parameters da saúde bucal" do
                            "dental_consultation_type" => "[FILTERED]", "procedure_id" => "9", "outcome_id" => "8")
   end
 end
+
+# ADR 0054 (módulo 35b; contrato §16): o tutor e o adotante do animal vão só
+# pelo id do paciente, que nunca cai no "Parameters:" do log. Ancorado: o id
+# do animal, da estada e o patient_id de outros módulos passam.
+RSpec.describe "filter_parameters do centro de zoonoses" do
+  it "tutor_patient_id e adopter_patient_id viram [FILTERED]; chave parecida passa" do
+    filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+    filtered = filter.filter("tutor_patient_id" => "t", "adopter_patient_id" => "a", "animal_id" => "x", "shelter_stay_id" => "y",
+                             "tutor_patient_ids" => "z")
+    expect(filtered).to eq("tutor_patient_id" => "[FILTERED]", "adopter_patient_id" => "[FILTERED]", "animal_id" => "x",
+                           "shelter_stay_id" => "y", "tutor_patient_ids" => "z")
+  end
+end

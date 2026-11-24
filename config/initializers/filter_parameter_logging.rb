@@ -143,8 +143,11 @@ Rails.application.config.filter_parameters += [
   # ADR 0054 (módulo 35b): o microchip do animal, o endereço da ocorrência da
   # demanda e o endereço e o nome do tutor do animal da notificação do 25
   # (`animal_tutor_phone` já cai em `:phone`; adverse_note, inspection_note e
-  # reason_note, em `:note`).
-  /\A(microchip|place_address|animal_address|animal_tutor_name)\z/
+  # reason_note, em `:note`). O tutor e o adotante do animal vão só pelo id do
+  # paciente (§16: nunca em log), na escrita do animal, na busca e na saída do
+  # canil.
+  /\A(microchip|place_address|animal_address|animal_tutor_name)\z/,
+  /\A(tutor|adopter)_patient_id\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
