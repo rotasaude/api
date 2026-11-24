@@ -103,17 +103,23 @@ RSpec.describe Zoonoses::Reports, type: :model do
   it "leish traz a prevalência do Prevalence" do
     block = city_block!(neighborhood: Neighborhood.create!(name: "Centro #{SecureRandom.hex(3)}", source: "manual"), number: "1")
     survey = leish_survey!(blocks: [ block ])
-    reactive = animal!
-    clean = animal!
+    house = registry_household!.tap { |row| vector_profile!(row, block: block) }
+    reactive = animal!(household: house)
+    clean = animal!(household: house)
+    untested = animal!(household: house)
+    outside = animal!(household: registry_household!.tap { |row| vector_profile!(row, block: city_block!(neighborhood: block.neighborhood, number: "9")) })
     [ [ reactive, "reactive" ], [ clean, "non_reactive" ] ].each_with_index do |(dog, elisa), index|
       LeishTest.create!(animal: dog, leish_survey: survey, collected_on: today, label: "LV-#{today.year}-#{survey.id.delete('-')[0, 6].upcase}-000#{index + 1}",
                         dpp_result: "reactive", dpp_on: today, elisa_result: elisa, elisa_on: today)
     end
     collar!(animal: reactive, placed_on: today, due_on: today + 10)
+    collar!(animal: untested, placed_on: today, due_on: today + 200)
+    collar!(animal: outside, placed_on: today, due_on: today + 10)
+    collar!(animal: clean, placed_on: survey.starts_on - 1, due_on: today + 5)
     report = build("leish", **period, survey_id: survey.id)
 
     row = report[:rows].sole
-    expect(row).to include("examined" => 2, "reactive" => 1, "prevalence" => "50.0", "collars_placed" => 1, "collars_due" => 1)
+    expect(row).to include("examined" => 2, "reactive" => 1, "prevalence" => "50.0", "collars_placed" => 2, "collars_due" => 2)
     expect(row["prevalence"]).to eq(format("%.1f", Zoonoses::Prevalence.for(survey)[:prevalence]))
   end
 

@@ -24,12 +24,15 @@
 #   - observations: observações com exposição no período por desfecho (aberta =
 #     "Em observação") × espécie; mesma supressão, sem total;
 #   - leish: por inquérito que toca o período, a prevalência do
-#     Zoonoses::Prevalence (por cão); coleiras colocadas = as dos cães testados
-#     no inquérito, colocadas dentro do período dele; a trocar = as ativas
-#     desses cães com due_on até hoje + COLLAR_DUE_WINDOW;
+#     Zoonoses::Prevalence (por cão); coleiras colocadas = as dos cães dos
+#     domicílios dos quarteirões do inquérito (SurveyArea.household_ids, com ou
+#     sem exame), colocadas de starts_on a ends_on (até hoje se ele está
+#     aberto); a trocar = as ativas desses cães com due_on até hoje +
+#     COLLAR_DUE_WINDOW;
 #   - shelter: lotação atual (estadas abertas hoje), entradas e saídas por
 #     tipo, castrações e eutanásias por motivo, no período.
-# Tudo agregado no banco. Só contagens: nenhum tutor, nome, CPF, CNS, telefone,
+# Agregado no banco; só o `demands` carrega as linhas do período para calcular
+# a cor do prazo (Ombudsman::Deadlines). Só contagens: nenhum tutor, nome, CPF, CNS, telefone,
 # endereço nem microchip. Sem trilha.
 module Zoonoses
   module Reports
@@ -163,8 +166,9 @@ module Zoonoses
       due_limit = today + Catalog::COLLAR_DUE_WINDOW
       rows = surveys.map do |survey|
         stats = Prevalence.for(survey)
-        animals = LeishTest.where(leish_survey_id: survey.id).select(:animal_id)
-        placed = Collar.where(animal_id: animals, placed_on: survey.starts_on..survey.ends_on).count
+        animals = Animal.where(species: "dog", household_id: SurveyArea.household_ids(survey.city_block_ids)).select(:id)
+        last_day = survey.stage == "open" ? [ survey.ends_on, today ].min : survey.ends_on
+        placed = Collar.where(animal_id: animals, placed_on: survey.starts_on..last_day).count
         due = Collar.active.where(animal_id: animals, due_on: ..due_limit).count
         { "survey" => survey.name, "kind" => label("leish_survey_kinds", survey.kind), "examined" => stats[:examined],
           "reactive" => stats[:reactive], "prevalence" => one(stats[:prevalence]), "collars_placed" => placed, "collars_due" => due }
@@ -175,7 +179,7 @@ module Zoonoses
                column("collars_placed", "Coleiras colocadas", "count"), column("collars_due", "Coleiras a trocar", "count") ],
              rows,
              notes: [ "Prevalência por cão: o último resultado final de cada cão no inquérito.",
-                      "Coleiras: dos cães testados no inquérito; a trocar = ativas com vencimento em até #{Catalog::COLLAR_DUE_WINDOW} dias." ])
+                      "Coleiras: dos cães dos domicílios dos quarteirões do inquérito (examinados ou não); a trocar = ativas com vencimento em até #{Catalog::COLLAR_DUE_WINDOW} dias." ])
     end
 
     def shelter(filters)

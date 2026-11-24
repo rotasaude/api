@@ -86,7 +86,7 @@ modalities:
 demand_states:
   - { code: open, label: "Aberta" }
   - { code: scheduled, label: "Agendada" }
-  - { code: inspected, label: "Inspecionada" }
+  - { code: inspected, label: "Vistoriada" }
   - { code: closed, label: "Encerrada" }
 deadline_colors:
   - { code: green, label: "No prazo" }
