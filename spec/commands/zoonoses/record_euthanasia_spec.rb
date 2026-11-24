@@ -94,6 +94,17 @@ RSpec.describe Zoonoses::RecordEuthanasia, type: :model do
     expect(euthanize(animal, reason_note: long).payload.fetch(:euthanasia).reload.reason_note).to eq("b" * 1000)
   end
 
+  it "bite_observation_id de observação fechada do mesmo animal → path bite_observation_id; aberta do mesmo animal → ok" do
+    animal = animal!
+    closed = bite_observation!(animal: animal, state: "closed")
+    expect(refusal(euthanize(animal, bite_observation_id: closed.id))).to eq([ :invalid_request, { path: "bite_observation_id" } ])
+    expect([ Euthanasia.where(animal_id: animal.id).count, animal.reload.status ]).to eq([ 0, "active" ])
+
+    other = animal!
+    open = bite_observation!(animal: other)
+    expect(euthanize(other, bite_observation_id: open.id)).to be_ok
+  end
+
   it "os domínios do canil em config/zoonoses/domains.yml seguem os códigos e a ordem do Catalog" do
     domains = YAML.load_file(Rails.root.join("config/zoonoses/domains.yml"))
     { "entry_kinds" => Zoonoses::Catalog::ENTRY_KINDS, "exit_kinds" => Zoonoses::Catalog::EXIT_KINDS,

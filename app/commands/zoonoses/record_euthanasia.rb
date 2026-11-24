@@ -4,7 +4,8 @@
 # date_out_of_range), `reason` (Catalog::EUTHANASIA_REASONS), `reason_note`
 # (obrigatória, 10–1000 depois do strip: recusada, nunca cortada; cifrada),
 # `legal_basis` (lista não vazia, sem repetição, ⊂ Catalog::LEGAL_BASES),
-# `shelter_stay_id` e `bite_observation_id` (opcionais, do mesmo animal). Toda
+# `shelter_stay_id` e `bite_observation_id` (opcionais, do mesmo animal; a
+# observação, ABERTA: a fechada já teve desfecho). Toda
 # recusa de campo é invalid_request com o path.
 #
 #   - Quem: só Access.veterinarian? (senão 403 veterinarian_required); o
@@ -56,7 +57,7 @@ module Zoonoses
       if attrs[:shelter_stay_id] && !ShelterStay.exists?(id: attrs[:shelter_stay_id], animal_id: animal.id)
         return invalid("shelter_stay_id")
       end
-      if attrs[:bite_observation_id] && !BiteObservation.exists?(id: attrs[:bite_observation_id], animal_id: animal.id)
+      if attrs[:bite_observation_id] && !BiteObservation.open_observations.exists?(id: attrs[:bite_observation_id], animal_id: animal.id)
         return invalid("bite_observation_id")
       end
 
