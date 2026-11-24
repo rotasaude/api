@@ -7,7 +7,7 @@
 # (`created_at`) e, por último, pelo id: a ordem é a mesma a cada leitura.
 #
 # Cada movimento: `{ id, kind, quantity (com sinal), reason|null, at, by: { name },
-# document: { type: "entry"|"transfer"|"dispensation"|"adjustment"|"vial_opening"|"immunization"|"urgency_administration"|"vector_inspection_measure", id, number|null } }`.
+# document: { type: "entry"|"transfer"|"dispensation"|"adjustment"|"vial_opening"|"immunization"|"urgency_administration"|"vector_inspection_measure"|"rabies_vaccination"|"collar", id, number|null } }`.
 # O motivo (texto livre, cifrado) vai só no corpo; o da devolução (`return`) só
 # com `reasons: true` (farmacêutico ou auxiliar do local, como o `<transfer>`):
 # para os demais leitores sai `null`. A dispensação aparece SÓ com
@@ -51,7 +51,9 @@ module Pharmacy
     private_class_method :present
 
     # Exatamente um dos documentos (CHECK do banco). Módulo 29: o frasco aberto
-    # e a dose só com o id (nunca paciente nem vacina do paciente).
+    # e a dose só com o id (nunca paciente nem vacina do paciente). Módulo 35b:
+    # a dose antirrábica (e o estorno dela) e a coleira só com o id (nunca o
+    # animal nem o tutor).
     def document(movement)
       if movement.stock_entry_id
         { type: "entry", id: movement.stock_entry_id, number: movement.stock_entry.document_number }
@@ -67,6 +69,10 @@ module Pharmacy
         { type: "urgency_administration", id: movement.urgency_administration_id, number: nil }
       elsif movement.vector_inspection_measure_id
         { type: "vector_inspection_measure", id: movement.vector_inspection_measure_id, number: nil }
+      elsif movement.rabies_vaccination_id
+        { type: "rabies_vaccination", id: movement.rabies_vaccination_id, number: nil }
+      elsif movement.collar_id
+        { type: "collar", id: movement.collar_id, number: nil }
       else
         { type: "adjustment", id: movement.stock_adjustment_id, number: nil }
       end

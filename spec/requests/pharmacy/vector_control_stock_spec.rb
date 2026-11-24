@@ -153,6 +153,38 @@ RSpec.describe "Estoque do insumo de campo pelas rotas do 27a", type: :request d
     expect(position["balance"]).to eq("5.00")
   end
 
+  it "módulo 35b: o extrato mostra a dose antirrábica, o estorno dela e a coleira com o documento certo, só com o id" do
+    vector_stock_location!(location)
+    vaccine = zoonoses_product!
+    collar_product = zoonoses_product!(use: "collar")
+    vaccine_lot = vector_lot!(location, product: vaccine, quantity: "5")
+    collar_lot = vector_lot!(location, product: collar_product, quantity: "5")
+    tutor = tutor!
+    dog = animal!(tutor: tutor, name: "Totó Marcado")
+    vaccination = rabies_vaccination!(animal: dog, product: vaccine)
+    team = zoonoses_team!
+    Zoonoses::ApplyStock.call(document: vaccination, product_id: vaccine.id, kind: "animal_vaccination", by: team, today: today)
+    Zoonoses::ApplyStock.reverse!(vaccination: vaccination, by: team)
+    collar = collar!(animal: dog, product: collar_product)
+    Zoonoses::ApplyStock.call(document: collar, product_id: collar_product.id, kind: "collar_placement", by: team, today: today)
+
+    sign_in_as(keeper)
+    get "/pharmacy/lots/#{vaccine_lot.id}/movements", params: { location_id: location.id }
+    expect(response).to have_http_status(:ok)
+    rows = json_body["movements"].reject { |row| row["kind"] == "opening" }
+    expect(rows.map { |row| [ row["kind"], row["document"] ] }).to match_array(
+      [ [ "animal_vaccination", { "type" => "rabies_vaccination", "id" => vaccination.id, "number" => nil } ],
+        [ "animal_vaccination_reversal", { "type" => "rabies_vaccination", "id" => vaccination.id, "number" => nil } ] ]
+    )
+    raw = response.body
+    get "/pharmacy/lots/#{collar_lot.id}/movements", params: { location_id: location.id }
+    expect(response).to have_http_status(:ok)
+    placed = json_body["movements"].find { |row| row["kind"] == "collar_placement" }
+    expect(placed["document"]).to eq("type" => "collar", "id" => collar.id, "number" => nil)
+    raw += response.body
+    [ dog.id, "Totó Marcado", tutor.id, tutor.full_name, tutor.cpf ].each { |secret| expect(raw).not_to include(secret.to_s) }
+  end
+
   it "a equipe do local vector_control é só stock_keeper: farmacêutico e auxiliar → invalid_request path role (como a rede de frio)" do
     admin = pharmacy_admin!
     %w[pharmacist pharmacy_assistant].each do |role|
