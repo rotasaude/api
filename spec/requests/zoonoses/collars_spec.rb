@@ -22,6 +22,8 @@ RSpec.describe "Zoonoses — coleiras", type: :request do
     collar!(animal: animal!, product: product, placed_on: today - 20, due_on: today + 16)
     gone = collar!(animal: animal!, product: product, placed_on: today - 200, due_on: today - 1)
     gone.update!(removed_on: today - 1, removal_reason: "lost")
+    moved = animal!(status: "transferred", status_on: today)
+    collar!(animal: moved, product: product, placed_on: today - 20, due_on: today + 3)
 
     get "/zoonoses/collars?due=1"
     expect(response).to have_http_status(:ok)

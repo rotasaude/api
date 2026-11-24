@@ -27,7 +27,7 @@
 #     Zoonoses::Prevalence (por cão); coleiras colocadas = as dos cães dos
 #     domicílios dos quarteirões do inquérito (SurveyArea.household_ids, com ou
 #     sem exame), colocadas de starts_on a ends_on (até hoje se ele está
-#     aberto); a trocar = as ativas desses cães com due_on até hoje +
+#     aberto); a trocar = as ativas dos cães `active` deles com due_on até hoje +
 #     COLLAR_DUE_WINDOW;
 #   - shelter: lotação atual (estadas abertas hoje), entradas e saídas por
 #     tipo, castrações e eutanásias por motivo, no período.
@@ -169,7 +169,7 @@ module Zoonoses
         animals = Animal.where(species: "dog", household_id: SurveyArea.household_ids(survey.city_block_ids)).select(:id)
         last_day = survey.stage == "open" ? [ survey.ends_on, today ].min : survey.ends_on
         placed = Collar.where(animal_id: animals, placed_on: survey.starts_on..last_day).count
-        due = Collar.active.where(animal_id: animals, due_on: ..due_limit).count
+        due = Collar.active.where(animal_id: animals.merge(Animal.active), due_on: ..due_limit).count
         { "survey" => survey.name, "kind" => label("leish_survey_kinds", survey.kind), "examined" => stats[:examined],
           "reactive" => stats[:reactive], "prevalence" => one(stats[:prevalence]), "collars_placed" => placed, "collars_due" => due }
       end

@@ -115,11 +115,13 @@ RSpec.describe Zoonoses::Reports, type: :model do
     collar!(animal: reactive, placed_on: today, due_on: today + 10)
     collar!(animal: untested, placed_on: today, due_on: today + 200)
     collar!(animal: outside, placed_on: today, due_on: today + 10)
+    gone = animal!(household: house, status: "transferred", status_on: today)
+    collar!(animal: gone, placed_on: today, due_on: today + 3)
     collar!(animal: clean, placed_on: survey.starts_on - 1, due_on: today + 5)
     report = build("leish", **period, survey_id: survey.id)
 
     row = report[:rows].sole
-    expect(row).to include("examined" => 2, "reactive" => 1, "prevalence" => "50.0", "collars_placed" => 2, "collars_due" => 2)
+    expect(row).to include("examined" => 2, "reactive" => 1, "prevalence" => "50.0", "collars_placed" => 3, "collars_due" => 2)
     expect(row["prevalence"]).to eq(format("%.1f", Zoonoses::Prevalence.for(survey)[:prevalence]))
   end
 

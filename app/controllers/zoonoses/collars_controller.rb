@@ -4,7 +4,7 @@
 #     coleira; a anterior ativa sai com `replaced` na mesma transação;
 #   - POST /collars/:id/remove `{ reason, removed_on? }` (Zoonoses::RemoveCollar)
 #     → a coleira; já retirada ou trocada → 409 collar_changed;
-#   - GET /collars?due=1 → `{ items }` das coleiras ativas com due_on até hoje +
+#   - GET /collars?due=1 → `{ items }` das coleiras ativas de cães `active` com due_on até hoje +
 #     15 dias, as mais atrasadas primeiro, com animal_id, household_id e due_on.
 #     Sem tutor, nome nem microchip.
 # A escrita recusa query (422 invalid_request); a lista só aceita `due`.
@@ -20,7 +20,7 @@ module Zoonoses
       return render_refusal("invalid_request", path: "due") unless request.query_parameters["due"] == "1"
 
       limit = Time.zone.today + Catalog::COLLAR_DUE_WINDOW
-      rows = Collar.active.joins(:animal).where(due_on: ..limit).order(:due_on, :id)
+      rows = Collar.active.joins(:animal).merge(Animal.active).where(due_on: ..limit).order(:due_on, :id)
                    .pluck("collars.id", "collars.animal_id", "animals.household_id", "collars.vector_product_id", "collars.placed_on",
                           "collars.due_on")
       render json: { items: rows.map { |id, animal_id, household_id, product_id, placed_on, due_on|
