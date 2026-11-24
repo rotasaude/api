@@ -157,6 +157,44 @@ RSpec.describe "Zoonoses — animais", type: :request do
     expect([ body["vaccinations"], body["observations"], body["tests"], body["collars"] ]).to eq([ [], [], [], [] ])
   end
 
+  it "histórico com linhas de dose, observação, exame e coleira: só ids, datas e códigos; nem nota, nem adotante, nem notificação" do
+    today = Time.zone.today
+    animal = animal!
+    product = zoonoses_product!
+    adverse_note = "Inchaço marcado no local da aplicação da dose."
+    dose = rabies_vaccination!(animal: animal, product: product, vaccinated_on: today - 2, adverse_event: true, adverse_note: adverse_note)
+    outcome_note = "Nota marcada do desfecho da observação."
+    observation = bite_observation!(animal: animal, state: "closed", outcome_note: outcome_note)
+    test = LeishTest.create!(animal: animal, collected_on: today - 1, label: "LV-#{today.year}-AVUL-#{SecureRandom.hex(3).upcase}",
+                             dpp_result: "reactive", dpp_on: today - 1)
+    leish_note = "Nota marcada da decisão do tutor."
+    outcome = LeishDogOutcome.create!(animal: animal, leish_test: test, decision: "tutor_treatment", decided_on: today, note: leish_note)
+    collar = collar!(animal: animal, placed_on: today - 5)
+    collar.update!(removed_on: today - 1, removal_reason: "lost")
+    adopter = tutor!
+    stay = shelter_stay!(animal: animal, entered_on: today - 3, exit_kind: "adopted", exited_on: today - 1, adopter_patient_id: adopter.id)
+
+    get "/zoonoses/animals/#{animal.id}"
+    expect(response).to have_http_status(:ok)
+    body = json_body
+    expect(body["vaccinations"]).to eq([ { "id" => dose.id, "vaccinated_on" => (today - 2).iso8601, "modality" => "routine", "campaign_id" => nil,
+                                           "vector_product_id" => product.id, "adverse_event" => true, "cancelled" => false } ])
+    expect(body["observations"]).to eq([ { "id" => observation.id, "exposure_on" => observation.exposure_on.iso8601,
+                                           "ends_on" => observation.ends_on.iso8601, "place" => "home", "state" => "closed",
+                                           "outcome" => "healthy", "outcome_on" => observation.outcome_on.iso8601 } ])
+    expect(body["tests"]).to eq([ { "id" => test.id, "leish_survey_id" => nil, "collected_on" => (today - 1).iso8601, "label" => test.label,
+                                    "dpp_result" => "reactive", "dpp_on" => (today - 1).iso8601, "elisa_result" => nil, "elisa_on" => nil,
+                                    "outcome" => { "id" => outcome.id, "decision" => "tutor_treatment", "decided_on" => today.iso8601 } } ])
+    expect(body["collars"]).to eq([ { "id" => collar.id, "vector_product_id" => collar.vector_product_id, "placed_on" => (today - 5).iso8601,
+                                      "due_on" => collar.due_on.iso8601, "removed_on" => (today - 1).iso8601, "removal_reason" => "lost" } ])
+    expect(body["stays"].sole).to include("id" => stay.id, "exit_kind" => "adopted")
+    expect(body["stays"].sole).not_to have_key("adopter_patient_id")
+    [ adverse_note, outcome_note, leish_note, adopter.id, adopter.full_name, adopter.cpf, observation.disease_notification_id,
+      "adverse_note", "outcome_note", "adopter", "disease_notification" ].each do |secret|
+      expect(response.body).not_to include(secret.to_s)
+    end
+  end
+
   # Decisão 32 / §16: a observação ligada aparece no histórico sem a notificação do 25.
   it "detalhe com observação ligada não traz disease_notification_id nem o id da notificação" do
     animal = animal!
