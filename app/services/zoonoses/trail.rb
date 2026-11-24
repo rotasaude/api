@@ -6,7 +6,9 @@
 #     mostrado com ela, pela trilha do 24a (TerritoryRegistry::Trail), como o
 #     endereço do caso do bloqueio do 35a;
 #   - animal_viewed!: o detalhe do animal com tutor, pelo evento de domínio
-#     `animal.viewed` (Q26, molde do transmission_block_case.address_viewed).
+#     `animal.viewed` (Q26, molde do transmission_block_case.address_viewed);
+#   - demand_viewed!: o detalhe da demanda (extrato e place_address), pelo
+#     evento de domínio `zoonoses_demand.viewed` (Q13, Q26).
 module Zoonoses
   module Trail
     ACCESS = "zoonoses".freeze
@@ -21,6 +23,10 @@ module Zoonoses
 
     def animal_viewed!(user:, animal_id:)
       DomainEvents.publish("animal.viewed", animal_id: animal_id, user_id: user.id)
+    end
+
+    def demand_viewed!(user:, demand_id:)
+      DomainEvents.publish("zoonoses_demand.viewed", zoonoses_demand_id: demand_id, user_id: user.id)
     end
   end
 end

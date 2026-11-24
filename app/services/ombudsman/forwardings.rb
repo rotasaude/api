@@ -33,14 +33,24 @@ module Ombudsman
       manifestation.update!(state: "in_analysis", updated_at: now)
     end
 
+    # Módulo 35b (§4, Q13): o centro de zoonoses responde, recusa e prorroga
+    # pelas rotas /zoonoses/demands (`via_zoonoses`): o respondente é quem tem
+    # Zoonoses::Access.team?, sem o papel ombudsman_responder, e só no
+    # encaminhamento que tem zoonoses_demands. A caixa do 33 (inbox_scope) não
+    # muda.
+    def zoonoses_responder_of?(forwarding, user)
+      Zoonoses::Access.team?(user) && ZoonosesDemand.exists?(ombudsman_forwarding_id: forwarding.id)
+    end
+
     # Ação do respondente: na transação, trava a manifestação e o
     # encaminhamento (Lock.forwarding!); encaminhamento de outro destino ou
     # inexistente → not_found; `expected_state` do encaminhamento
     # (Lock.check_forwarding); então o bloco (manifestação, encaminhamento).
-    def as_responder(forwarding_id:, expected_state:, by:)
+    def as_responder(forwarding_id:, expected_state:, by:, via_zoonoses: false)
       ApplicationRecord.transaction do
         locked = Lock.forwarding!(forwarding_id)
-        next Result.fail(:not_found) unless locked && responder_of?(locked.last, by)
+        allowed = locked && (via_zoonoses ? zoonoses_responder_of?(locked.last, by) : responder_of?(locked.last, by))
+        next Result.fail(:not_found) unless allowed
 
         refusal = Lock.check_forwarding(locked.last, expected_state)
         next refusal if refusal
@@ -48,6 +58,12 @@ module Ombudsman
         yield(*locked)
       end
     end
+
+    # O encaminhamento saiu de pending (resposta, recusa ou cancelamento, por
+    # qualquer caminho): a demanda de zoonoses ligada fecha na mesma transação
+    # (Zoonoses::AdvanceDemand.forwarding_ended!; sem outcome, salvo a que o
+    # centro já fechou). Chamado sob a trava manifestação → encaminhamento.
+    def ended!(forwarding, now:) = Zoonoses::AdvanceDemand.forwarding_ended!(forwarding: forwarding, now: now)
 
     # O evento da linha do tempo de uma ação sobre o encaminhamento: da
     # equipe (o técnico ou o respondente), nunca visível ao cidadão, só o id.

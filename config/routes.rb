@@ -1113,6 +1113,11 @@ Rails.application.routes.draw do
     get    "vaccinations",                    to: "vaccinations#index"
     post   "vaccinations",                    to: "vaccinations#create"
     post   "vaccinations/:id/cancel",         to: "vaccinations#cancel", constraints: member_id
+    get    "demands",                         to: "demands#index"
+    get    "demands/:id",                     to: "demands#show", constraints: member_id
+    # O passo do andamento (§4): uma ação só; `inspect` e `extend` são métodos de Object.
+    post   "demands/:id/:step",               to: "demands#advance",
+                                              constraints: member_id.merge(step: /schedule|inspect|close|decline|extend/)
     get    "shelter_stays",                   to: "shelter_stays#index"
     post   "shelter_stays",                   to: "shelter_stays#create"
     post   "shelter_stays/:id/exit",          to: "shelter_stays#exit_stay", constraints: member_id

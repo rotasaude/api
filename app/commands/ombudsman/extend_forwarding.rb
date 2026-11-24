@@ -4,17 +4,21 @@
 # TEXT, 10..4000, sem as bordas) cifrado em `extension_reason`; a segunda →
 # 422 already_extended. A manifestação não muda. Encaminhamento de outro
 # destino → not_found. Evento `forwarding_extended` (da equipe: o respondente).
+# Módulo 35b (§4, Q13): `via_zoonoses` (as rotas /zoonoses/demands) troca o
+# respondente pela equipe do centro, só no encaminhamento com demanda
+# (Forwardings.as_responder).
 module Ombudsman
   module ExtendForwarding
     module_function
 
     # -> Result.ok(manifestation:, forwarding:) | fail(:invalid_request, details: { path: "reason", problems: })
     #  | fail(:not_found) | fail(:forwarding_changed) | fail(:invalid_transition) | fail(:already_extended)
-    def call(forwarding_id:, expected_state:, reason:, by:, now: Time.current)
+    def call(forwarding_id:, expected_state:, reason:, by:, via_zoonoses: false, now: Time.current)
       text = Input.text(reason, Catalog::TEXT)
       return Input.refuse("reason") unless text
 
-      Forwardings.as_responder(forwarding_id: forwarding_id, expected_state: expected_state, by: by) do |manifestation, forwarding|
+      Forwardings.as_responder(forwarding_id: forwarding_id, expected_state: expected_state, by: by,
+                               via_zoonoses: via_zoonoses) do |manifestation, forwarding|
         next Result.fail(:already_extended) if forwarding.extended
 
         forwarding.update!(extended: true, due_on: forwarding.due_on + OmbudsmanSetting.current.forwarding_extension_days,

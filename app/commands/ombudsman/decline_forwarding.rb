@@ -4,19 +4,26 @@
 # `reply`, com `state = declined` (Q9); o último `pending` resolvido devolve a
 # manifestação a `in_analysis`. Encaminhamento de outro destino → not_found.
 # Evento `forwarding_declined` (da equipe: o respondente); sem evento de domínio.
+# Módulo 35b (§4, Q13): `via_zoonoses` (as rotas /zoonoses/demands) troca o
+# respondente pela equipe do centro, só no encaminhamento com demanda
+# (Forwardings.as_responder).
+# O fim do encaminhamento fecha a demanda de zoonoses ligada na mesma
+# transação (Forwardings.ended!).
 module Ombudsman
   module DeclineForwarding
     module_function
 
     # -> Result.ok(manifestation:, forwarding:) | fail(:invalid_request, details: { path: "reason", problems: })
     #  | fail(:not_found) | fail(:forwarding_changed) | fail(:invalid_transition)
-    def call(forwarding_id:, expected_state:, reason:, by:, now: Time.current)
+    def call(forwarding_id:, expected_state:, reason:, by:, via_zoonoses: false, now: Time.current)
       text = Input.text(reason, Catalog::TEXT)
       return Input.refuse("reason") unless text
 
-      Forwardings.as_responder(forwarding_id: forwarding_id, expected_state: expected_state, by: by) do |manifestation, forwarding|
+      Forwardings.as_responder(forwarding_id: forwarding_id, expected_state: expected_state, by: by,
+                               via_zoonoses: via_zoonoses) do |manifestation, forwarding|
         forwarding.update!(state: "declined", reply: text, replied_by_user: by, replied_at: now, updated_at: now)
         Forwardings.settle!(manifestation, now: now)
+        Forwardings.ended!(forwarding, now: now)
         Forwardings.event!(manifestation, forwarding, "forwarding_declined", by: by, now: now)
         Result.ok(manifestation: manifestation, forwarding: forwarding)
       end

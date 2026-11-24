@@ -6,6 +6,8 @@
 # vai cifrado no evento `forwarding_cancelled` (nunca visível ao cidadão; o
 # encaminhamento não tem coluna de motivo). Trava manifestação →
 # encaminhamento (Lock.forwarding!).
+# Módulo 35b (§4): o cancelamento fecha a demanda de zoonoses ligada na
+# mesma transação (Forwardings.ended!).
 module Ombudsman
   module CancelForwarding
     module_function
@@ -29,6 +31,7 @@ module Ombudsman
 
         forwarding.update!(state: "cancelled", updated_at: now)
         Forwardings.settle!(manifestation, now: now)
+        Forwardings.ended!(forwarding, now: now)
         Forwardings.event!(manifestation, forwarding, "forwarding_cancelled", by: by, now: now, text: text)
         Result.ok(manifestation: manifestation, forwarding: forwarding)
       end

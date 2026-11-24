@@ -45,6 +45,32 @@ module Zoonoses
         created_at: row.created_at.iso8601 }
     end
 
+    # Demanda da ouvidoria na fila do centro (§4, Q13): o subtipo, o estado,
+    # o prazo e a cor do encaminhamento (Ombudsman::Deadlines), a versão e o
+    # estado do encaminhamento. Nunca o extrato, o place_address, o
+    # protocolo, a identidade, o contato nem os anexos da manifestação.
+    def demand(row, forwarding, settings:, today:)
+      { id: row.id, subtype: row.subtype, state: row.state, due_on: forwarding.due_on.iso8601,
+        color: Ombudsman::Deadlines.forwarding_color(forwarding, settings, today: today), version: row.version,
+        forwarding_state: forwarding.state }
+    end
+
+    # A resposta da escrita: a linha da fila com as datas e o desfecho, ainda
+    # sem o extrato, o endereço e a nota.
+    def demand_record(row, forwarding, settings:, today:)
+      demand(row, forwarding, settings: settings, today: today)
+        .merge(scheduled_on: row.scheduled_on&.iso8601, inspected_on: row.inspected_on&.iso8601, outcome: row.outcome)
+    end
+
+    # O detalhe (Q13, Q33): acrescenta o extrato (o texto do cidadão), o
+    # place_address da manifestação e a nota da inspeção. Quem chama grava a
+    # trilha zoonoses_demand.viewed.
+    def demand_detail(row, forwarding, manifestation, settings:, today:)
+      demand_record(row, forwarding, settings: settings, today: today)
+        .merge(extract: forwarding.extract, place_address: manifestation.place_address, inspection_note: row.inspection_note,
+               created_at: row.created_at.iso8601)
+    end
+
     # Estada no canil (§7) na lista e na resposta da escrita: só ids, datas,
     # códigos e a espécie do animal (`animal` já carregado ou lido aqui).
     # Nunca o tutor nem o adotante (nem o id dele), nem o nome do animal.

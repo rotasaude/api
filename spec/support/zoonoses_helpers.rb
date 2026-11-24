@@ -109,6 +109,19 @@ module ZoonosesHelpers
     Collar.create!({ animal: animal, vector_product: product, placed_on: placed_on, due_on: placed_on >> 6 }.merge(over))
   end
 
+  # Task 10: demanda pelo caminho real da Task 9 — a denúncia anônima com
+  # subtipo, classificada e encaminhada pelo sistema à UVZ. A cidade precisa
+  # do zoonoses e da ouvidoria anônima ligados, da UVZ e de alguém da equipe.
+  def zoonoses_demand!(subtype: "scorpion", body: "Escorpiões no terreno baldio ao lado da escola, perto das crianças.",
+                       place_address: "Rua das Acácias, 120, fundos, Vila Nova", now: Time.current)
+    result = Ombudsman::RegisterAnonymous.call(body: body, health_unit_id: nil, zoonoses_subtype: subtype, place_address: place_address,
+                                               zoonoses: true, now: now)
+    raise ArgumentError, "zoonoses_demand!: #{result.reason}" if result.failure?
+
+    ZoonosesDemand.joins(:ombudsman_forwarding)
+                  .find_by!(ombudsman_forwardings: { ombudsman_manifestation_id: result.payload.fetch(:manifestation).id, state: "pending" })
+  end
+
   private
 
   def zoonoses_author = (@zoonoses_author ||= zoonoses_team!)

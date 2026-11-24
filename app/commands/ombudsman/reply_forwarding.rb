@@ -5,19 +5,26 @@
 # de outro destino → not_found. `expected_state` do encaminhamento (Q33).
 # Evento `forwarding_replied` (da equipe: o respondente) e
 # ombudsman.forwarding_replied { manifestation_id, forwarding_id }.
+# Módulo 35b (§4, Q13): `via_zoonoses` (as rotas /zoonoses/demands) troca o
+# respondente pela equipe do centro, só no encaminhamento com demanda
+# (Forwardings.as_responder).
+# O fim do encaminhamento fecha a demanda de zoonoses ligada na mesma
+# transação (Forwardings.ended!).
 module Ombudsman
   module ReplyForwarding
     module_function
 
     # -> Result.ok(manifestation:, forwarding:) | fail(:invalid_request, details: { path: "body", problems: })
     #  | fail(:not_found) | fail(:forwarding_changed) | fail(:invalid_transition)
-    def call(forwarding_id:, expected_state:, body:, by:, now: Time.current)
+    def call(forwarding_id:, expected_state:, body:, by:, via_zoonoses: false, now: Time.current)
       text = Input.text(body, Catalog::TEXT)
       return Input.refuse("body") unless text
 
-      Forwardings.as_responder(forwarding_id: forwarding_id, expected_state: expected_state, by: by) do |manifestation, forwarding|
+      Forwardings.as_responder(forwarding_id: forwarding_id, expected_state: expected_state, by: by,
+                               via_zoonoses: via_zoonoses) do |manifestation, forwarding|
         forwarding.update!(state: "replied", reply: text, replied_by_user: by, replied_at: now, updated_at: now)
         Forwardings.settle!(manifestation, now: now)
+        Forwardings.ended!(forwarding, now: now)
         Forwardings.event!(manifestation, forwarding, "forwarding_replied", by: by, now: now)
         DomainEvents.publish("ombudsman.forwarding_replied", manifestation_id: manifestation.id, forwarding_id: forwarding.id)
         Result.ok(manifestation: manifestation, forwarding: forwarding)
