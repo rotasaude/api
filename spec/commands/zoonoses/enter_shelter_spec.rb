@@ -92,7 +92,7 @@ RSpec.describe Zoonoses::EnterShelter, type: :model do
   end
 
   it "animal missing volta a active na entrada; deceased ou transferred → animal_not_active" do
-    missing = animal!(status: "missing", status_on: today - 10)
+    missing = animal!(status: "missing", status_on: today - 10, created_at: Time.current - 30.days)
     expect(enter(animal_id: missing.id, entered_on: (today - 2).iso8601)).to be_ok
     expect(missing.reload).to have_attributes(status: "active", status_on: today - 2, version: 2)
     expect(DomainEvent.where(name: "animal.changed").sole.payload).to eq("animal_id" => missing.id)
@@ -100,6 +100,15 @@ RSpec.describe Zoonoses::EnterShelter, type: :model do
     %w[deceased transferred].each do |status|
       expect(refusal(enter(animal_id: animal!(status: status, status_on: today).id))).to eq([ :animal_not_active, {} ])
     end
+  end
+
+  it "missing → active: entered_on antes do cadastro do animal (dia da cidade) → date_out_of_range path entered_on; nada gravado" do
+    missing = animal!(status: "missing", status_on: today - 1, created_at: (today - 3).in_time_zone.change(hour: 1))
+    expect(refusal(enter(animal_id: missing.id, entered_on: (today - 4).iso8601))).to eq([ :date_out_of_range, { path: "entered_on" } ])
+    expect([ missing.reload.status, missing.version, ShelterStay.count ]).to eq([ "missing", 1, 0 ])
+
+    expect(enter(animal_id: missing.id, entered_on: (today - 3).iso8601)).to be_ok
+    expect(missing.reload).to have_attributes(status: "active", status_on: today - 3)
   end
 
   it "recusas de campo e de papel" do

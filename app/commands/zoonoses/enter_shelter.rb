@@ -14,7 +14,9 @@
 #   - `animal_id`: o animal FOR UPDATE (a primeira trava, a mesma ordem das
 #     quatro escritas do canil: animal → estada → coleira → observação);
 #     transferred ou deceased → 409 animal_not_active; missing volta a active
-#     com status_on = entered_on, na mesma transação (Q31; `animal.changed`).
+#     com status_on = entered_on, na mesma transação (Q31; `animal.changed`);
+#     entered_on antes do cadastro do animal (o dia da cidade) → 422
+#     date_out_of_range path entered_on, como o status_on da SaveAnimal.
 #   - Uma estada aberta por animal → 409 stay_already_open (também na corrida,
 #     pelo índice único parcial idx_shelter_stays_open).
 #   - observation: a observação FOR UPDATE, `open` (senão path
@@ -75,6 +77,10 @@ module Zoonoses
 
       observation = observation!(attrs[:bite_observation_id], animal) if attrs[:entry_kind] == "observation"
       if animal.status == "missing"
+        # Como na SaveAnimal: status_on entre o cadastro do animal (o dia da cidade) e hoje.
+        unless (animal.created_at.in_time_zone.to_date..Time.zone.today).cover?(attrs[:entered_on])
+          refuse!(Result.fail(:date_out_of_range, details: { path: "entered_on" }))
+        end
         animal.update!(status: "active", status_on: attrs[:entered_on], version: animal.version + 1)
         DomainEvents.publish("animal.changed", animal_id: animal.id)
       end
