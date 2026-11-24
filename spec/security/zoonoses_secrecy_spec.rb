@@ -175,6 +175,12 @@ RSpec.describe "Sigilo do centro de zoonoses (35b)", type: :request do
     CityCatalog.reset_cache!
   end
 
+  def ombudsman_gate!(enabled)
+    Platform::Features.set!(city: City.find_by!(slug: TEST_CITY_A.slug), key: Ombudsman::Gate::KEY, enabled: enabled,
+                            maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+  end
+
   def marked_patient!(names)
     n = registry_seq!
     Patient.create!(cpf: valid_cpf(n), cns: valid_cns(n), full_name: names[:full_name], mother_name: names[:mother_name],
@@ -366,6 +372,10 @@ RSpec.describe "Sigilo do centro de zoonoses (35b)", type: :request do
       # A demanda do escorpião: fila, detalhe, agendar, vistoriar, prorrogar;
       # o detalhe da anônima; o inbox do ponto da UVZ e as leituras da
       # equipe da ouvidoria antes do fechamento.
+      # Q35: com a ouvidoria desligada, a fila do centro responde o 403 do 33.
+      setup.call { ombudsman_gate!(false) }
+      refuse.(:demands_ombudsman_off, "#{z}/demands", {}, status: 403, sent: [], verb: :get)
+      setup.call { ombudsman_gate!(true) }
       req.(:get, "#{z}/demands")
       demand = req.(:get, "#{z}/demands/#{ids[:scorpion_demand]}")
       demand = req.(:post, "#{z}/demands/#{ids[:scorpion_demand]}/schedule", { scheduled_on: (today + 1).iso8601,
@@ -488,9 +498,12 @@ RSpec.describe "Sigilo do centro de zoonoses (35b)", type: :request do
     end
     # O que nunca sai em resposta nenhuma: o documento do tutor e do adotante,
     # o paciente da notificação inteiro e a própria notificação.
-    # O cadastro individual do tutor (24a: o nome da mãe) só no download do
-    # app do ACE do domicílio, que é do 24b (fora do módulo).
-    let(:tutor_registration) { [ secrecy::TUTOR[:mother_name] ] }
+    # O cadastro individual do tutor (24a: o nome da mãe e as palavras só
+    # dela; o sobrenome é também o do tutor) só no download do app do ACE do
+    # domicílio, que é do 24b (fora do módulo).
+    let(:tutor_registration) do
+      [ secrecy::TUTOR[:mother_name] ] + (secrecy::TUTOR[:mother_name].split - secrecy::TUTOR[:full_name].split)
+    end
     let(:never) do
       tutor_registration + secrecy.cpf_forms(tutor.cpf) + [ tutor.cns ] + secrecy.cpf_forms(adopter.cpf) + [ adopter.cns, victim.cns ] +
         secrecy.cpf_forms(victim.cpf) +
@@ -513,7 +526,7 @@ RSpec.describe "Sigilo do centro de zoonoses (35b)", type: :request do
 
     it "percorreu o cenário inteiro (controle positivo)" do
       expect(responses.size).to be > 90
-      expect(scenario[:refusals].map { |r| r[:label] }).to eq(%i[subtype_gate_off short_note elisa_without_dpp euthanasia_by_team])
+      expect(scenario[:refusals].map { |r| r[:label] }).to eq(%i[subtype_gate_off short_note elisa_without_dpp demands_ombudsman_off euthanasia_by_team])
       expect(ids[:demands].size).to eq(2)
       expect(ZoonosesDemand.find(ids[:scorpion_demand])).to have_attributes(subtype: "scorpion", state: "closed", outcome: "resolved",
                                                                               inspection_note: secrecy::TEXTS[:inspection_note])
@@ -676,12 +689,14 @@ RSpec.describe "Sigilo do centro de zoonoses (35b)", type: :request do
     # na rota do contato; o cidadão da wpda nunca no /zoonoses nem no app.
     it "tutor, adotante, contato e cidadão só nas rotas deles" do
       only = lambda do |marks, allowed|
-        found = responses.select { |r| marks.any? { |secret| secrecy.contains?(r[:haystack], secret) } }.map { |r| r[:route] }.uniq
+        found = responses.select { |r| marks.any? { |secret| secrecy.contains?(r[:haystack], secret) } }
+                         .map { |r| [ r[:verb], r[:route] ] }.uniq
         expect(found).to match_array(allowed), "#{marks.first}: #{found}"
       end
-      only.(tutor_marks, [ "/zoonoses/person_lookup", "/zoonoses/animals/:id", "/field/v1/changes" ])
-      only.(adopter_marks, [ "/zoonoses/person_lookup" ])
-      only.(contact, [ "/zoonoses/observations/:id/contact" ])
+      # Só a leitura do detalhe: a resposta da escrita (POST/PATCH) nunca traz o tutor.
+      only.(tutor_marks, [ [ :post, "/zoonoses/person_lookup" ], [ :get, "/zoonoses/animals/:id" ], [ :get, "/field/v1/changes" ] ])
+      only.(adopter_marks, [ [ :post, "/zoonoses/person_lookup" ] ])
+      only.(contact, [ [ :get, "/zoonoses/observations/:id/contact" ] ])
       zoonoses = responses.select { |r| r[:route].start_with?("/zoonoses/", "/field/") }
       expect(zoonoses.size).to be > 80
       zoonoses.each do |r|
@@ -715,9 +730,20 @@ RSpec.describe "Sigilo do centro de zoonoses (35b)", type: :request do
       end
       expect(lists.map { |r| r[:route] }.uniq.size).to eq(secrecy::LIST_ROUTES.size + (Zoonoses::Catalog::REPORTS.size * 2))
       # As vistas do 33 seguem as regras do 33: o inbox do ponto e a caixa
-      # mostram o extrato, que é o texto do cidadão (Q13); o endereço, nunca (Q33).
+      # mostram o extrato, que é o texto do cidadão (Q13); o endereço, nunca
+      # (Q33). A identidade do cidadão só na caixa da equipe (o modo
+      # identificado) e na lista do próprio cidadão; o inbox do ponto nunca a
+      # traz (33, ombudsman_secrecy_spec), nem as notas do centro.
+      citizen_texts = secrecy::TEXTS.values_at(:scorpion_body, :anonymous_body)
+      own_identity = %w[/ombudsman/manifestations /citizen/ombudsman/manifestations]
+      inbox = routed(:get, "/ombudsman/inbox").sole
+      expect(JSON.parse(inbox[:raw]).fetch("items").map { |item| item["extract"] }).to include(secrecy::TEXTS[:scorpion_body]) # controle
       lists.each do |r|
-        marks = r[:route].start_with?("/zoonoses/") ? people + places + texts : people - citizen_marks + places
+        marks =
+          if r[:route].start_with?("/zoonoses/") then people + places + texts
+          elsif own_identity.include?(r[:route]) then people - citizen_marks + places + (texts - citizen_texts)
+          else people + places + (texts - citizen_texts)
+          end
         marks.each do |secret|
           expect(secrecy.contains?(r[:haystack], secret)).to be(false), "#{r[:verb]} #{r[:path]} contém #{secret.inspect}"
         end
@@ -734,7 +760,8 @@ RSpec.describe "Sigilo do centro de zoonoses (35b)", type: :request do
         subtype_gate_off: %w[invalid_request zoonoses_subtype],
         short_note: %w[invalid_request reason],
         elisa_without_dpp: %w[elisa_without_reactive_dpp elisa_result],
-        euthanasia_by_team: [ "veterinarian_required", nil ]
+        euthanasia_by_team: [ "veterinarian_required", nil ],
+        demands_ombudsman_off: [ "feature_disabled", nil ]
       }
       scenario[:refusals].each do |refusal|
         expect(refusal[:json].values_at("error", "path")).to eq(expected.fetch(refusal[:label])), "#{refusal[:label]}: #{refusal[:json]}"
@@ -746,7 +773,10 @@ RSpec.describe "Sigilo do centro de zoonoses (35b)", type: :request do
       expect(failures.size).to eq(scenario[:refusals].size)
       failures.each do |r|
         json = JSON.parse(r[:raw])
-        if r[:route].start_with?("/zoonoses/")
+        if json["error"] == "feature_disabled" # como em todo o api: error, path? e o interruptor
+          expect(json.keys - %w[error path feature]).to be_empty, "#{r[:path]}: #{r[:raw]}"
+          expect(json["feature"]).to eq(Ombudsman::Gate::KEY)
+        elsif r[:route].start_with?("/zoonoses/")
           expect(json.keys - %w[error path]).to be_empty, "#{r[:path]}: #{r[:raw]}"
         else # o formato uniforme do 33: problems só repete error e path
           expect(json.keys - %w[error path problems]).to be_empty, "#{r[:path]}: #{r[:raw]}"
