@@ -85,7 +85,9 @@ RSpec.describe ReencryptionJob do
                                          OmbudsmanManifestation OmbudsmanEvent OmbudsmanForwarding OmbudsmanIdentityAccess
                                          OmbudsmanAttachment OmbudsmanReopenRequest
                                          HomeVisit CollectiveActivity CollectiveActivityParticipant
-                                         VectorSample VectorStockShortfall OvitrapReading VectorTask TransmissionBlock])
+                                         VectorSample VectorStockShortfall OvitrapReading VectorTask TransmissionBlock
+                                         Animal RabiesVaccination ZoonosesDemand BiteObservation LeishDogOutcome
+                                         Euthanasia])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end
