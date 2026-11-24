@@ -15,10 +15,17 @@
 # O prazo e a cor são os do encaminhamento (Ombudsman::Deadlines, "hoje" da
 # cidade). A escrita e o detalhe recusam query (422 invalid_request); a lista
 # recusa chave fora dos filtros.
+# Q35: leitura e escrita pedem também a ouvidoria utilizável (o gate do 33,
+# OmbudsmanGate, lido aqui, fora da transação da cidade): desligada → 403
+# `{ error: feature_disabled, feature: ombudsman }`, o mesmo corpo do 33. A
+# demanda fica gravada e volta quando a ouvidoria é religada.
 module Zoonoses
   class DemandsController < BaseController
+    include ::OmbudsmanGate
+
     FILTERS = %i[state before limit].freeze
 
+    before_action :require_ombudsman!
     before_action :team!
     before_action(only: %i[show advance]) { query_only! }
 

@@ -143,4 +143,29 @@ RSpec.describe "Zoonoses — fila de demandas", type: :request do
     get "/zoonoses/demands"
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "zoonoses" } ])
   end
+  # Q35: as rotas /zoonoses/demands (leitura e escrita) pedem o zoonoses E a
+  # ouvidoria utilizáveis; com o 33 desligado, o mesmo 403 do 33. A demanda
+  # fica gravada e volta quando a ouvidoria é religada.
+  it "Q35: ouvidoria desligada → lista, detalhe e andamento 403 feature ombudsman; religada, a mesma demanda volta" do
+    demand, = identified_demand!
+    Platform::Features.set!(city: city, key: Ombudsman::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    sign_in_as(team)
+    disabled = [ 403, { "error" => "feature_disabled", "feature" => "ombudsman" } ]
+
+    get "/zoonoses/demands"
+    expect([ response.status, json_body ]).to eq(disabled)
+    get "/zoonoses/demands/#{demand.id}"
+    expect([ response.status, json_body ]).to eq(disabled)
+    json_post_to("/zoonoses/demands/#{demand.id}/schedule", { scheduled_on: today.iso8601, expected_version: 1 })
+    expect([ response.status, json_body ]).to eq(disabled)
+    expect(demand.reload).to have_attributes(state: "open", version: 1)
+    expect(DomainEvent.where(name: %w[zoonoses_demand.viewed zoonoses_demand.changed]).count).to eq(0)
+
+    Platform::Features.set!(city: city, key: Ombudsman::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    get "/zoonoses/demands"
+    expect(response).to have_http_status(:ok)
+    expect(json_body["items"].pluck("id", "state", "version")).to eq([ [ demand.id, "open", 1 ] ])
+  end
 end
