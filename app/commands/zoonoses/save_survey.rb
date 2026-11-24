@@ -6,8 +6,10 @@
 #     focus), `neighborhood_id`, `city_block_ids` (não vazio, sem repetição,
 #     quarteirões ativos do 35a — Q8: sem depender do vector_control),
 #     `dog_population` (inteiro > 0, informado), `starts_on`/`ends_on`
-#     ("AAAA-MM-DD", fim ≥ início). No foco, `center_city_block_id` no lugar de
-#     `city_block_ids` grava os quarteirões da sugestão (SurveyArea, Q28).
+#     ("AAAA-MM-DD", fim ≥ início). No foco, `center_city_block_id` (com
+#     `rings` opcional, 0–5, o anel de partida como no suggest) no lugar de
+#     `city_block_ids` grava os quarteirões da sugestão (SurveyArea, Q28):
+#     reproduz o que o suggest devolveu.
 #     `target_dogs` é sempre do api (Zoonoses::LeishSample, com os parâmetros
 #     vigentes, cuja versão fica em parameters_version); mandá-lo é
 #     invalid_request. A edição leva `expected_version` e só vale em draft
@@ -22,7 +24,7 @@
 module Zoonoses
   module SaveSurvey
     EVENT = "leish_survey.changed".freeze
-    KEYS = %w[name kind neighborhood_id city_block_ids center_city_block_id dog_population starts_on ends_on].freeze
+    KEYS = %w[name kind neighborhood_id city_block_ids center_city_block_id rings dog_population starts_on ends_on].freeze
     REQUIRED = %w[name kind neighborhood_id dog_population starts_on ends_on].freeze
     SUGGEST_KEYS = %w[kind neighborhood_id center_city_block_id rings].freeze
     NAME = (1..80)
@@ -102,6 +104,7 @@ module Zoonoses
     def save(locked, values)
       survey = locked || LeishSurvey.new(stage: "draft")
       center = values.delete(:center_city_block_id)
+      rings = values.delete(:rings)
       survey.assign_attributes(values)
       return invalid("ends_on") if survey.ends_on < survey.starts_on
 
@@ -110,7 +113,7 @@ module Zoonoses
         return invalid("center_city_block_id") unless survey.kind == "focus"
 
         survey.city_block_ids = SurveyArea.suggestion(kind: "focus", neighborhood_id: survey.neighborhood_id, parameters: parameters,
-                                                      center_block_id: center)[:city_block_ids]
+                                                      center_block_id: center, rings: rings)[:city_block_ids]
       end
       survey.target_dogs = LeishSample.target(kind: survey.kind, dog_population: survey.dog_population, parameters: parameters)
       survey.parameters_version = parameters.version
@@ -144,6 +147,7 @@ module Zoonoses
         return invalid("city_block_ids") unless params.key?("city_block_ids") || params.key?("center_city_block_id")
       end
       return invalid("center_city_block_id") if params.key?("city_block_ids") && params.key?("center_city_block_id")
+      return invalid("rings") if params.key?("rings") && !params.key?("center_city_block_id")
 
       params.each_with_object({}) do |(key, value), values|
         parsed = parse_value(key, value)
@@ -162,6 +166,7 @@ module Zoonoses
       when "neighborhood_id" then uuid?(value) && Neighborhood.exists?(id: value) ? value.downcase : INVALID
       when "city_block_ids" then blocks(value)
       when "center_city_block_id" then active_block?(value) ? value.downcase : INVALID
+      when "rings" then value.is_a?(Integer) && RINGS.cover?(value) ? value : INVALID
       when "dog_population" then value.is_a?(Integer) && DOG_POPULATION.cover?(value) ? value : INVALID
       when "starts_on", "ends_on" then date(value)
       end

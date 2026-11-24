@@ -149,6 +149,13 @@ RSpec.describe Zoonoses::RecordLeishTest, type: :model do
     expect(test.reload).to have_attributes(dpp_result: "reactive", version: 2)
   end
 
+  it "sequência da etiqueta esgotada (999999, Q36) → invalid_request path label, nada gravado" do
+    LeishTest.create!(animal: animal!, collected_on: today, label: "LV-#{today.year}-AVUL-999999")
+    expect(refusal(collect(leish_survey_id: :omit))).to eq([ :invalid_request, { path: "label" } ])
+    expect(LeishTest.count).to eq(1)
+    expect(DomainEvent.where(name: "leish_test.recorded")).to be_empty
+  end
+
   it "teste com desfecho não muda de resultado (409 invalid_transition path status); o número do GAL muda" do
     test = collect(dpp_result: "reactive", dpp_on: today.iso8601).payload[:test]
     test = correct(test, elisa_result: "reactive", elisa_on: today.iso8601).payload[:test]

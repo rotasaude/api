@@ -2,8 +2,10 @@ require "rails_helper"
 
 # Módulo 35b, Task 13 (ADR 0054; contrato §6, Q21): a etiqueta da coleta de
 # sorologia, feita pelo api: LV-<ano>-<6 primeiros hex do id do inquérito, em
-# maiúsculas>-<seq 4>, ou LV-<ano>-AVUL-<seq 4> fora de inquérito. A sequência
-# é por prefixo (inquérito e ano, ou o ano avulso), sob pg_advisory_xact_lock.
+# maiúsculas>-<seq>, ou LV-<ano>-AVUL-<seq> fora de inquérito; a seq tem ao
+# menos 4 dígitos com zeros à esquerda e cresce até 6, sem recomeçar (Q36). A
+# sequência é por prefixo (inquérito e ano, ou o ano avulso), sob
+# pg_advisory_xact_lock.
 RSpec.describe Zoonoses::Label, type: :model do
   let!(:city) { zoonoses_city! }
   let(:neighborhood) { Neighborhood.create!(name: "Bairro #{SecureRandom.hex(3)}", source: "manual") }
@@ -32,6 +34,25 @@ RSpec.describe Zoonoses::Label, type: :model do
     other = leish_survey!(blocks: [ block ], id: "0a1b2c3d-3456-4789-8abc-def012345678")
     expect(described_class.next!(survey: other, year: 2026)).to eq("LV-2026-0A1B2C-0001")
     expect(described_class.next!(survey: nil, year: 2026)).to eq("LV-2026-AVUL-0001")
+  end
+
+  it "Q36: a seq é a maior pelo sufixo NUMÉRICO e cresce de 4 até 6 dígitos sem recomeçar; passar de 999999 → Label::Exhausted" do
+    collect!(nil, "LV-2026-AVUL-0010")
+    collect!(nil, "LV-2026-AVUL-0002")
+    expect(described_class.next!(survey: nil, year: 2026)).to eq("LV-2026-AVUL-0011")
+    collect!(nil, "LV-2026-AVUL-9999")
+    tenth_thousand = described_class.next!(survey: nil, year: 2026)
+    expect(tenth_thousand).to eq("LV-2026-AVUL-10000")
+    expect(tenth_thousand).to match(Zoonoses::Catalog::LABEL)
+    collect!(nil, tenth_thousand)
+    # Numérico: -10000 > -9999 (o máximo léxico seria -9999 e repetiria -10000).
+    expect(described_class.next!(survey: nil, year: 2026)).to eq("LV-2026-AVUL-10001")
+    collect!(nil, "LV-2026-AVUL-999999")
+    expect("LV-2026-AVUL-999999").to match(Zoonoses::Catalog::LABEL)
+    expect("LV-2026-AVUL-1000000").not_to match(Zoonoses::Catalog::LABEL)
+    expect("LV-2026-AVUL-001").not_to match(Zoonoses::Catalog::LABEL)
+    expect { described_class.next!(survey: nil, year: 2026) }.to raise_error(Zoonoses::Label::Exhausted)
+    expect(described_class.next!(survey: nil, year: 2027)).to eq("LV-2027-AVUL-0001")
   end
 
   it "fora de transação → ArgumentError (a trava é da transação)" do

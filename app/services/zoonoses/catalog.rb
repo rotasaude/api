@@ -54,8 +54,9 @@ module Zoonoses
     ELISA_RESULTS = %w[reactive non_reactive inconclusive].freeze
     ELISA_REQUEST = (1..30)
     # Etiqueta da coleta, feita pelo api (Q21): hexadecimal maiúsculo, ou AVUL
-    # fora de inquérito.
-    LABEL = /\ALV-\d{4}-([0-9A-F]{6}|AVUL)-\d{4}\z/
+    # fora de inquérito. A seq tem ao menos 4 dígitos com zeros à esquerda e
+    # cresce até 6, sem recomeçar (Q36).
+    LABEL = /\ALV-\d{4}-([0-9A-F]{6}|AVUL)-\d{4,6}\z/
     LEISH_DECISIONS = %w[tutor_treatment euthanasia refused].freeze
     REMOVAL_REASONS = %w[replaced lost death other].freeze
     COLLAR_DUE_WINDOW = 15

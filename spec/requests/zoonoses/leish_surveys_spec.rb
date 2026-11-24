@@ -184,6 +184,19 @@ RSpec.describe "Zoonoses — inquéritos de leishmaniose", type: :request do
       suggest(kind: "focus", neighborhood_id: neighborhood.id, center_city_block_id: block.id, rings: 3)
       expect(json_body).to include("dog_population_suggested" => 160, "target_dogs" => 160)
       expect(json_body["city_block_ids"]).to contain_exactly(block.id, ring1.id, ring2.id, ring3.id)
+
+      # O rascunho com o central e `rings` reproduz a sugestão (mesmo sentido do suggest).
+      json_post "/zoonoses/leish_surveys", body.except(:city_block_ids).merge(kind: "focus", center_city_block_id: block.id, rings: 3,
+                                                                             dog_population: 160)
+      expect(response).to have_http_status(:created)
+      expect(json_body["city_block_ids"]).to contain_exactly(block.id, ring1.id, ring2.id, ring3.id)
+      json_post "/zoonoses/leish_surveys", body.except(:city_block_ids).merge(kind: "focus", center_city_block_id: block.id, dog_population: 120)
+      expect(json_body["city_block_ids"]).to contain_exactly(block.id, ring1.id, ring2.id)
+      json_post "/zoonoses/leish_surveys", body.except(:city_block_ids).merge(kind: "focus", center_city_block_id: block.id, rings: 6,
+                                                                             dog_population: 120)
+      expect(json_body).to eq("error" => "invalid_request", "path" => "rings")
+      json_post "/zoonoses/leish_surveys", body.merge(kind: "focus", rings: 2)
+      expect(json_body).to eq("error" => "invalid_request", "path" => "rings")
     end
 
     it "focus: 40 cães sem vizinhos → below_focus_min true com o central" do

@@ -20,7 +20,8 @@
 #       - Datas (Q20): collected_on entre o início do inquérito (avulsa: hoje −
 #         30) e hoje; dpp_on e elisa_on entre a coleta e hoje → senão
 #         date_out_of_range com o path.
-#       - A etiqueta é do api (Zoonoses::Label, na mesma transação).
+#       - A etiqueta é do api (Zoonoses::Label, na mesma transação); a
+#         sequência esgotada (além de 999999, Q36) → invalid_request path label.
 #   - Correção (`test`, só pelo dashboard, team?): `expected_version` (ausente
 #     → expected_version_required; divergente → 409 test_changed) e ao menos
 #     um de dpp_result, dpp_on, elisa_result, elisa_on, elisa_request (nil
@@ -97,6 +98,9 @@ module Zoonoses
                                              result_by_user: result?(attrs) ? by : nil))
         recorded!(test)
       end
+    rescue Label::Exhausted
+      # A sequência do prefixo passou de 999999 (Q36): a coleta não grava.
+      invalid("label")
     end
 
     def correct(test, params, by, today)
