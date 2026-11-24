@@ -45,3 +45,31 @@ RSpec.describe Zoonoses::Parameters, type: :model do
     expect(described_class.at(1)).to eq(described_class::Snapshot.new(version: 1, values: factory, created_at: first.created_at))
   end
 end
+
+# O PUT (Task 16): faixas e a tabela da amostra, com o defaults.yml de verdade.
+RSpec.describe Zoonoses::Parameters, ".validate", type: :model do
+  let(:factory) { described_class.defaults }
+
+  it "RANGES tem as mesmas chaves do defaults.yml, sem leish_expected_prevalence (Q18)" do
+    expect(described_class::RANGES.keys).to eq(factory.keys)
+    expect(factory).not_to have_key("leish_expected_prevalence")
+  end
+
+  it "o padrão de fábrica passa, inclusive a tabela com min_population e a_conferir" do
+    expect(described_class.validate(factory)).to be_nil
+    expect(described_class.normalize(factory)).to eq(factory)
+  end
+
+  it "min_population só na primeira linha; população estritamente crescente; amostra <= população" do
+    row = { "population" => 100, "sample" => 50 }
+    expect(described_class.validate(factory.merge("leish_sample_table" => [ row.merge("min_population" => 80), { "population" => 200, "sample" => 90 } ]))).to be_nil
+    expect(described_class.validate(factory.merge("leish_sample_table" => [ row, row.merge("min_population" => 80, "population" => 200) ])))
+      .to eq(path: "leish_sample_table")
+    expect(described_class.validate(factory.merge("leish_sample_table" => [ row, row ]))).to eq(path: "leish_sample_table")
+  end
+
+  it "não é objeto → path nil; tipo errado → a chave" do
+    expect(described_class.validate([])).to eq(path: nil)
+    expect(described_class.validate(factory.merge("collar_months" => 6.0))).to eq(path: "collar_months")
+  end
+end

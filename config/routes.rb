@@ -1147,6 +1147,10 @@ Rails.application.routes.draw do
     post   "euthanasias",                     to: "euthanasias#create"
     # Relatórios (§8): JSON e `.csv`; nome e extensão conferidos no controller (404).
     get    "reports/:name",                   to: "reports#show"
+    # Parâmetros com versão (§9; PUT com step-up) e domínios (§11).
+    get    "parameters",                      to: "parameters#show"
+    put    "parameters",                      to: "parameters#update"
+    get    "domains",                         to: "domains#show"
   end
 
   # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard

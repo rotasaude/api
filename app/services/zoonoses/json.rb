@@ -10,7 +10,32 @@
 #     motivo escrito, adotante, contato nem endereço.
 module Zoonoses
   module Json
+    DOMAINS_PATH = Rails.root.join("config/zoonoses/domains.yml")
+
     module_function
+
+    # Parâmetros técnicos na rota do dashboard (§9): `{ version, values,
+    # created_at }`; a versão 0 (defaults.yml) com created_at nil.
+    def parameters(snapshot)
+      { version: snapshot.version, values: snapshot.values, created_at: snapshot.created_at&.utc&.iso8601(6) }
+    end
+
+    # Os domínios (§11): o `zoonoses_domains` da referência do app (species,
+    # sexes, sizes, animal_statuses, dpp_results, products, open_campaign,
+    # parameters, limits) mais as outras listas do domains.yml, para o
+    # dashboard. `products` só os ativos com rabies_vaccine/collar (Q11), uma
+    # linha por finalidade; sem campanha open, open_campaign null.
+    def domains
+      lists = YAML.load_file(DOMAINS_PATH).to_h do |list, rows|
+        [ list.to_sym, rows.map { |row| { code: row.fetch("code").to_s, label: row.fetch("label") } } ]
+      end
+      lists.merge(
+        products: products,
+        open_campaign: open_campaign,
+        parameters: { collar_months: Parameters.current.values.fetch("collar_months") },
+        limits: limits
+      )
+    end
 
     def animal(animal)
       { id: animal.id, species: animal.species, name: animal.name, sex: animal.sex, size: animal.size, coat: animal.coat,
@@ -218,6 +243,23 @@ module Zoonoses
         veterinarian: veterinarian(row.professional) }
     end
 
-    private_class_method :veterinarian, :history, :vaccination, :observation, :leish_test, :collar, :stay, :neutering, :euthanasia
+    def products
+      uses = Catalog::PRODUCT_USES
+      VectorProduct.active_products.where("uses && ARRAY[?]::text[]", uses).order(:code, :id).flat_map do |product|
+        (uses & product.uses).map { |use| { id: product.id, code: product.code, name: product.name, use: use } }
+      end
+    end
+
+    def open_campaign
+      campaign = RabiesCampaign.open_campaigns.order(:starts_on, :id).first
+      campaign && { id: campaign.id, name: campaign.name, starts_on: campaign.starts_on.iso8601, ends_on: campaign.ends_on.iso8601 }
+    end
+
+    def limits
+      { name_max: Catalog::NAME.max, coat_max: Catalog::COAT.max, breed_max: Catalog::BREED.max, microchip_digits: 15,
+        registry_number_max: Catalog::REGISTRY_NUMBER.max, adverse_note_min: Catalog::NOTE.min, adverse_note_max: Catalog::NOTE.max }
+    end
+
+    private_class_method :products, :open_campaign, :limits, :veterinarian, :history, :vaccination, :observation, :leish_test, :collar, :stay, :neutering, :euthanasia
   end
 end
