@@ -34,7 +34,7 @@ RSpec.describe "Zoonoses — domínios", type: :request do
     get "/zoonoses/domains"
     expect(response).to have_http_status(:ok)
     body = json_body
-    expect(body).to eq(JSON.parse(Zoonoses::Json.domains.to_json))
+    expect(body.except("units")).to eq(JSON.parse(Zoonoses::Json.domains.to_json))
     expect(body["products"]).to eq([ { "id" => collar.id, "code" => "COL", "name" => collar.name, "use" => "collar" },
                                      { "id" => vaccine.id, "code" => "RAB", "name" => vaccine.name, "use" => "rabies_vaccine" } ])
     expect(body["open_campaign"]).to be_nil
@@ -57,6 +57,25 @@ RSpec.describe "Zoonoses — domínios", type: :request do
                                        modalities demand_states deadline_colors observation_outcomes subtypes])
     labels.each { |list, rows| expect(body[list]).to eq(rows.map { |row| { "code" => row["code"].to_s, "label" => row["label"] } }), list }
     expect(body["parameters"]).to eq("collar_months" => 9)
+  end
+
+  it "units: só as unidades ativas de vigilância ambiental, por nome; Json.domains e a referência do app ficam sem units (Q41)" do
+    zeta = create_unit("Zeta UVZ", kind: "environmental_surveillance")
+    alfa = create_unit("Alfa UVZ", kind: "environmental_surveillance")
+    create_unit("UBS Centro", kind: "ubs")
+    create_unit("Antiga UVZ", kind: "environmental_surveillance").update!(active: false)
+    sign_in_as(coordinator)
+
+    get "/zoonoses/domains"
+    expect(json_body["units"]).to eq([ { "id" => alfa.id, "name" => "Alfa UVZ" }, { "id" => zeta.id, "name" => "Zeta UVZ" } ])
+    expect(Zoonoses::Json.domains).not_to have_key(:units)
+    expect(FieldSync::Reference::ZOONOSES_KEYS).not_to include("units", :units)
+  end
+
+  it "units vazio sem unidade de vigilância ambiental" do
+    sign_in_as(coordinator)
+    get "/zoonoses/domains"
+    expect(json_body["units"]).to eq([])
   end
 
   it "traz demand_outcomes com os quatro códigos na ordem do Catalog e os rótulos fixados" do
@@ -115,7 +134,7 @@ RSpec.describe "Zoonoses — domínios", type: :request do
     [ field_agent!(team: team), field_agent!(cbo: "515140", team: team) ].each do |agent|
       sign_in_as(agent)
       get "/zoonoses/domains"
-      expect([ response.status, json_body ]).to eq([ 200, JSON.parse(Zoonoses::Json.domains.to_json) ])
+      expect([ response.status, json_body.except("units") ]).to eq([ 200, JSON.parse(Zoonoses::Json.domains.to_json) ])
     end
     sign_in_as(staff_with("almox-#{SecureRandom.hex(3)}@cidade.gov.br", "stock_keeper"))
     get "/zoonoses/domains"

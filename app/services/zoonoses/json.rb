@@ -97,8 +97,9 @@ module Zoonoses
     end
 
     # Estada no canil (§7) na lista e na resposta da escrita: só ids, datas,
-    # códigos e a espécie do animal (`animal` já carregado ou lido aqui).
-    # Nunca o tutor nem o adotante (nem o id dele), nem o nome do animal.
+    # códigos e a espécie do animal (`animal` já carregado ou lido aqui). A
+    # lista acrescenta `animal` { id, name, species } (Q41); create/exit não.
+    # Nunca o tutor nem o adotante (nem o id dele).
     def shelter_stay(row, species: row.animal.species)
       { id: row.id, animal_id: row.animal_id, species: species, health_unit_id: row.health_unit_id, entry_kind: row.entry_kind,
         entered_on: row.entered_on.iso8601, bite_observation_id: row.bite_observation_id, exit_kind: row.exit_kind,

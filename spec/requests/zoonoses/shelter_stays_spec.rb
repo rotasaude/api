@@ -45,6 +45,23 @@ RSpec.describe "Zoonoses — canil e gatil", type: :request do
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
   end
 
+  it "cada item traz o animal (id, name, species), name nulo sem nome, sem tutor nem microchip (Q41); a lista não grava trilha" do
+    unit = uvz_unit!
+    named = shelter_stay!(animal: animal!(tutor: tutor!, name: "Rex", microchip: "985112345678901"), health_unit: unit)
+    nameless = shelter_stay!(animal: animal!(species: "cat"), health_unit: unit)
+
+    expect do
+      [ "/zoonoses/shelter_stays", "/zoonoses/shelter_stays?open=1" ].each do |path|
+        get path
+        expect(response).to have_http_status(:ok)
+        by_id = json_body["items"].index_by { _1["id"] }
+        expect(by_id.fetch(named.id)["animal"]).to eq({ "id" => named.animal_id, "name" => "Rex", "species" => "dog" })
+        expect(by_id.fetch(nameless.id)["animal"]).to eq({ "id" => nameless.animal_id, "name" => nil, "species" => "cat" })
+        expect(response.body).not_to match(/tutor|microchip|985112345678901/i)
+      end
+    end.not_to change { [ DomainEvent.count, PlatformEvent.count ] }
+  end
+
   it "entrada e saída pela rota; adotante nunca na resposta; fora da equipe → 403" do
     unit = uvz_unit!
     json_post_to("/zoonoses/shelter_stays", { health_unit_id: unit.id, entry_kind: "voluntary_surrender",
