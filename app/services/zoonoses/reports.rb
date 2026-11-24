@@ -179,7 +179,7 @@ module Zoonoses
                column("collars_placed", "Coleiras colocadas", "count"), column("collars_due", "Coleiras a trocar", "count") ],
              rows,
              notes: [ "Prevalência por cão: o último resultado final de cada cão no inquérito.",
-                      "Coleiras: dos cães dos domicílios dos quarteirões do inquérito (examinados ou não); a trocar = ativas com vencimento em até #{Catalog::COLLAR_DUE_WINDOW} dias." ])
+                      "Coleiras: dos cães dos domicílios dos quarteirões do inquérito (examinados ou não); a trocar = ativas dos cães ativos com vencimento em até #{Catalog::COLLAR_DUE_WINDOW} dias." ])
     end
 
     def shelter(filters)

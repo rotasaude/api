@@ -123,6 +123,8 @@ RSpec.describe Zoonoses::Reports, type: :model do
     row = report[:rows].sole
     expect(row).to include("examined" => 2, "reactive" => 1, "prevalence" => "50.0", "collars_placed" => 3, "collars_due" => 2)
     expect(row["prevalence"]).to eq(format("%.1f", Zoonoses::Prevalence.for(survey)[:prevalence]))
+    # A nota diz o que a coluna conta: só os cães ativos.
+    expect(report[:notes].last).to include("a trocar = ativas dos cães ativos com vencimento em até #{Zoonoses::Catalog::COLLAR_DUE_WINDOW} dias")
   end
 
   it "filtros: período ausente ou invertido → path from; id desconhecido → o próprio path" do
