@@ -44,4 +44,14 @@ fields:
   residence_zone: { field: 29, type: code, domain: { "1": "Urbana", "2": "Rural", "3": "Periurbana", "9": "Ignorado" } }
   residence_country: { field: 30, type: text, max: 40, source: "o Sinan grava o código da tabela de países (varchar 4); no papel é o nome — 40 é proposta do plano" }
   occupation_cbo: { field: null, type: cbo, source: "fichas de investigação, campo 'Ocupação' com número variável (31 a 34: ex. 32 em dengue_chikungunya.pdf, 31 nas DRT, 34 em violencia.pdf; ausente em tuberculose.pdf e pfa_poliomielite.pdf); a Ficha de Notificação/Conclusão, a NINDIV v5 e o dicionário de dados da notificação individual não têm o campo nem o tamanho" }
-types: [code, text, digits, uf, cbo]
+  # Bloco do animal agressor (módulo 35b, contrato §5, Q16): só na notificação de acidente com animal
+  # potencialmente transmissor da raiva (`diseases`). Valores de texto, como o resto da ficha: data
+  # "AAAA-MM-DD" e booleano "true"/"false". Dado pessoal do tutor: nunca em log (filter_parameter_logging).
+  animal_species: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: code, domain: { "dog": "Cão", "cat": "Gato", "bat": "Morcego", "primate": "Primata", "fox": "Raposa", "livestock": "Animal de produção", "other": "Outro" } }
+  animal_condition: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: code, domain: { "healthy": "Sem sinais", "suspect": "Suspeito", "rabid": "Raivoso", "dead_or_missing": "Morto ou desaparecido" } }
+  animal_observable: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: boolean }
+  exposure_on: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: date }
+  animal_tutor_name: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: text, max: 120 }
+  animal_tutor_phone: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: digits, min: 10, max: 11 }
+  animal_address: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: text, min: 10, max: 300 }
+types: [code, text, digits, uf, cbo, date, boolean]

@@ -35,7 +35,8 @@ module Surveillance
       rows = result.payload.fetch(:rows)
       Trail.listed!(user: Current.user, notification_ids: rows.map(&:id)) if rows.any?
       diseases = Diseases.all.index_by(&:code)
-      render json: { notifications: rows.map { |n| Json.notification(n, full: false, diseases: diseases) },
+      observations = Json.observations_for(rows)
+      render json: { notifications: rows.map { |n| Json.notification(n, full: false, diseases: diseases, observations: observations) },
                      next_before: result.payload.fetch(:next_before) }
     end
 

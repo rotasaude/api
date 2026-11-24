@@ -63,7 +63,7 @@ RSpec.describe "Vigilância na consulta", type: :request do
     patient = notification.patient
     expect(json_body.keys).to match_array(%w[id patient disease origin status classification suspected_on symptoms_on unit notifier deadline
                                               due_at overdue official_number resident_elsewhere residence_ibge neighborhood consultation_id
-                                              closed_at entered_at dismissed_at version form events])
+                                              closed_at entered_at dismissed_at version animal_outcome_pending animal_observation form events])
     expect(json_body).to include(
       "origin" => "consultation", "status" => "notified", "classification" => nil, "deadline" => "weekly", "overdue" => false,
       "official_number" => nil, "resident_elsewhere" => false, "residence_ibge" => nil, "consultation_id" => c.id,

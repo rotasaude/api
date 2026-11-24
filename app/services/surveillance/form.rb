@@ -18,6 +18,9 @@ module Surveillance
     KEY_FORMAT = /\A[a-z][a-z0-9_]{0,47}\z/
     # Marca de "recusado" (nil é "ausente").
     INVALID = Object.new.freeze
+    DATE = /\A\d{4}-\d{2}-\d{2}\z/
+    BOOLEANS = %w[true false].freeze
+    OBSERVABLE_SPECIES = %w[dog cat].freeze
 
     module_function
 
@@ -27,7 +30,8 @@ module Surveillance
     # form: o objeto `form` do corpo (chaves texto ou símbolo). ->
     # Result.ok(form: Hash normalizado, só com o que foi preenchido) |
     # fail(:invalid_form, details: { path: "form" | "form.<chave>" }).
-    def validate(form)
+    # disease_code: a doença da notificação; campo com `diseases` só passa na doença listada (Q16).
+    def validate(form, disease_code: nil)
       return invalid("form") unless form.is_a?(Hash)
 
       normalized = {}
@@ -36,6 +40,8 @@ module Surveillance
         spec = FIELDS[key]
         # Chave de fora da ficha (ou que nem tem cara de chave): o caminho nunca ecoa texto arbitrário.
         return invalid(key.match?(KEY_FORMAT) ? "form.#{key}" : "form") unless spec
+
+        return invalid("form.#{key}") if spec.key?("diseases") && spec["diseases"].exclude?(disease_code)
 
         coerced = coerce(spec, value)
         return invalid("form.#{key}") if coerced.equal?(INVALID)
@@ -46,14 +52,16 @@ module Surveillance
           normalized[key] = coerced
         end
       end
+      return invalid("form.animal_observable") unless observable_species?(normalized)
+
       Result.ok(form: normalized)
     end
 
     # Pré-preenchimento (FormPrefill): só os valores que a validação aceita,
     # já normalizados; o que não passa (rua de 70 caracteres) sai, não é cortado.
-    def keep_valid(values)
+    def keep_valid(values, disease_code: nil)
       values.each_with_object({}) do |(key, value), kept|
-        result = validate(key => value)
+        result = validate({ key => value }, disease_code: disease_code)
         kept.merge!(result.payload.fetch(:form)) if result.ok?
       end
     end
@@ -69,12 +77,31 @@ module Surveillance
 
       case spec.fetch("type")
       when "code" then spec.fetch("domain").key?(text) ? text : INVALID
-      when "text" then text.length <= spec.fetch("max") ? text : INVALID
+      when "text" then text.length.between?(spec.fetch("min", 1), spec.fetch("max")) ? text : INVALID
       when "digits" then digits(text, spec)
       when "uf" then Professional::UFS.include?(text.upcase) ? text.upcase : INVALID
+      when "date" then date(text)
+      when "boolean" then BOOLEANS.include?(text) ? text : INVALID
       when "cbo" then text.match?(CBO) ? text : INVALID
       else raise ArgumentError, "unknown form field type"
       end
+    end
+
+    # "AAAA-MM-DD", dia que existe e não depois de hoje (Time.zone.today).
+    def date(text)
+      return INVALID unless text.match?(DATE)
+
+      parsed = Date.strptime(text, "%Y-%m-%d")
+      parsed <= Time.zone.today ? text : INVALID
+    rescue Date::Error
+      INVALID
+    end
+
+    # Observável só vale para cão ou gato (§5): espécie preenchida e outra → recusa.
+    def observable_species?(form)
+      return true unless form["animal_observable"] == "true" && form.key?("animal_species")
+
+      OBSERVABLE_SPECIES.include?(form["animal_species"])
     end
 
     def digits(text, spec)
@@ -87,6 +114,6 @@ module Surveillance
     end
 
     def invalid(path) = Result.fail(:invalid_form, details: { path: path })
-    private_class_method :coerce, :digits, :invalid
+    private_class_method :coerce, :digits, :date, :observable_species?, :invalid
   end
 end

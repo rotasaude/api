@@ -16,7 +16,7 @@ module Surveillance
     def call(notification:, form:, version:, by:)
       raise ArgumentError, "by required" if by.nil?
 
-      validated = Form.validate(form)
+      validated = Form.validate(form, disease_code: notification.disease_code)
       ApplicationRecord.transaction do
         locked = DiseaseNotification.lock.find(notification.id)
         next Result.fail(:stale_version) unless locked.version == version

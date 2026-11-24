@@ -8,14 +8,24 @@ module Surveillance
 
     # full: true traz `form` e `events` (detalhe e 201); a lista não.
     # diseases: índice code → Disease, para a lista montar uma vez só.
-    def notification(n, full: true, diseases: nil)
-      json = list_item(n, diseases: diseases)
+    # observations: índice notification_id → BiteObservation já lido em lote (a página); sem ele, uma consulta.
+    def notification(n, full: true, diseases: nil, observations: nil)
+      observation = observations ? observations[n.id] : observation_for(n)
+      json = list_item(n, diseases: diseases, observations: { n.id => observation })
       return json unless full
 
-      json.merge(form: n.form, events: n.events.includes(:by_user).map { |e| event(e) })
+      json.merge(form: n.form, animal_observation: animal_observation(observation),
+                 events: n.events.includes(:by_user).map { |e| event(e) })
     end
 
-    def list_item(n, diseases: nil)
+    # Observações do 35b (só leitura, Q7) das notificações abertas, numa consulta só.
+    def observations_for(notifications)
+      ids = notifications.select { |n| Catalog::OPEN_STATUSES.include?(n.status) }.map(&:id)
+      BiteObservation.where(disease_notification_id: ids).index_by(&:disease_notification_id)
+    end
+
+    def list_item(n, diseases: nil, observations: nil)
+      observation = observations ? observations[n.id] : observation_for(n)
       { id: n.id, patient: patient(n.patient), disease: disease(n, diseases), origin: n.origin, status: n.status,
         classification: n.classification, suspected_on: n.suspected_on.iso8601, symptoms_on: n.symptoms_on&.iso8601,
         unit: { id: n.health_unit_id, cnes: n.unit_cnes, name: n.health_unit.name },
@@ -24,7 +34,20 @@ module Surveillance
         resident_elsewhere: n.resident_elsewhere, residence_ibge: n.residence_ibge,
         neighborhood: n.neighborhood && { id: n.neighborhood_id, name: n.neighborhood.name },
         consultation_id: n.consultation_id, closed_at: n.closed_at&.iso8601, entered_at: n.entered_at&.iso8601,
-        dismissed_at: n.dismissed_at&.iso8601, version: n.version }
+        dismissed_at: n.dismissed_at&.iso8601, version: n.version,
+        animal_outcome_pending: pending?(n, observation) }
+    end
+
+    def observation_for(n) = BiteObservation.find_by(disease_notification_id: n.id)
+
+    def animal_observation(observation)
+      observation && { state: observation.state, ends_on: observation.ends_on.iso8601, outcome: observation.outcome,
+                       outcome_on: observation.outcome_on&.iso8601 }
+    end
+
+    # Observação fechada e notificação ainda aberta: o aviso à unidade que atendeu (Q16).
+    def pending?(n, observation)
+      !observation.nil? && observation.closed? && Catalog::OPEN_STATUSES.include?(n.status)
     end
 
     def patient(patient)

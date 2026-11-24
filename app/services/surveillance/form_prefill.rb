@@ -19,13 +19,13 @@ module Surveillance
 
     module_function
 
-    def for(patient, resident_elsewhere: false)
+    def for(patient, resident_elsewhere: false, disease_code: nil)
       address = ADDRESS.transform_values { |column| patient.public_send(column).presence }.compact
       values = { "race_color" => Catalog::RACE_TO_SINAN.fetch(patient.race_color.to_s, "9"),
                  "residence_uf" => (CityProfile.current&.uf if address.any? && !resident_elsewhere),
                  "phone" => Billing::PatientContact.for([ patient.id ])[patient.id]&.phone,
                  "occupation_cbo" => occupation(patient) }.merge(address)
-      Form.keep_valid(values.compact.slice(*Form.keys))
+      Form.keep_valid(values.compact.slice(*Form.keys), disease_code: disease_code)
     end
 
     def occupation(patient)

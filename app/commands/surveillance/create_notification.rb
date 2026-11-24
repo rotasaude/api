@@ -59,7 +59,7 @@ module Surveillance
                               deadline: disease.deadline, origin: origin, status: status, suspected_on: suspected_on,
                               symptoms_on: symptoms_on, due_at: suspected_at + Catalog::DEADLINES.fetch(disease.deadline),
                               health_unit: unit, unit_cnes: unit.cnes, notifier_user: notifier, consultation: consultation,
-                              addendum: addendum, immunization: immunization, form: FormPrefill.for(patient, resident_elsewhere: resident_elsewhere),
+                              addendum: addendum, immunization: immunization, form: FormPrefill.for(patient, resident_elsewhere: resident_elsewhere, disease_code: disease.code),
                               resident_elsewhere: resident_elsewhere,
                               residence_ibge: residence_ibge, neighborhood_id: PatientNeighborhood.for(patient))
         next already_notified(open_id(patient.id, disease.code)) if notification.nil?

@@ -64,4 +64,14 @@ RSpec.describe "Lista de notificação compulsória e ficha do Sinan (prova téc
     expect(fields.values.map { |f| f["type"] }.uniq - form.fetch("types")).to be_empty
     expect(fields.keys).to all(match(/\A[a-z][a-z0-9_]*\z/))
   end
+
+  it "ficha: tipos date e boolean e os sete campos do animal só para acidente_animal_raiva" do
+    fields = form.fetch("fields")
+    expect(form.fetch("types")).to include("date", "boolean")
+    animal = fields.select { |_k, f| f["section"] == "rabies_animal" }
+    expect(animal.keys).to contain_exactly("animal_species", "animal_condition", "animal_observable", "exposure_on",
+                                           "animal_tutor_name", "animal_tutor_phone", "animal_address")
+    expect(animal.values.map { |f| f["diseases"] }.uniq).to eq([ [ "acidente_animal_raiva" ] ])
+    expect(fields.fetch("animal_species").fetch("domain").keys).to eq(%w[dog cat bat primate fox livestock other])
+  end
 end

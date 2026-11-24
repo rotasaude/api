@@ -60,6 +60,8 @@ module Surveillance
       raw = form[key]
       value = case spec.fetch("type")
       when "code" then raw.present? ? "#{raw} — #{spec.fetch('domain').fetch(raw, raw)}" : nil
+      when "date" then raw.present? ? Date.iso8601(raw).strftime("%d/%m/%Y") : nil
+      when "boolean" then raw.present? ? (raw == "true" ? "Sim" : "Não") : nil
       else raw
       end
       field(pdf, spec.fetch("field"), label, value)
