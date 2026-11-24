@@ -1127,6 +1127,18 @@ Rails.application.routes.draw do
     get    "observations/:id/contact",        to: "observations#contact", constraints: member_id
     post   "observations/:id/close",          to: "observations#close_observation", constraints: member_id
     post   "observations/:id/link_animal",    to: "observations#link_animal", constraints: member_id
+    # Leishmaniose (§6): `suggest` antes de `:id` (Q28; não grava).
+    get    "leish_surveys",                   to: "leish_surveys#index"
+    post   "leish_surveys",                   to: "leish_surveys#create"
+    post   "leish_surveys/suggest",           to: "leish_surveys#suggest"
+    get    "leish_surveys/:id",               to: "leish_surveys#show", constraints: member_id
+    patch  "leish_surveys/:id",               to: "leish_surveys#update", constraints: member_id
+    post   "leish_surveys/:id/open",          to: "leish_surveys#open_survey", constraints: member_id
+    post   "leish_surveys/:id/close",         to: "leish_surveys#close_survey", constraints: member_id
+    get    "leish_tests",                     to: "leish_tests#index"
+    post   "leish_tests",                     to: "leish_tests#create"
+    patch  "leish_tests/:id",                 to: "leish_tests#update", constraints: member_id
+    post   "leish_outcomes",                  to: "leish_outcomes#create"
     post   "neuterings",                      to: "neuterings#create"
     # Eutanásia imutável (§7): só a criação, sem leitura avulsa, edição nem exclusão.
     post   "euthanasias",                     to: "euthanasias#create"

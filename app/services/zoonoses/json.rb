@@ -114,6 +114,47 @@ module Zoonoses
                closed_by_user_id: row.closed_by_user_id, created_at: row.created_at.iso8601)
     end
 
+    # Inquérito de leishmaniose (§6) na lista: sem dado pessoal. below_focus_min
+    # com os parâmetros da versão do inquérito (a tela avisa o foco pequeno).
+    def leish_survey(row, parameters: Parameters.at(row.parameters_version))
+      { id: row.id, name: row.name, kind: row.kind, neighborhood_id: row.neighborhood_id,
+        neighborhood: { id: row.neighborhood_id, name: row.neighborhood.name }, city_block_ids: row.city_block_ids,
+        dog_population: row.dog_population, target_dogs: row.target_dogs,
+        below_focus_min: LeishSample.below_focus_min?(kind: row.kind, dog_population: row.dog_population, parameters: parameters),
+        starts_on: row.starts_on.iso8601, ends_on: row.ends_on.iso8601, stage: row.stage, parameters_version: row.parameters_version,
+        version: row.version, created_at: row.created_at.iso8601 }
+    end
+
+    # O detalhe e a resposta da escrita: mais os domicílios dos quarteirões
+    # (Q21), a sugestão de população (Q18) e a prevalência.
+    def leish_survey_detail(row)
+      parameters = Parameters.at(row.parameters_version)
+      leish_survey(row, parameters: parameters)
+        .merge(household_ids: SurveyArea.household_ids(row.city_block_ids),
+               dog_population_suggested: SurveyArea.suggested_population(row.city_block_ids, parameters: parameters),
+               prevalence: Prevalence.for(row))
+    end
+
+    # Coleta e sorologia (§6) na lista e na resposta da escrita: o animal só
+    # como `{ id, has_tutor }` (o desfecho pede tutor), nunca o tutor nem o
+    # nome do animal (o molde da dose e da estada); o desfecho sem a nota.
+    def leish_test_record(row)
+      animal = row.animal
+      outcome = row.outcome
+      { id: row.id, version: row.version, leish_survey_id: row.leish_survey_id,
+        animal: { id: animal.id, has_tutor: !animal.tutor_patient_id.nil? }, label: row.label,
+        collected_on: row.collected_on.iso8601, dpp_result: row.dpp_result, dpp_on: row.dpp_on&.iso8601, elisa_result: row.elisa_result,
+        elisa_on: row.elisa_on&.iso8601, elisa_request: row.elisa_request, result_by_user_id: row.result_by_user_id,
+        outcome: outcome && { id: outcome.id, decision: outcome.decision, decided_on: outcome.decided_on.iso8601 },
+        created_at: row.created_at.iso8601 }
+    end
+
+    # Desfecho do cão reagente (§6) na resposta da escrita: nunca a nota.
+    def leish_outcome(row)
+      { id: row.id, leish_test_id: row.leish_test_id, animal_id: row.animal_id, decision: row.decision,
+        decided_on: row.decided_on.iso8601, euthanasia_id: row.euthanasia_id, created_at: row.created_at.iso8601 }
+    end
+
     # `{ name, crmv }` do perfil profissional: o CRMV como "CRMV-<UF> <número>"
     # (o molde do ClinicalDocuments::Json; registro do conselho é público).
     def veterinarian(professional)

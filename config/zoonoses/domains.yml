@@ -5,8 +5,8 @@
 # contrato §7 e da decisão 20 da spec, com os rótulos fixados pelo
 # coordenador onde nenhum dos dois tinha texto (Task 8).
 # Incompleto de propósito: os domínios restantes do Valor fixado 3 (desfecho da
-# observação, ELISA, decisão, motivo de remoção) entram com as tasks donas
-# (12, 13, 14).
+# observação, motivo de remoção) entram com as tasks donas (12, 14). O
+# ELISA e a decisão do desfecho (Task 13) com os rótulos do contrato §6.
 species:
   - { code: dog, label: "Cão" }
   - { code: cat, label: "Gato" }
@@ -37,6 +37,14 @@ dpp_results:
   - { code: reactive, label: "Reagente" }
   - { code: non_reactive, label: "Não reagente" }
   - { code: invalid, label: "Inválido" }
+elisa_results:
+  - { code: reactive, label: "Reagente" }
+  - { code: non_reactive, label: "Não reagente" }
+  - { code: inconclusive, label: "Inconclusivo" }
+leish_decisions:
+  - { code: tutor_treatment, label: "Tratamento pelo tutor" }
+  - { code: euthanasia, label: "Eutanásia" }
+  - { code: refused, label: "Recusa do tutor" }
 leish_survey_kinds:
   - { code: sample, label: "Amostral" }
   - { code: census, label: "Censitário" }
