@@ -4,8 +4,8 @@
 # Os do canil (entrada, saída, motivo de eutanásia, base legal) são os do
 # contrato §7 e da decisão 20 da spec, com os rótulos fixados pelo
 # coordenador onde nenhum dos dois tinha texto (Task 8).
-# Incompleto de propósito: os domínios restantes do Valor fixado 3 (desfecho da
-# observação) entram com a task dona (12). Os motivos de remoção da coleira (Task 14) são
+# Os desfechos da demanda (`demand_outcomes`) seguem o Catalog, com os rótulos
+# fixados pelo coordenador. Os motivos de remoção da coleira (Task 14) são
 # os do contrato §6 (`removal_reasons`, rótulos fixados pelo coordenador). O
 # ELISA e a decisão do desfecho (Task 13) com os rótulos do contrato §6.
 species:
@@ -101,3 +101,8 @@ observation_outcomes:
   - { code: rabies_signs, label: "Sinais de raiva" }
   - { code: sent_to_exam, label: "Enviado a exame" }
   - { code: euthanized, label: "Eutanasiado" }
+demand_outcomes:
+  - { code: resolved, label: "Resolvida" }
+  - { code: guidance, label: "Orientação ao cidadão" }
+  - { code: not_found, label: "Problema não encontrado no local" }
+  - { code: referred, label: "Encaminhada a outro órgão" }

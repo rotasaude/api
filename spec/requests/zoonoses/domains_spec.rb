@@ -59,6 +59,18 @@ RSpec.describe "Zoonoses — domínios", type: :request do
     expect(body["parameters"]).to eq("collar_months" => 9)
   end
 
+  it "traz demand_outcomes com os quatro códigos na ordem do Catalog e os rótulos fixados" do
+    sign_in_as(coordinator)
+    get "/zoonoses/domains"
+    expect(json_body["demand_outcomes"].pluck("code")).to eq(Zoonoses::Catalog::DEMAND_OUTCOMES)
+    expect(json_body["demand_outcomes"]).to eq([
+      { "code" => "resolved", "label" => "Resolvida" },
+      { "code" => "guidance", "label" => "Orientação ao cidadão" },
+      { "code" => "not_found", "label" => "Problema não encontrado no local" },
+      { "code" => "referred", "label" => "Encaminhada a outro órgão" }
+    ])
+  end
+
   it "Zoonoses::Json.domains valida contra $defs/zoonoses_domains do reference-response v1.4.0 (as chaves da referência)" do
     zoonoses_product!(code: "RAB")
     zoonoses_product!(use: "collar", code: "COL")
