@@ -22,6 +22,9 @@
 #     mudança de situação (409 invalid_transition path status, Task 8): a
 #     morte no canil vai pela saída death e a transferência pela saída
 #     transferred (Zoonoses::ExitShelter), senão a estada não fecharia.
+#     A mudança para deceased tira a coleira ativa com removal_reason death
+#     no status_on (a parte da coleira da Zoonoses::AnimalDeath; o animal já
+#     está travado, animal → coleira; `collar.removed` só com o id).
 #     transferred e deceased não se editam
 #     (animal_not_active, conferido sob a trava, antes de gravar: o trigger
 #     rota_animal_guard é o cinto).
@@ -118,9 +121,11 @@ module Zoonoses
         end
         next Result.ok(animal: locked) unless locked.changed?
 
+        died = locked.status_changed?(to: "deceased")
         locked.version += 1
         locked.save!
         DomainEvents.publish("animal.changed", animal_id: locked.id)
+        AnimalDeath.remove_collar!(animal: locked, on: locked.status_on) if died
         Result.ok(animal: locked)
       end
     end

@@ -162,6 +162,28 @@ RSpec.describe Zoonoses::SaveAnimal, type: :model do
     expect(free.reload.status).to eq("deceased")
   end
 
+  it "status deceased tira a coleira ativa com death no dia da situação; collar.removed só com o id; missing não mexe na coleira" do
+    dog = animal!(created_at: Time.current - 30.days)
+    collar = collar!(animal: dog, placed_on: Time.zone.today - 10)
+    expect(edit(dog, status: "missing")).to be_ok
+    expect(collar.reload.removed_on).to be_nil
+
+    expect(edit(dog, status: "deceased", status_on: (Time.zone.today - 2).iso8601)).to be_ok
+    expect(collar.reload).to have_attributes(removed_on: Time.zone.today - 2, removal_reason: "death")
+    expect(DomainEvent.where(name: "collar.removed").sole.payload).to eq("collar_id" => collar.id)
+    expect(dog.reload).to have_attributes(status: "deceased", status_on: Time.zone.today - 2)
+
+    # Pelo app (origin field), o mesmo; a coleira posta depois do dia da morte sai no dia da colocação.
+    agent = endemic_agent!
+    home = ovitrap_household!(agent)
+    other = animal!(household: home, created_at: Time.current - 30.days)
+    late = collar!(animal: other, placed_on: Time.zone.today - 1)
+    result = save(by: agent, animal: other, origin: "field",
+                  params: { "expected_version" => other.version, "status" => "deceased", "status_on" => (Time.zone.today - 3).iso8601 })
+    expect(result).to be_ok
+    expect(late.reload).to have_attributes(removed_on: Time.zone.today - 1, removal_reason: "death")
+  end
+
   it "deceased → active → animal_not_active; nome do transferred → animal_not_active; nada gravado" do
     dead = animal!(status: "deceased", status_on: Time.zone.today - 3)
     expect(refusal(edit(dead, status: "active"))).to eq([ :animal_not_active, {} ])

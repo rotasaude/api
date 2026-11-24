@@ -11,6 +11,10 @@
 #     morte; `collar.removed` só com o id).
 # A estada aberta e a observação aberta não mudam aqui: a estada fecha só pela
 # saída, a observação pelo desfecho (Task 12).
+#
+# `remove_collar!` é só a parte da coleira: a SaveAnimal a usa quando a
+# edição (painel ou app) muda a situação para deceased, com o animal já
+# travado (animal → coleira, a mesma ordem).
 module Zoonoses
   module AnimalDeath
     REMOVAL_REASON = "death".freeze
@@ -20,7 +24,10 @@ module Zoonoses
     def apply!(animal:, on:)
       animal.update!(status: "deceased", status_on: on, version: animal.version + 1)
       DomainEvents.publish("animal.changed", animal_id: animal.id)
+      remove_collar!(animal: animal, on: on)
+    end
 
+    def remove_collar!(animal:, on:)
       collar = Collar.active.lock.find_by(animal_id: animal.id)
       return unless collar
 
