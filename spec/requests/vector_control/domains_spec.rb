@@ -3,8 +3,10 @@ require "rails_helper"
 # Módulo 35a, Task 14 (contrato §13; Q7(3), Q8, Q15, Q16(f)): GET
 # /vector_control/domains devolve exatamente VectorControl::Json.domains, o
 # mesmo serializador do `vector_control_domains` da referência do app (Task
-# 15). O esquema é o reference-response-v1.json do contracts v1.3.0 (commit
-# 2b1c24c), a cópia presa em config/field_sync/ (FieldSync::Schemas, Task 15).
+# 15). O esquema é o reference-response-v1.json da cópia presa em
+# config/field_sync/ (FieldSync::Schemas, Task 15): era a do contracts v1.3.0
+# (commit 2b1c24c); desde o módulo 35b é a v1.4.0 (contracts 15379c1), que
+# mantém o $defs/vector_control_domains da v1.3.0.
 RSpec.describe "Vigilância ambiental — domínios", type: :request do
   let!(:city) { vector_city! }
   let(:coordinator) { endemic_coordinator! }
@@ -33,11 +35,11 @@ RSpec.describe "Vigilância ambiental — domínios", type: :request do
     expect(body).to eq(JSON.parse(VectorControl::Json.domains.to_json))
   end
 
-  it "VectorControl::Json.domains valida contra $defs/vector_control_domains do contracts v1.3.0" do
+  it "VectorControl::Json.domains valida contra $defs/vector_control_domains da cópia v1.4.0 do contracts" do
     vector_product!(charge_size: "1.00")
     VectorCadence.create!(days: 30, risk_class: "red")
     raw = File.binread(contracts.join("reference-response-v1.json"))
-    expect(Digest::SHA256.hexdigest(raw)).to eq("d2db3e6ebe806210d15f872ee2012db2db7902acaee25ee25bf028b33d26890e")
+    expect(Digest::SHA256.hexdigest(raw)).to eq("13e3eb16e2606b8085751e8c930660145732df49a5cef5dba6a28291a1edc29a")
     schemer = JSONSchemer.schema(JSON.parse(raw)).ref("#/$defs/vector_control_domains")
 
     payload = JSON.parse(VectorControl::Json.domains.to_json)
@@ -47,7 +49,7 @@ RSpec.describe "Vigilância ambiental — domínios", type: :request do
 
   it "os rótulos do domains.yml são os do domains-v1.json (vector_control) do contracts, com o B do manual (Q16(f))" do
     raw = File.binread(contracts.join("domains-v1.json"))
-    expect(Digest::SHA256.hexdigest(raw)).to eq("d8b92593e29c72c36c96b64ade69d9e8f8663456bc7f5328cf4c20a9263d6038")
+    expect(Digest::SHA256.hexdigest(raw)).to eq("4346776b7aaee1e8cbfece2228a3fe93a38891533525ccf4f85d2d91a58f7e1b")
     vector = JSON.parse(raw).fetch("vector_control")
     expect(labels.slice(*lists)).to eq(vector.slice(*lists))
     expect(labels["deposit_groups"]).to include("code" => "B", "label" => "B — Depósito móvel")
