@@ -1139,6 +1139,9 @@ Rails.application.routes.draw do
     post   "leish_tests",                     to: "leish_tests#create"
     patch  "leish_tests/:id",                 to: "leish_tests#update", constraints: member_id
     post   "leish_outcomes",                  to: "leish_outcomes#create"
+    get    "collars",                         to: "collars#index"
+    post   "collars",                         to: "collars#create"
+    post   "collars/:id/remove",              to: "collars#remove", constraints: member_id
     post   "neuterings",                      to: "neuterings#create"
     # Eutanásia imutável (§7): só a criação, sem leitura avulsa, edição nem exclusão.
     post   "euthanasias",                     to: "euthanasias#create"

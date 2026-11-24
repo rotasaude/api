@@ -80,6 +80,11 @@ module Zoonoses
         exited_on: row.exited_on&.iso8601, version: row.version, created_at: row.created_at.iso8601 }
     end
 
+    # Coleira (§6) na resposta da escrita. Sem tutor.
+    def collar_record(row)
+      collar(row).merge(animal_id: row.animal_id)
+    end
+
     # Castração (§7) na resposta da escrita, com a veterinária (Q30).
     def neutering_record(row)
       { id: row.id, animal_id: row.animal_id, performed_on: row.performed_on.iso8601, shelter_stay_id: row.shelter_stay_id,

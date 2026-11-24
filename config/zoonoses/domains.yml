@@ -5,7 +5,8 @@
 # contrato §7 e da decisão 20 da spec, com os rótulos fixados pelo
 # coordenador onde nenhum dos dois tinha texto (Task 8).
 # Incompleto de propósito: os domínios restantes do Valor fixado 3 (desfecho da
-# observação, motivo de remoção) entram com as tasks donas (12, 14). O
+# observação) entram com a task dona (12). Os motivos de remoção da coleira (Task 14) são
+# os do contrato §6 (`removal_reasons`, rótulos fixados pelo coordenador). O
 # ELISA e a decisão do desfecho (Task 13) com os rótulos do contrato §6.
 species:
   - { code: dog, label: "Cão" }
@@ -72,3 +73,8 @@ euthanasia_reasons:
 legal_bases:
   - { code: cfmv_1000_2012, label: "Resolução CFMV nº 1.000/2012" }
   - { code: law_14228_2021, label: "Lei nº 14.228/2021" }
+removal_reasons:
+  - { code: replaced, label: "Substituída" }
+  - { code: lost, label: "Perdida" }
+  - { code: death, label: "Óbito" }
+  - { code: other, label: "Outro" }

@@ -26,7 +26,7 @@ module Zoonoses
       feature_disabled: :forbidden, missing_role: :forbidden, veterinarian_required: :forbidden, out_of_scope: :forbidden,
       cbo_not_allowed: :forbidden,
       not_found: :not_found, person_not_found: :not_found,
-      animal_changed: :conflict, campaign_changed: :conflict, survey_changed: :conflict, campaign_already_open: :conflict,
+      animal_changed: :conflict, collar_changed: :conflict, campaign_changed: :conflict, survey_changed: :conflict, campaign_already_open: :conflict,
       invalid_transition: :conflict, demand_changed: :conflict, forwarding_changed: :conflict, observation_changed: :conflict,
       test_changed: :conflict, stay_changed: :conflict, stay_already_open: :conflict, already_euthanized: :conflict,
       parameters_changed: :conflict, reserved_subject: :conflict, animal_not_active: :conflict, citizen_not_verified: :conflict
