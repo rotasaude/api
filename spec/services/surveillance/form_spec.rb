@@ -112,6 +112,11 @@ RSpec.describe Surveillance::Form, ".validate" do
                                       disease_code: "acidente_animal_raiva")).to be_ok
     end
 
+    it "animal_observable \"true\" sem animal_species → path form.animal_observable; \"false\" sem espécie passa" do
+      expect(path_for({ "animal_observable" => "true" }, "acidente_animal_raiva")).to eq("form.animal_observable")
+      expect(described_class.validate({ "animal_observable" => "false" }, disease_code: "acidente_animal_raiva")).to be_ok
+    end
+
     it "exposure_on amanhã ou inexistente → path form.exposure_on; JSON true em boolean → path form.animal_observable" do
       expect(path_for({ "exposure_on" => (Time.zone.today + 1).iso8601 }, "acidente_animal_raiva")).to eq("form.exposure_on")
       expect(path_for({ "exposure_on" => "2026-02-30" }, "acidente_animal_raiva")).to eq("form.exposure_on")

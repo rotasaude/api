@@ -44,7 +44,7 @@ RSpec.describe "Vigilância — bloco do animal e observação na notificação"
     patch_form(dengue, { animal_species: "dog" })
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to include("error" => "invalid_form")
-    expect(json_body.dig("details", "path") || json_body["path"]).to eq("form.animal_species")
+    expect(json_body).to eq("error" => "invalid_form", "path" => "form.animal_species")
   end
 
   it "detalhe com observação traz animal_observation; fechada e notified → fila com animal_outcome_pending true; fechada a notificação → false" do

@@ -97,9 +97,9 @@ module Surveillance
       INVALID
     end
 
-    # Observável só vale para cão ou gato (§5): espécie preenchida e outra → recusa.
+    # Observável só vale para cão ou gato (§5): sem espécie ou com outra → recusa.
     def observable_species?(form)
-      return true unless form["animal_observable"] == "true" && form.key?("animal_species")
+      return true unless form["animal_observable"] == "true"
 
       OBSERVABLE_SPECIES.include?(form["animal_species"])
     end

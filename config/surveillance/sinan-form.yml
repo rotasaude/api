@@ -47,8 +47,8 @@ fields:
   # Bloco do animal agressor (módulo 35b, contrato §5, Q16): só na notificação de acidente com animal
   # potencialmente transmissor da raiva (`diseases`). Valores de texto, como o resto da ficha: data
   # "AAAA-MM-DD" e booleano "true"/"false". Dado pessoal do tutor: nunca em log (filter_parameter_logging).
-  animal_species: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: code, domain: { "dog": "Cão", "cat": "Gato", "bat": "Morcego", "primate": "Primata", "fox": "Raposa", "livestock": "Animal de produção", "other": "Outro" } }
-  animal_condition: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: code, domain: { "healthy": "Sem sinais", "suspect": "Suspeito", "rabid": "Raivoso", "dead_or_missing": "Morto ou desaparecido" } }
+  animal_species: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: code, domain: { "dog": "Canina (cão)", "cat": "Felina (gato)", "bat": "Quiróptera (morcego)", "primate": "Primata (macaco)", "fox": "Raposa", "livestock": "Herbívoro doméstico", "other": "Outra" } }
+  animal_condition: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: code, domain: { "healthy": "Sadio", "suspect": "Suspeito", "rabid": "Raivoso", "dead_or_missing": "Morto ou desaparecido" } }
   animal_observable: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: boolean }
   exposure_on: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: date }
   animal_tutor_name: { field: null, section: rabies_animal, diseases: [acidente_animal_raiva], type: text, max: 120 }

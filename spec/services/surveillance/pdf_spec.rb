@@ -111,4 +111,21 @@ RSpec.describe Surveillance::Pdf do
     dismissed = panel_case!(neighborhood: nil, symptoms_on: Date.new(2026, 10, 18), suspected_on: Date.new(2026, 10, 20), status: "dismissed")
     expect(text_of(described_class.call(dismissed))).to include("Situação", "Descartada pela vigilância", "NÃO digitar no Sinan")
   end
+
+  it "acidente com animal: imprime espécie, condição, observável e exposição; nunca tutor, telefone nem endereço" do
+    Surveillance::DiseaseList::Load.call unless Surveillance::Diseases.find("acidente_animal_raiva")
+    bite = notification!(patient: surveillance_patient!(3), disease_code: "acidente_animal_raiva", unit: unit, by: doctor,
+                         suspected_at: suspected_at)
+    bite.update!(form: { "animal_species" => "bat", "animal_condition" => "suspect", "animal_observable" => "false",
+                         "exposure_on" => "2026-10-19", "animal_tutor_name" => "Tutor Sigiloso",
+                         "animal_tutor_phone" => "41988887777", "animal_address" => "Rua Reservada, 999" })
+    text = text_of(described_class.call(bite))
+
+    expect(text).to include("Espécie do animal agressor: bat — Quiróptera (morcego)", "Condição do animal: suspect — Suspeito",
+                            "Animal passível de observação: Não", "Data da exposição: 19/10/2026")
+    expect(text).not_to include("Tutor Sigiloso", "41988887777", "Rua Reservada")
+    bite.update!(form: bite.form.merge("animal_species" => "dog", "animal_observable" => "true"))
+    expect(text_of(described_class.call(bite))).to include("Animal passível de observação: Sim")
+    expect(text_of(described_class.call(notification))).not_to include("Animal agressor")
+  end
 end

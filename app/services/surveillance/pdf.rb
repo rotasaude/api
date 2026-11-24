@@ -29,6 +29,7 @@ module Surveillance
       general(pdf, n)
       person(pdf, n, form)
       residence(pdf, n, form)
+      rabies_animal(pdf, n, form)
       notifier(pdf, n)
       pdf.number_pages "Página <page> de <total>", at: [ 0, -14 ], width: pdf.bounds.width, size: 7, align: :right
       pdf.render
@@ -132,6 +133,18 @@ module Surveillance
       field(pdf, nil, "Ocupação (CBO)", occupation(form["occupation_cbo"]))
     end
 
+    # Bloco do animal agressor (35b): só o que a ficha do Sinan pede. Tutor, telefone e endereço são da
+    # UVZ e nunca saem no PDF.
+    def rabies_animal(pdf, n, form)
+      return unless n.disease_code == "acidente_animal_raiva"
+
+      section(pdf, "Animal agressor")
+      form_field(pdf, form, "animal_species", "Espécie do animal agressor")
+      form_field(pdf, form, "animal_condition", "Condição do animal")
+      form_field(pdf, form, "animal_observable", "Animal passível de observação")
+      form_field(pdf, form, "exposure_on", "Data da exposição")
+    end
+
     # Nome profissional e função; sem perfil profissional, "não informado"
     # (nunca o e-mail do usuário).
     def notifier(pdf, n)
@@ -197,7 +210,7 @@ module Surveillance
 
       [ code, Professionals::Cbo.find(code)&.title ].compact.join(" ")
     end
-    private_class_method :header, :section, :field, :form_field, :general, :person, :residence, :notifier, :notifier_role,
+    private_class_method :header, :section, :field, :form_field, :general, :person, :residence, :rabies_animal, :notifier, :notifier_role,
                          :municipality, :birth_date, :race, :sex, :age, :zip, :phone, :occupation, :s, :date
   end
 end
