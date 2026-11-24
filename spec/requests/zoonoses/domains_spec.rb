@@ -34,7 +34,7 @@ RSpec.describe "Zoonoses — domínios", type: :request do
     get "/zoonoses/domains"
     expect(response).to have_http_status(:ok)
     body = json_body
-    expect(body.except("units")).to eq(JSON.parse(Zoonoses::Json.domains.to_json))
+    expect(body.except("units", "vaccination_units")).to eq(JSON.parse(Zoonoses::Json.domains.to_json))
     expect(body["products"]).to eq([ { "id" => collar.id, "code" => "COL", "name" => collar.name, "use" => "collar" },
                                      { "id" => vaccine.id, "code" => "RAB", "name" => vaccine.name, "use" => "rabies_vaccine" } ])
     expect(body["open_campaign"]).to be_nil
@@ -70,6 +70,19 @@ RSpec.describe "Zoonoses — domínios", type: :request do
     expect(json_body["units"]).to eq([ { "id" => alfa.id, "name" => "Alfa UVZ" }, { "id" => zeta.id, "name" => "Zeta UVZ" } ])
     expect(Zoonoses::Json.domains).not_to have_key(:units)
     expect(FieldSync::Reference::ZOONOSES_KEYS).not_to include("units", :units)
+  end
+
+  it "vaccination_units: todas as unidades ativas, de qualquer tipo, por nome; fora da referência do app (Q43)" do
+    uvz = create_unit("Zeta UVZ", kind: "environmental_surveillance")
+    ubs = create_unit("Alfa UBS", kind: "ubs")
+    create_unit("Antiga UBS", kind: "ubs").update!(active: false)
+    sign_in_as(coordinator)
+
+    get "/zoonoses/domains"
+    expect(json_body["vaccination_units"]).to eq([ { "id" => ubs.id, "name" => "Alfa UBS" }, { "id" => uvz.id, "name" => "Zeta UVZ" } ])
+    expect(json_body["units"]).to eq([ { "id" => uvz.id, "name" => "Zeta UVZ" } ])
+    expect(Zoonoses::Json.domains).not_to have_key(:vaccination_units)
+    expect(FieldSync::Reference::ZOONOSES_KEYS).not_to include(:vaccination_units, "vaccination_units")
   end
 
   it "units vazio sem unidade de vigilância ambiental" do
@@ -134,7 +147,7 @@ RSpec.describe "Zoonoses — domínios", type: :request do
     [ field_agent!(team: team), field_agent!(cbo: "515140", team: team) ].each do |agent|
       sign_in_as(agent)
       get "/zoonoses/domains"
-      expect([ response.status, json_body.except("units") ]).to eq([ 200, JSON.parse(Zoonoses::Json.domains.to_json) ])
+      expect([ response.status, json_body.except("units", "vaccination_units") ]).to eq([ 200, JSON.parse(Zoonoses::Json.domains.to_json) ])
     end
     sign_in_as(staff_with("almox-#{SecureRandom.hex(3)}@cidade.gov.br", "stock_keeper"))
     get "/zoonoses/domains"
