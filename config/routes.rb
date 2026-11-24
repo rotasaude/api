@@ -1121,6 +1121,12 @@ Rails.application.routes.draw do
     get    "shelter_stays",                   to: "shelter_stays#index"
     post   "shelter_stays",                   to: "shelter_stays#create"
     post   "shelter_stays/:id/exit",          to: "shelter_stays#exit_stay", constraints: member_id
+    # Observação do animal agressor (§5): o contato só na rota própria, com trilha.
+    get    "observations",                    to: "observations#index"
+    get    "observations/:id",                to: "observations#show", constraints: member_id
+    get    "observations/:id/contact",        to: "observations#contact", constraints: member_id
+    post   "observations/:id/close",          to: "observations#close_observation", constraints: member_id
+    post   "observations/:id/link_animal",    to: "observations#link_animal", constraints: member_id
     post   "neuterings",                      to: "neuterings#create"
     # Eutanásia imutável (§7): só a criação, sem leitura avulsa, edição nem exclusão.
     post   "euthanasias",                     to: "euthanasias#create"

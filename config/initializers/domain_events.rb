@@ -402,17 +402,22 @@ Rails.application.config.to_prepare do
   # (notification_id, immediate) — nunca a doença, a origem nem dado do
   # paciente; o job relê a linha. O Surveillance::AlertJob só enfileira o
   # e-mail da equipe (→ MailJob); o VectorControl::ProposeBlockJob (módulo
-  # 35a, contrato §8) propõe o bloqueio de transmissão da arbovirose.
-  DomainEvents.bind "disease_notification.created", to: [ Surveillance::AlertJob, VectorControl::ProposeBlockJob ]
+  # 35a, contrato §8) propõe o bloqueio de transmissão da arbovirose; o
+  # Zoonoses::OpenObservationJob (módulo 35b, contrato §5) abre a observação
+  # do animal agressor.
+  DomainEvents.bind "disease_notification.created", to: [ Surveillance::AlertJob, VectorControl::ProposeBlockJob,
+                                                          Zoonoses::OpenObservationJob ]
   # Ficha da notificação gravada (Surveillance::SaveForm): só notification_id —
-  # nunca a ficha nem dado do paciente; sem consumidor.
-  DomainEvents.bind "disease_notification.updated", to: []
+  # nunca a ficha nem dado do paciente. A ficha com o bloco do animal abre a
+  # observação (Zoonoses::OpenObservationJob, módulo 35b).
+  DomainEvents.bind "disease_notification.updated", to: [ Zoonoses::OpenObservationJob ]
   # Andamento (Surveillance::Transition) e descarte da possível
   # (Surveillance::Dismiss): só notification_id e user_id — nunca o motivo, a
   # classificação nem o número oficial. O andamento propõe o bloqueio quando a
-  # possível passa a notified (VectorControl::ProposeBlockJob); o descarte não
-  # tem consumidor.
-  DomainEvents.bind "disease_notification.transitioned", to: [ VectorControl::ProposeBlockJob ]
+  # possível passa a notified (VectorControl::ProposeBlockJob) e abre a
+  # observação do animal agressor (Zoonoses::OpenObservationJob); o descarte
+  # não tem consumidor (Q16: só parte de possible).
+  DomainEvents.bind "disease_notification.transitioned", to: [ VectorControl::ProposeBlockJob, Zoonoses::OpenObservationJob ]
   DomainEvents.bind "disease_notification.dismissed", to: []
   # Negativa semanal da unidade (Surveillance::RecordNegative): só
   # weekly_negative_report_id e user_id; sem consumidor.

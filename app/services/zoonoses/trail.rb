@@ -8,7 +8,10 @@
 #   - animal_viewed!: o detalhe do animal com tutor, pelo evento de domínio
 #     `animal.viewed` (Q26, molde do transmission_block_case.address_viewed);
 #   - demand_viewed!: o detalhe da demanda (extrato e place_address), pelo
-#     evento de domínio `zoonoses_demand.viewed` (Q13, Q26).
+#     evento de domínio `zoonoses_demand.viewed` (Q13, Q26);
+#   - observation_contact_viewed!: o contato da observação do animal agressor
+#     (nome e telefone do tutor, endereço do animal, da ficha do 25), pelo
+#     evento de domínio `bite_observation.contact_viewed` (§5, Q26).
 module Zoonoses
   module Trail
     ACCESS = "zoonoses".freeze
@@ -27,6 +30,10 @@ module Zoonoses
 
     def demand_viewed!(user:, demand_id:)
       DomainEvents.publish("zoonoses_demand.viewed", zoonoses_demand_id: demand_id, user_id: user.id)
+    end
+
+    def observation_contact_viewed!(user:, observation_id:)
+      DomainEvents.publish("bite_observation.contact_viewed", bite_observation_id: observation_id, user_id: user.id)
     end
   end
 end

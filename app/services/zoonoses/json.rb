@@ -94,6 +94,26 @@ module Zoonoses
         veterinarian: veterinarian(row.professional), created_at: row.created_at.iso8601 }
     end
 
+    # Observação do animal agressor na fila do centro (§5, decisão 32): só o
+    # bloco do animal — a espécie (congelada na abertura), a condição (da
+    # ficha do 25: `condition`, já lida por quem chama), exposure_on, ends_on,
+    # os dias que faltam (aberta: até ends_on, nunca negativo; fechada: nil),
+    # estado, lugar, versão e animal_id. Nunca o paciente, a idade, a unidade,
+    # a disease_notification_id nem o contato (este só em
+    # Zoonoses::ObservationContact).
+    def bite_observation(row, condition:, today:)
+      { id: row.id, species: row.species, condition: condition, exposure_on: row.exposure_on.iso8601, ends_on: row.ends_on.iso8601,
+        days_left: row.closed? ? nil : [ (row.ends_on - today).to_i, 0 ].max, state: row.state, place: row.place,
+        version: row.version, animal_id: row.animal_id }
+    end
+
+    # O detalhe e a resposta da escrita: a linha da fila mais o desfecho.
+    def bite_observation_detail(row, condition:, today:)
+      bite_observation(row, condition: condition, today: today)
+        .merge(outcome: row.outcome, outcome_on: row.outcome_on&.iso8601, outcome_note: row.outcome_note,
+               closed_by_user_id: row.closed_by_user_id, created_at: row.created_at.iso8601)
+    end
+
     # `{ name, crmv }` do perfil profissional: o CRMV como "CRMV-<UF> <número>"
     # (o molde do ClinicalDocuments::Json; registro do conselho é público).
     def veterinarian(professional)

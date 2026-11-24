@@ -244,25 +244,31 @@ RSpec.describe "disease surveillance bindings (ADR 0043)" do
 
   # Só ids e booleanos (notification_id, immediate): nunca a doença, a origem
   # nem dado do paciente. O Surveillance::AlertJob só enfileira o e-mail; o
-  # VectorControl::ProposeBlockJob (módulo 35a, Task 11) propõe o bloqueio.
-  it "declares disease_notification.created consumed by the surveillance alert and the block proposal" do
+  # VectorControl::ProposeBlockJob (módulo 35a, Task 11) propõe o bloqueio; o
+  # Zoonoses::OpenObservationJob (módulo 35b, Task 12) abre a observação do
+  # animal agressor.
+  it "declares disease_notification.created consumed by the surveillance alert, the block proposal and the bite observation" do
     expect(DomainEvents.registry.keys).to include("disease_notification.created")
     expect(DomainEvents.registry["disease_notification.created"].map(&:job))
-      .to eq([ "Surveillance::AlertJob", "VectorControl::ProposeBlockJob" ])
+      .to eq([ "Surveillance::AlertJob", "VectorControl::ProposeBlockJob", "Zoonoses::OpenObservationJob" ])
   end
 
-  # Só notification_id (Surveillance::SaveForm): nunca a ficha.
-  it "declares disease_notification.updated (no consumer)" do
+  # Só notification_id (Surveillance::SaveForm): nunca a ficha. A ficha com o
+  # bloco do animal abre a observação (módulo 35b, Task 12).
+  it "declares disease_notification.updated consumed by the bite observation" do
     expect(DomainEvents.registry.keys).to include("disease_notification.updated")
-    expect(DomainEvents.registry["disease_notification.updated"]).to be_empty
+    expect(DomainEvents.registry["disease_notification.updated"].map(&:job)).to eq([ "Zoonoses::OpenObservationJob" ])
   end
 
   # Só notification_id e user_id (Surveillance::Transition / Dismiss): nunca o
   # motivo, a classificação nem o número oficial. O andamento propõe o
-  # bloqueio quando a possível passa a notified (módulo 35a, Task 11).
-  it "declares disease_notification.transitioned consumed by the block proposal" do
+  # bloqueio quando a possível passa a notified (módulo 35a, Task 11) e abre a
+  # observação do animal agressor (módulo 35b, Task 12). O dismissed não tem
+  # efeito (Q16).
+  it "declares disease_notification.transitioned consumed by the block proposal and the bite observation" do
     expect(DomainEvents.registry.keys).to include("disease_notification.transitioned")
-    expect(DomainEvents.registry["disease_notification.transitioned"].map(&:job)).to eq([ "VectorControl::ProposeBlockJob" ])
+    expect(DomainEvents.registry["disease_notification.transitioned"].map(&:job))
+      .to eq([ "VectorControl::ProposeBlockJob", "Zoonoses::OpenObservationJob" ])
   end
 
   it "declares disease_notification.dismissed (no consumer)" do
