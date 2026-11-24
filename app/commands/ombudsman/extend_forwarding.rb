@@ -6,7 +6,8 @@
 # destino → not_found. Evento `forwarding_extended` (da equipe: o respondente).
 # Módulo 35b (§4, Q13): `via_zoonoses` (as rotas /zoonoses/demands) troca o
 # respondente pela equipe do centro, só no encaminhamento com demanda
-# (Forwardings.as_responder).
+# (Forwardings.as_responder). A prorrogação sobe a versão da demanda de
+# zoonoses ligada (Forwardings.extended!).
 module Ombudsman
   module ExtendForwarding
     module_function
@@ -23,6 +24,7 @@ module Ombudsman
 
         forwarding.update!(extended: true, due_on: forwarding.due_on + OmbudsmanSetting.current.forwarding_extension_days,
                            extension_reason: text, updated_at: now)
+        Forwardings.extended!(forwarding, now: now)
         Forwardings.event!(manifestation, forwarding, "forwarding_extended", by: by, now: now)
         Result.ok(manifestation: manifestation, forwarding: forwarding)
       end

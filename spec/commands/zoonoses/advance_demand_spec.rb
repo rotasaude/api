@@ -91,6 +91,7 @@ RSpec.describe Zoonoses::AdvanceDemand, type: :model do
     expect(demand.reload).to have_attributes(state: "open", version: 2)
     expect(refusal(advance(demand, "extend", reason: "Aguardando de novo o caminhão."))).to eq([ :already_extended, nil ])
     expect(demand.reload.version).to eq(2)
+    expect(DomainEvent.where(name: "zoonoses_demand.changed").pluck(:payload)).to eq([ { "zoonoses_demand_id" => demand.id } ])
   end
 
   it "versão velha → demand_changed; encaminhamento cancelado pelo 33 → forwarding_changed" do
@@ -199,6 +200,48 @@ RSpec.describe Zoonoses::AdvanceDemand, type: :model do
       expect(ZoonosesDemand.joins(:ombudsman_forwarding)
                            .where(ombudsman_forwardings: { ombudsman_manifestation_id: manifestation.id })
                            .pluck(:state)).to contain_exactly("closed", "open")
+    end
+
+    it "o respondente do 33 da UVZ prorroga pelo inbox → a demanda sobe a versão e publica changed uma vez, como pelo centro" do
+      due = forwarding_of(demand).due_on
+      result = Ombudsman::ExtendForwarding.call(forwarding_id: demand.ombudsman_forwarding_id, expected_state: "pending",
+                                                reason: "Aguardando o caminhão de recolhimento.", by: responder!(uvz))
+      expect(result).to be_ok
+      expect(forwarding_of(demand)).to have_attributes(extended: true, due_on: due + OmbudsmanSetting.current.forwarding_extension_days)
+      expect(demand.reload).to have_attributes(state: "open", version: 2)
+      expect(DomainEvent.where(name: "zoonoses_demand.changed").pluck(:payload)).to eq([ { "zoonoses_demand_id" => demand.id } ])
+      expect(refusal(advance(demand, "extend", reason: "Aguardando de novo o caminhão."))).to eq([ :already_extended, nil ])
+    end
+  end
+
+  # Regra do controlador e Q34: recusado o encaminhamento (pelo centro ou
+  # pelo inbox do 33), a demanda fecha e um novo encaminhamento à mesma UVZ
+  # cria outra: uma demanda aberta por vez na manifestação.
+  describe "recusa seguida de novo encaminhamento → exatamente uma demanda aberta" do
+    def forward_again(manifestation)
+      Ombudsman::Forward.call(manifestation_id: manifestation.id, expected_state: manifestation.reload.state, department_id: nil,
+                              health_unit_id: uvz.id, extract: manifestation.body, by: ombudsman_staff!, zoonoses: true)
+    end
+
+    def states_of(manifestation)
+      ZoonosesDemand.joins(:ombudsman_forwarding).where(ombudsman_forwardings: { ombudsman_manifestation_id: manifestation.id })
+                    .order(:created_at).pluck(:state)
+    end
+
+    it "recusa pelo centro (AdvanceDemand decline)" do
+      manifestation = manifestation_of(demand)
+      expect(advance(demand, "decline", text: "Endereço fora da área de atuação.")).to be_ok
+      expect(forward_again(manifestation)).to be_ok
+      expect(states_of(manifestation)).to eq(%w[closed open])
+    end
+
+    it "recusa pelo inbox do 33 (DeclineForwarding do respondente da UVZ)" do
+      manifestation = manifestation_of(demand)
+      declined = Ombudsman::DeclineForwarding.call(forwarding_id: demand.ombudsman_forwarding_id, expected_state: "pending",
+                                                   reason: "Não é da competência desta unidade.", by: responder!(uvz))
+      expect(declined).to be_ok
+      expect(forward_again(manifestation)).to be_ok
+      expect(states_of(manifestation)).to eq(%w[closed open])
     end
   end
 end

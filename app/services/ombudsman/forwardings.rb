@@ -65,6 +65,11 @@ module Ombudsman
     # centro já fechou). Chamado sob a trava manifestação → encaminhamento.
     def ended!(forwarding, now:) = Zoonoses::AdvanceDemand.forwarding_ended!(forwarding: forwarding, now: now)
 
+    # O encaminhamento foi prorrogado (por qualquer caminho): a demanda de
+    # zoonoses ligada sobe a versão e publica zoonoses_demand.changed, uma vez
+    # (Zoonoses::AdvanceDemand.forwarding_extended!).
+    def extended!(forwarding, now:) = Zoonoses::AdvanceDemand.forwarding_extended!(forwarding: forwarding, now: now)
+
     # O evento da linha do tempo de uma ação sobre o encaminhamento: da
     # equipe (o técnico ou o respondente), nunca visível ao cidadão, só o id.
     # `by: nil` é o encaminhamento automático do 35b (Q13): ator `system`.

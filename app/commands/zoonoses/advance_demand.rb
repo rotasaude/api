@@ -14,8 +14,9 @@
 #   - decline `{ text }`: de qualquer estado aberto → closed sem outcome; o
 #     texto (TEXT do 33, 10..4000) é o motivo (Ombudsman::DeclineForwarding);
 #   - extend `{ reason }`: Ombudsman::ExtendForwarding, uma vez (o
-#     already_extended do 33); a demanda fica no estado, com a versão + 1 (o
-#     prazo mostrado mudou).
+#     already_extended do 33); a demanda fica no estado, com a versão + 1
+#     (o prazo mostrado mudou) pelo gancho do 33, forwarding_extended!, o
+#     mesmo da prorrogação pelo inbox.
 # Texto longo é recusado, nunca cortado (Ombudsman::Input: sem as bordas).
 #
 # Travas na ordem das escritas do 33: a manifestação, o encaminhamento
@@ -75,6 +76,18 @@ module Zoonoses
       publish(row)
     end
 
+    # O encaminhamento foi prorrogado (Ombudsman::Forwardings.extended!, pelo
+    # inbox do 33 ou pelas rotas daqui, sob a mesma trava): a demanda ligada
+    # fica no estado, com a versão + 1 (o prazo mostrado mudou) e um
+    # `zoonoses_demand.changed`.
+    def forwarding_extended!(forwarding:, now:)
+      row = ZoonosesDemand.lock.find_by(ombudsman_forwarding_id: forwarding.id)
+      return if row.nil? || row.state == "closed"
+
+      row.update!(version: row.version + 1, updated_at: now)
+      publish(row)
+    end
+
     def advance(demand, action, attrs, by, now)
       locked = Ombudsman::Lock.forwarding!(demand.ombudsman_forwarding_id)
       return Result.fail(:not_found) unless locked
@@ -101,11 +114,11 @@ module Zoonoses
       when "extend"
         delegated = Ombudsman::ExtendForwarding.call(forwarding_id: forwarding.id, expected_state: "pending", reason: attrs[:reason],
                                                      by: by, via_zoonoses: true, now: now)
-        row.update!(changes) if delegated.ok?
       end
       return refused(delegated, action) if delegated&.failure?
 
-      publish(row)
+      # A prorrogação já subiu a versão e publicou pelo gancho do 33.
+      action == "extend" ? row.reload : publish(row)
       Result.ok(demand: row, forwarding: forwarding.reload)
     end
 
