@@ -227,6 +227,42 @@ RSpec.describe "FieldSync::Upload — zoonoses (v1.4.0)", type: :model do
     expect(failure(unknown)).to eq("status" => "rejected", "error" => "not_found", "path" => "animal_id")
   end
 
+  # Fix round 1 (coordenador): a data do app vale, como as outras datas offline.
+  it "edição offline enviada 3 dias depois → status_on = hoje − 3; futuro ou antes do cadastro → date_out_of_range path status_on" do
+    animal = animal!(household: household, created_at: (today - 10).in_time_zone.change(hour: 10))
+    change = ->(status_on) { item("animal", animal_body(animal_id: animal.id, version: animal.reload.version, status: "missing", status_on: status_on)) }
+    refused = [ upload(change.call((today + 1).iso8601)).sole, upload(change.call((today - 11).iso8601)).sole ]
+    late = upload(change.call((today - 3).iso8601)).sole
+    valid_response!(refused + [ late ])
+    expect(refused.map { failure(_1) }).to eq([ { "status" => "rejected", "error" => "date_out_of_range", "path" => "status_on" } ] * 2)
+    expect(late).to include("status" => "accepted", "version" => 2)
+    expect(animal.reload).to have_attributes(status: "missing", status_on: today - 3)
+  end
+
+  # Q37 (coordenador): o tutor_client_uuid também cita o item aceito em outro lote do mesmo usuário.
+  it "Q37: tutor_client_uuid de um individual_registration com new_patient de outro lote → accepted; de outro usuário → tutor_not_found" do
+    registration_uuid = SecureRandom.uuid
+    sections = registry_registration_sections.deep_stringify_keys
+    sections["identification"] = sections["identification"].merge("desconhece_nome_mae" => true)
+    registration = sections.merge("is_responsible" => false, "household_id" => household.id, "new_patient" => typed("Rosalina Prado Lopes"),
+                                  "patient_demographics" => { "race_color" => "01", "ethnicity" => nil })
+    first = upload(item("individual_registration", registration, uuid: registration_uuid)).sole
+    expect(first["status"]).to eq("accepted")
+
+    second = upload(item("animal", animal_body(tutor_client_uuid: registration_uuid))).sole
+    valid_response!([ second ])
+    expect(second["status"]).to eq("accepted")
+    expect(Animal.find(second["id"]).tutor_patient_id).to eq(IndividualRegistration.find(first["id"]).patient_id)
+
+    other = endemic_agent!(team: team)
+    other_area = MicroAreaFieldAssignment.active.find_by!(professional_id: other.professional.id).micro_area
+    other_device = FieldDevices::Register.call(user: other, name: "Tablet").payload.fetch(:device)
+    foreign = upload(item("animal", animal_body(household_id: registry_household!(micro_area: other_area).id, tutor_client_uuid: registration_uuid)),
+                     user: other, dev: other_device).sole
+    valid_response!([ foreign ])
+    expect(failure(foreign)).to eq("status" => "rejected", "error" => "tutor_not_found", "path" => "tutor_client_uuid")
+  end
+
   it "vacinação com data futura → date_out_of_range path vaccinated_on; antes da campanha também; produto de coleira → product_not_allowed" do
     dog = animal!(household: household)
     results = upload(item("rabies_vaccination", vaccination_body(animal_id: dog.id, vaccinated_on: (today + 1).iso8601)),

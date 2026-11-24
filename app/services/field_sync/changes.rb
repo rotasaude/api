@@ -60,18 +60,22 @@
 # Módulo 35b (ADR 0054; contrato §11; Q9, Q20, Q21; plano, Review Focus 5): SÓ
 # com Zoonoses::Gate.field_usable? (lido aqui, fora de transação), o fluxo ganha
 #   - animal: os active dos domicílios do escopo (sem domicílio não vai), com
-#     t = GREATEST do animal, do domicílio (a entrada no escopo), da última
-#     dose criada ou anulada e da última coleira posta (a retirada manual toca
-#     o animal): a dose, a anulação e a coleira reemitem o animal com a mesma
+#     t = GREATEST do animal, do domicílio (a entrada no escopo), do paciente
+#     tutor (o display_name, como o cadastro do 24b), da última dose criada ou
+#     anulada e da última coleira posta (a retirada manual toca o animal): a
+#     dose, a anulação, a coleira e o nome do tutor reemitem o animal com a mesma
 #     version, e o app sobrescreve (Q20; Q29 do 35a). Corpo do
 #     Json.animal_bodies: nunca o número do microchip, o tutor só
 #     { patient_id, display_name } — e a página com tutor entra na trilha
 #     (o tutor em patient_ids);
 #   - leish_survey: os open que cruzam os quarteirões dos perfis dos domicílios
 #     ativos do escopo, com household_ids = esses domicílios (Q21; nunca
-#     city_block_ids); t = GREATEST do inquérito e do instante mais recente dos
-#     domicílios com perfil do escopo (a mudança de perfil ou de domicílio
-#     reemite o inquérito com os household_ids novos);
+#     city_block_ids); t = GREATEST do inquérito, do instante mais recente dos
+#     domicílios do escopo com perfil NOS QUARTEIRÕES dele (quem entra) e da
+#     lápide mais recente dele nas microáreas do escopo (quem sai: o domicílio
+#     que muda de microárea ou fica inativo e o perfil que sai do quarteirão
+#     gravam a lápide, que o fluxo não entrega enquanto o inquérito segue no
+#     escopo) — o inquérito volta com os household_ids novos e o t só sobe;
 # e as lápides `animal`/`leish_survey` (out_of_scope, gravadas pelos triggers
 # do bloco "Módulo 35b — app de campo" do db/city_triggers.sql) saem em
 # removals, salvo a de quem continua no escopo. Desligado, nenhuma das duas
@@ -181,16 +185,20 @@ module FieldSync
     ZOONOSES_STREAM = <<~SQL.squish.freeze
       UNION ALL
       SELECT 'animal', a.id,
-             GREATEST(a.updated_at, ha.updated_at,
+             GREATEST(a.updated_at, ha.updated_at, tp.updated_at,
                       (SELECT max(COALESCE(v.cancelled_at, v.created_at)) FROM rabies_vaccinations v WHERE v.animal_id = a.id),
                       (SELECT max(c.created_at) FROM collars c WHERE c.animal_id = a.id))
         FROM animals a JOIN households ha ON ha.id = a.household_id
+        LEFT JOIN patients tp ON tp.id = a.tutor_patient_id
        WHERE a.status = 'active' AND ha.micro_area_id IN (:ids)
       UNION ALL
       SELECT 'leish_survey', ls.id,
              GREATEST(ls.updated_at,
                       (SELECT max(GREATEST(hz.updated_at, pz.updated_at)) FROM household_vector_profiles pz
-                         JOIN households hz ON hz.id = pz.household_id WHERE hz.micro_area_id IN (:ids)))
+                         JOIN households hz ON hz.id = pz.household_id
+                        WHERE hz.micro_area_id IN (:ids) AND pz.city_block_id = ANY(ls.city_block_ids)),
+                      (SELECT max(st.created_at) FROM field_sync_tombstones st
+                        WHERE st.entity_type = 'leish_survey' AND st.entity_id = ls.id AND st.micro_area_id IN (:ids)))
         FROM leish_surveys ls
        WHERE ls.stage = 'open' AND EXISTS (#{SURVEY_IN_SCOPE.call('ls')})
     SQL

@@ -14,7 +14,11 @@
 #     ficou inativo continua editável.
 #   - Situação (Q31): active → missing | transferred | deceased; missing →
 #     active | deceased (senão 409 invalid_transition path status);
-#     status_on = hoje a cada mudança. Com estada aberta no canil, nenhuma
+#     status_on = o informado (Task 17, fix round 1: a data do campo vale,
+#     como as outras datas offline; só junto de `status`, senão path
+#     status_on; aplicado só quando o status muda), entre o created_at do
+#     animal (o dia da cidade) e hoje (senão date_out_of_range path
+#     status_on); sem ele, hoje. Com estada aberta no canil, nenhuma
 #     mudança de situação (409 invalid_transition path status, Task 8): a
 #     morte no canil vai pela saída death e a transferência pela saída
 #     transferred (Zoonoses::ExitShelter), senão a estada não fecharia.
@@ -36,11 +40,12 @@ module Zoonoses
     CREATE_KEYS = %w[species name sex size coat breed birth_estimate_on birth_estimate_month microchip registry_number
                      household_id tutor_patient_id community].freeze
     CREATE_ONLY = %w[microchip registry_number].freeze
-    EDIT_ONLY = %w[status expected_version].freeze
+    EDIT_ONLY = %w[status status_on expected_version].freeze
     REQUIRED = %w[species sex].freeze
     ORIGINS = %w[dashboard field].freeze
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     MONTH = /\A(\d{4})-(\d{2})(?:-(\d{2}))?\z/
+    DATE = /\A\d{4}-\d{2}-\d{2}\z/
     KEY_PATH_MAX = 64
     INDEXES = { "idx_animals_microchip" => [ :microchip_taken, "microchip" ],
                 "idx_animals_registry_number" => [ :registry_number_taken, "registry_number" ] }.freeze
@@ -52,6 +57,7 @@ module Zoonoses
     # -> Result.ok(animal:) | fail(:invalid_request, details: { path: }) | fail(:microchip_taken | :registry_number_taken,
     #    details: { path: }) | fail(:expected_version_required, details: { path: "expected_version" }) |
     #    fail(:animal_changed | :animal_not_active | :out_of_scope | :missing_role) | fail(:invalid_transition, details: { path: "status" })
+    #    | fail(:date_out_of_range, details: { path: "status_on" })
     def call(params:, by:, animal: nil, origin: "dashboard")
       raise ArgumentError, "origin: #{origin}" unless ORIGINS.include?(origin)
       return Result.fail(:missing_role) if origin == "dashboard" && !Access.team?(by)
@@ -87,6 +93,7 @@ module Zoonoses
     def update(animal, attrs, by, origin)
       expected = attrs.delete(:expected_version)
       status = attrs.delete(:status)
+      status_on = attrs.delete(:status_on)
       Animal.transaction(requires_new: true) do
         locked = Animal.lock.find(animal.id)
         next Result.fail(:animal_not_active) unless TRANSITIONS.key?(locked.status)
@@ -102,7 +109,12 @@ module Zoonoses
           next Result.fail(:invalid_transition, details: { path: "status" }) unless TRANSITIONS.fetch(locked.status).include?(status)
           next Result.fail(:invalid_transition, details: { path: "status" }) if ShelterStay.open_stays.exists?(animal_id: locked.id)
 
-          locked.assign_attributes(status: status, status_on: Time.zone.today)
+          on = status_on || Time.zone.today
+          unless (locked.created_at.in_time_zone.to_date..Time.zone.today).cover?(on)
+            next Result.fail(:date_out_of_range, details: { path: "status_on" })
+          end
+
+          locked.assign_attributes(status: status, status_on: on)
         end
         next Result.ok(animal: locked) unless locked.changed?
 
@@ -139,6 +151,7 @@ module Zoonoses
       unknown = params.keys.find { |key| !allowed.include?(key) }
       return unknown.to_s[0, KEY_PATH_MAX] if unknown
       return "birth_estimate_month" if params.key?("birth_estimate_on") && params.key?("birth_estimate_month")
+      return "status_on" if params.key?("status_on") && !params.key?("status")
 
       REQUIRED.find { |key| !params.key?(key) } unless editing
     end
@@ -168,6 +181,7 @@ module Zoonoses
       when "microchip" then value.nil? || (value.is_a?(String) && value.match?(Catalog::MICROCHIP)) ? value : INVALID
       when "birth_estimate_on" then month(value, day_allowed: true)
       when "birth_estimate_month" then month(value, day_allowed: false)
+      when "status_on" then value.nil? ? nil : date(value)
       when "household_id", "tutor_patient_id" then value.nil? || (value.is_a?(String) && value.match?(UUID)) ? value&.downcase : INVALID
       when "community" then [ true, false ].include?(value) ? value : INVALID
       when "expected_version" then value.is_a?(Integer) && value.positive? ? value : INVALID
@@ -175,6 +189,14 @@ module Zoonoses
     end
 
     def member(value, allowed) = allowed.include?(value) ? value : INVALID
+
+    def date(value)
+      return INVALID unless value.is_a?(String) && value.match?(DATE)
+
+      Date.strptime(value, "%Y-%m-%d")
+    rescue Date::Error
+      INVALID
+    end
 
     def text(value, range)
       return nil if value.nil?
@@ -201,6 +223,6 @@ module Zoonoses
 
     def invalid(path) = Result.fail(:invalid_request, details: { path: path })
 
-    private_class_method :create, :update, :references, :shape, :parse, :parse_value, :member, :text, :month, :invalid
+    private_class_method :create, :update, :references, :shape, :parse, :parse_value, :member, :date, :text, :month, :invalid
   end
 end

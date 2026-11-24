@@ -182,6 +182,16 @@ RSpec.describe "FieldSync::Changes — zoonoses (v1.4.0)", type: :model do
     expect(trail.flat_map { _1.payload["patient_ids"] }).to include(tutor.id)
   end
 
+  it "o nome do tutor que muda reemite o animal (o t leva o paciente, como o cadastro do 24b)" do
+    tutor = tutor!
+    animal = animal!(household: household, tutor: tutor)
+    cursor = last_cursor(all_pages)
+    tutor.update!(social_name: "Dona Rita")
+    pages = all_pages(cursor)
+    expect(refs(pages, "animal")).to eq([ animal.id ])
+    expect(body_of(pages, "animal", animal.id)).to include("version" => 1, "tutor" => { "patient_id" => tutor.id, "display_name" => "Dona Rita" })
+  end
+
   describe "leish_survey" do
     it "traz household_ids do escopo e não city_block_ids; o perfil novo no quarteirão reemite o inquérito" do
       vector_profile!(household, block: block)
@@ -215,6 +225,30 @@ RSpec.describe "FieldSync::Changes — zoonoses (v1.4.0)", type: :model do
       pages = all_pages(cursor)
       expect(removals(pages)).to eq([ { "type" => "leish_survey", "id" => survey.id, "reason" => "out_of_scope" } ])
       expect(of(pages, "leish_survey")).to eq([])
+    end
+
+    # Fix round 1: o t do inquérito leva só os perfis dos seus quarteirões e
+    # sobe quando um domicílio deles sai da microárea ou perde o perfil.
+    it "perfil removido ou domicílio que sai da microárea → o inquérito reemitido sem aquele domicílio; perfil fora dos quarteirões não reemite" do
+      kept = registry_household!(micro_area: area).tap { vector_profile!(_1, block: block) }
+      cleared = registry_household!(micro_area: area).tap { vector_profile!(_1, block: block) }
+      leaving = registry_household!(micro_area: area).tap { vector_profile!(_1, block: block) }
+      elsewhere = registry_household!(micro_area: area).tap { vector_profile!(_1, block: city_block!(neighborhood: neighborhood, number: "8")) }
+      survey = leish_survey!(blocks: [ block ])
+      cursor = last_cursor(all_pages)
+
+      HouseholdVectorProfile.find_by!(household_id: elsewhere.id).update!(risk_class: "red", risk_assessed_on: today)
+      quiet = all_pages(cursor)
+      expect(refs(quiet, "leish_survey")).to eq([])
+
+      HouseholdVectorProfile.find_by!(household_id: cleared.id).update!(city_block: nil)
+      pages = all_pages(last_cursor(quiet))
+      expect(body_of(pages, "leish_survey", survey.id).fetch("household_ids")).to match_array([ kept.id, leaving.id ])
+
+      leaving.update!(micro_area: registry_micro_area!(code: "05", team: team))
+      again = all_pages(last_cursor(pages))
+      expect(body_of(again, "leish_survey", survey.id).fetch("household_ids")).to eq([ kept.id ])
+      expect(removals(again)).to eq([])
     end
 
     it "o perfil que sai do quarteirão do inquérito → removal; com outro domicílio do escopo nele, só reemitido" do

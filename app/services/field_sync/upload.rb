@@ -74,7 +74,8 @@
 #     chave opcional ausente vale nula); criação sem animal_id, edição com
 #     animal_id + version (→ expected_version), do animal cujo domicílio atual
 #     o agente alcança (senão out_of_scope; desconhecido → not_found
-#     animal_id); status_on é do api (o dia da gravação). Tutor por
+#     animal_id); `status_on` do app vale (só com `status`, do cadastro do
+#     animal a hoje, senão date_out_of_range; sem ele, hoje). Tutor por
 #     tutor_patient_id ou tutor_client_uuid: o paciente de um `patient` ou de
 #     um `individual_registration` com new_patient aceito antes (Q29; senão
 #     `tutor_not_found` path tutor_client_uuid). accepted com `version`; edição
@@ -477,7 +478,7 @@ module FieldSync
 
         params["expected_version"] = params.delete("version")
       end
-      result = Zoonoses::SaveAnimal.call(params: params.except("animal_id", "status_on"), by: user, animal: existing, origin: "field")
+      result = Zoonoses::SaveAnimal.call(params: params.except("animal_id"), by: user, animal: existing, origin: "field")
       return stale_animal(existing) if result.failure? && result.reason == :animal_changed
       return failure(result) if result.failure?
 
@@ -539,7 +540,10 @@ module FieldSync
       rejected("cbo_not_allowed")
     end
 
-    # O produto sem a finalidade do item (ou desconhecido) → product_not_allowed (README v1.4.0).
+    # Para o app (README v1.4.0), QUALQUER invalid_request em vector_product_id
+    # — produto desconhecido, inativo ou sem a finalidade do item (vacina:
+    # rabies_vaccine; coleira: collar) — vira product_not_allowed com o mesmo
+    # path. O dashboard segue com o 422 invalid_request do comando.
     def zoonoses_failure(type, result)
       if PRODUCT_ITEMS.include?(type) && result.reason == :invalid_request && result.details[:path] == "vector_product_id"
         return rejected("product_not_allowed", "vector_product_id")
@@ -557,12 +561,10 @@ module FieldSync
     def stale_animal(animal)
       animal.reload
       current = Json.animal_bodies([ animal ]).fetch(animal.id)
-      { status: "stale_version", id: animal.id, current_version: animal.version, current: current, receipt: false,
-        viewed: (if current[:tutor]
-                   { household_ids: [ animal.household_id ].compact, patient_ids: [ current.dig(:tutor, :patient_id) ] }
-                 end) }
+      tutor_id = current.dig(:tutor, :patient_id)
+      viewed = tutor_id && { household_ids: [ animal.household_id ].compact, patient_ids: [ tutor_id ] }
+      { status: "stale_version", id: animal.id, current_version: animal.version, current: current, receipt: false, viewed: viewed }
     end
-
 
     # Os itens de ovitrampa: gate utilizável e só o agente de endemias.
     def vector_refusal(context)
@@ -766,8 +768,9 @@ module FieldSync
     def invalid_envelope(path) = Result.fail(:invalid_request, details: { path: path })
     private_class_method :process, :lock!, :ledger, :dispatch, :home_visit, :withdrawal, :collective_activity, :patient, :household,
                          :family, :registration, :ovitrap_installation, :ovitrap_collection, :animal, :rabies_vaccination,
-                         :leish_collection, :collar, :zoonoses_refusal, :zoonoses_failure, :field_household?, :stale_animal, :vector_refusal, :inspection_id, :registry_refusal, :cite, :person_search?, :cited_id, :cited_patient_id, :acs?, :stale_household, :stale_registration,
-                         :registration_duplicate, :already_registered, :trail!, :accepted, :failure, :rejected, :result_json, :invalid_item, :schema_path,
-                         :invalid_envelope
+                         :leish_collection, :collar, :zoonoses_refusal, :zoonoses_failure, :field_household?, :stale_animal,
+                         :vector_refusal, :inspection_id, :registry_refusal, :cite, :person_search?, :cited_id, :cited_patient_id, :acs?,
+                         :stale_household, :stale_registration, :registration_duplicate, :already_registered, :trail!, :accepted, :failure,
+                         :rejected, :result_json, :invalid_item, :schema_path, :invalid_envelope
   end
 end

@@ -119,6 +119,29 @@ RSpec.describe Zoonoses::SaveAnimal, type: :model do
     expect(refusal(edit(animal, status: "lost"))).to eq([ :invalid_request, { path: "status" } ])
   end
 
+  # Task 17, fix round 1 (coordenador): status_on informado vale, só com uma
+  # mudança de status, entre o created_at do animal (dia da cidade) e hoje;
+  # fora → date_out_of_range path status_on; sem ele, hoje.
+  it "status_on informado com a mudança de status vale; futuro ou antes do cadastro → date_out_of_range; sem status → path status_on" do
+    today = Time.zone.today
+    animal = animal!(created_at: (today - 10).in_time_zone.change(hour: 10))
+    expect(edit(animal, status: "missing", status_on: (today - 3).iso8601)).to be_ok
+    expect(animal.reload).to have_attributes(status: "missing", status_on: today - 3)
+
+    expect(refusal(edit(animal, status: "active", status_on: (today + 1).iso8601))).to eq([ :date_out_of_range, { path: "status_on" } ])
+    expect(refusal(edit(animal, status: "active", status_on: (today - 11).iso8601))).to eq([ :date_out_of_range, { path: "status_on" } ])
+    expect(refusal(edit(animal, status: "active", status_on: "ontem"))).to eq([ :invalid_request, { path: "status_on" } ])
+    expect(refusal(edit(animal, status_on: today.iso8601))).to eq([ :invalid_request, { path: "status_on" } ])
+    expect(animal.reload).to have_attributes(status: "missing", status_on: today - 3, version: 2)
+
+    expect(edit(animal, status: "active", status_on: (today - 10).iso8601)).to be_ok
+    expect(animal.reload).to have_attributes(status: "active", status_on: today - 10)
+    # Sem mudança de status, o status_on não se aplica (o app manda o corpo inteiro).
+    expect(edit(animal, status: "active", status_on: (today - 1).iso8601, name: "Rex")).to be_ok
+    expect(animal.reload).to have_attributes(status_on: today - 10, name: "Rex")
+    expect(refusal(save(params: params(status_on: today.iso8601)))).to eq([ :invalid_request, { path: "status_on" } ])
+  end
+
   # Task 8 (fix): no canil, a morte vai pela saída death e a transferência pela
   # saída transferred; o PATCH de situação deixaria a estada sem como fechar.
   it "PATCH status with open stay → invalid_transition path status (deceased, transferred, missing); sem estada, inalterado" do

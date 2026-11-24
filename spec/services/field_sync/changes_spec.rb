@@ -96,6 +96,48 @@ RSpec.describe FieldSync::Changes, type: :model do
     expect(all_pages(pages.last.fetch("next_cursor")).flat_map { _1.fetch("removals") }).to eq([])
   end
 
+  # Módulo 35b, Task 17 (fix round 1, coordenador): os triggers das lápides
+  # out_of_scope não mudam a lápide do 24a/35a — o domicílio que sai do
+  # escopo segue com UMA lápide household moved (e a do cadastro), mesmo com
+  # vector_control e zoonoses ligados e perfil no imóvel; só o animal e o
+  # inquérito do domicílio ganham a deles.
+  it "regressão 24a/35a: o domicílio que sai do escopo grava as mesmas lápides de antes, com vector_control e zoonoses ligados" do
+    %w[vector_control zoonoses].each { |key| Platform::Features.set!(city: city, key: key, enabled: true, maintainer: ledi_maintainer!) }
+    CityCatalog.reset_cache!
+    neighborhood = Neighborhood.create!(name: "Bairro #{SecureRandom.hex(3)}", source: "manual")
+    block = city_block!(neighborhood: neighborhood, number: "1")
+    plain, profiled, with_animal = Array.new(3) { registry_household!(micro_area: area) }
+    resident = registry_registration!(household: plain)
+    [ profiled, with_animal ].each { vector_profile!(_1, block: block) }
+    survey = leish_survey!(blocks: [ block ])
+    dog = animal!(household: with_animal)
+    cursor = all_pages.last.fetch("next_cursor")
+
+    move_household!(plain, foreign_area)
+    move_household!(profiled, foreign_area)
+    expect(FieldSyncTombstone.pluck(:entity_type, :entity_id, :reason))
+      .to contain_exactly([ "household", plain.id, "moved" ], [ "registration", resident.id, "moved" ], [ "household", profiled.id, "moved" ],
+                          [ "leish_survey", survey.id, "out_of_scope" ])
+    move_household!(with_animal, foreign_area)
+    stones = FieldSyncTombstone.where.not(entity_type: %w[leish_survey]).order(:created_at).pluck(:entity_type, :entity_id, :reason)
+    expect(stones.last(2)).to contain_exactly([ "household", with_animal.id, "moved" ], [ "animal", dog.id, "out_of_scope" ])
+    expect(FieldSyncTombstone.where(entity_type: "household").group(:entity_id).count.values.uniq).to eq([ 1 ])
+
+    pages = all_pages(cursor)
+    expect(removals(pages)).to contain_exactly([ "household", plain.id, "moved" ], [ "registration", resident.id, "moved" ],
+                                               [ "household", profiled.id, "moved" ], [ "household", with_animal.id, "moved" ],
+                                               [ "animal", dog.id, "out_of_scope" ], [ "leish_survey", survey.id, "out_of_scope" ])
+  end
+
+  it "regressão 24a: sem zoonoses, a mesma saída grava só as lápides do 24a" do
+    leaving = registry_household!(micro_area: area)
+    animal!(household: leaving)
+    cursor = all_pages.last.fetch("next_cursor")
+    move_household!(leaving, foreign_area)
+    expect(removals(all_pages(cursor))).to eq([ [ "household", leaving.id, "moved" ] ])
+    expect(FieldSyncTombstone.where(entity_type: "household").pluck(:entity_id, :micro_area_id, :reason)).to eq([ [ leaving.id, area.id, "moved" ] ])
+  end
+
   it "lápide conta no limit e sai na página em que cai no fluxo" do
     first, second = Array.new(2) { registry_household!(micro_area: area) }
     cursor = all_pages.last.fetch("next_cursor")
