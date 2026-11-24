@@ -6,7 +6,7 @@
 #     → a coleira; já retirada ou trocada → 409 collar_changed;
 #   - GET /collars?due=1 → `{ items }` das coleiras ativas de cães `active` com due_on até hoje +
 #     15 dias, as mais atrasadas primeiro, com animal_id, household_id e due_on.
-#     Sem tutor, nome nem microchip.
+#     Sem tutor nem microchip; o nome e a espécie do animal vêm em `animal`.
 # A escrita recusa query (422 invalid_request); a lista só aceita `due`.
 module Zoonoses
   class CollarsController < BaseController
@@ -22,10 +22,10 @@ module Zoonoses
       limit = Time.zone.today + Catalog::COLLAR_DUE_WINDOW
       rows = Collar.active.joins(:animal).merge(Animal.active).where(due_on: ..limit).order(:due_on, :id)
                    .pluck("collars.id", "collars.animal_id", "animals.household_id", "collars.vector_product_id", "collars.placed_on",
-                          "collars.due_on")
-      render json: { items: rows.map { |id, animal_id, household_id, product_id, placed_on, due_on|
+                          "collars.due_on", "animals.name", "animals.species")
+      render json: { items: rows.map { |id, animal_id, household_id, product_id, placed_on, due_on, name, species|
         { id: id, animal_id: animal_id, household_id: household_id, vector_product_id: product_id, placed_on: placed_on.iso8601,
-          due_on: due_on.iso8601 }
+          due_on: due_on.iso8601, animal: { id: animal_id, name: name, species: species } }
       } }
     end
 

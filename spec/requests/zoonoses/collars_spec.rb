@@ -38,6 +38,21 @@ RSpec.describe "Zoonoses — coleiras", type: :request do
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
   end
 
+  it "due=1 traz o animal (id, name, species) em cada item, name nulo sem nome, sem tutor nem microchip" do
+    named = collar!(animal: animal!(tutor: tutor!, name: "Rex", microchip: "985112345678901"), product: product,
+                    placed_on: today - 200, due_on: today - 2)
+    nameless = collar!(animal: animal!, product: product, placed_on: today - 20, due_on: today + 4)
+
+    get "/zoonoses/collars?due=1"
+    expect(response).to have_http_status(:ok)
+    items = json_body["items"]
+    expect(items.pluck("id")).to eq([ named.id, nameless.id ])
+    expect(items.first["animal"]).to eq({ "id" => named.animal_id, "name" => "Rex", "species" => "dog" })
+    expect(items.last["animal"]).to eq({ "id" => nameless.animal_id, "name" => nil, "species" => "dog" })
+    expect(items.map(&:keys).uniq).to eq([ %w[id animal_id household_id vector_product_id placed_on due_on animal] ])
+    expect(response.body).not_to match(/tutor|microchip|985112345678901/i)
+  end
+
   it "coloca e troca pela rota; remover duas vezes → 409 collar_changed" do
     animal = animal!
     json_post_to("/zoonoses/collars", { animal_id: animal.id, vector_product_id: product.id, placed_on: (today - 10).iso8601 })
