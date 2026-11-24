@@ -23,6 +23,7 @@ module Ombudsman
     # `daily_cap_reached`); o resto das recusas é 422.
     FAILURE_STATUS = {
       manifestation_changed: :conflict, forwarding_changed: :conflict, already_answered: :conflict, reopen_pending: :conflict,
+      forwarding_already_pending: :conflict,
       already_decided: :conflict, report_published: :conflict, already_published: :conflict,
       missing_role: :forbidden, not_own_citizen: :forbidden,
       not_found: :not_found,

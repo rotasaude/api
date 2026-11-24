@@ -19,7 +19,9 @@
 # desativada entre a leitura e a trava, por exemplo) ou a falha do banco
 # depois de o encaminhamento gravado voltam SÓ o encaminhamento, o evento e a
 # demanda; o registro do cidadão e a classificação ficam (Review Focus 2). A
-# falha da classificação deixa a manifestação `received`, ainda gravada. Nunca há
+# falha da classificação deixa a manifestação `received`, ainda gravada.
+# Qualquer erro (StandardError, não só o do banco) volta só o savepoint: o
+# registro nunca se perde. Nunca há
 # demanda sem encaminhamento: os dois nascem e voltam juntos. O log leva só o
 # id da manifestação e o motivo, nunca texto nem endereço.
 #
@@ -64,8 +66,9 @@ module Zoonoses
     end
 
     # O bloco (que devolve Result) num savepoint: a recusa volta o savepoint
-    # (ActiveRecord::Rollback); a falha do banco também, e vira Result.fail
-    # — a transação do registro segue usável e o registro fica.
+    # (ActiveRecord::Rollback); qualquer erro também (o do banco ou não), e
+    # vira Result.fail — a transação do registro segue usável e o registro
+    # fica. O log leva só o id, o motivo e a classe do erro, nunca a mensagem.
     def savepoint(manifestation)
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
@@ -73,8 +76,8 @@ module Zoonoses
         raise ActiveRecord::Rollback if result.failure?
       end
       result.failure? ? warn!(manifestation, result) : result
-    rescue ActiveRecord::ActiveRecordError => e
-      warn!(manifestation, Result.fail(:database_error), error: e.class.name)
+    rescue StandardError => e
+      warn!(manifestation, Result.fail(:unexpected_error), error: e.class.name)
     end
 
     def warn!(manifestation, result, error: nil)

@@ -152,6 +152,48 @@ RSpec.describe Zoonoses::OpenDemand, type: :model do
     expect(DomainEvent.where(name: "ombudsman.forwarded").count).to eq(0)
   end
 
+  # Review Focus 2: erro que não é do banco (KeyError, RuntimeError) na
+  # garantia dos assuntos ou no encaminhamento também não leva o registro.
+  it "Review Focus 2: erro fora do ActiveRecord nos assuntos → registro gravado received; no Forward → in_analysis classificada" do
+    allow(Ombudsman::Subjects).to receive(:ensure_zoonoses!).and_raise(KeyError, "simulada")
+    first = nil
+    log = capture_log { first = manifestation_of(web) }
+    expect(first).to have_attributes(state: "received", subject_id: nil, body: text, place_address: address)
+    expect(log).to include("[Zoonoses::OpenDemand] not_forwarded manifestation_id=#{first.id}", "error=KeyError")
+    expect(log).not_to include("simulada")
+
+    allow(Ombudsman::Subjects).to receive(:ensure_zoonoses!).and_call_original
+    allow(Ombudsman::Forward).to receive(:call).and_raise(RuntimeError, "simulada")
+    second = manifestation_of(web)
+    expect(second).to have_attributes(state: "in_analysis", subject_id: subject_for("scorpion").id)
+    expect(OmbudsmanManifestation.count).to eq(2)
+    expect(OmbudsmanForwarding.count).to eq(0)
+    expect(ZoonosesDemand.count).to eq(0)
+  end
+
+  # Q34, no caminho automático (o Forward do sistema, by: nil): a manifestação
+  # já encaminhada à UVZ, com o encaminhamento pending → 409
+  # forwarding_already_pending, nada gravado; recusado o primeiro, o novo
+  # passa e cria outra demanda.
+  it "Q34: encaminhamento do sistema à UVZ com outro pending → forwarding_already_pending; depois da recusa → nova demanda" do
+    m = manifestation_of(web)
+    forward = lambda do
+      Ombudsman::Forward.call(manifestation_id: m.id, expected_state: m.reload.state, department_id: nil, health_unit_id: uvz.id,
+                              extract: m.body, by: nil, zoonoses: true, now: now)
+    end
+    refused = forward.call
+    expect([ refused.reason, refused.details[:path] ]).to eq([ :forwarding_already_pending, "destination" ])
+    expect(OmbudsmanForwarding.count).to eq(1)
+    expect(ZoonosesDemand.count).to eq(1)
+
+    declined = Ombudsman::DeclineForwarding.call(forwarding_id: OmbudsmanForwarding.sole.id, expected_state: "pending",
+                                                 reason: "Endereço fora da área de atuação desta unidade.", by: responder!(uvz))
+    expect(declined).to be_ok
+    expect(forward.call).to be_ok
+    expect(OmbudsmanForwarding.where(state: "pending").count).to eq(1)
+    expect(ZoonosesDemand.count).to eq(2)
+  end
+
   it "o log do registro não traz o endereço nem o texto" do
     log = capture_log { web }
     expect(log).not_to include(address)

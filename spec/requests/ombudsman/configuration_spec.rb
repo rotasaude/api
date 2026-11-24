@@ -389,7 +389,8 @@ RSpec.describe "Ouvidoria — configuração", type: :request do
 
       access = json_body["subjects"].find { |s| s["name"] == "Acesso" }
       expect(access["children"].map { |c| c["name"] }).to eq([ "Agendamento", "Falta de profissional" ])
-      expect(access.keys).to contain_exactly("id", "name", "children")
+      expect(access.keys).to contain_exactly("id", "name", "code", "children")
+      expect(access["children"].first.keys).to contain_exactly("id", "name", "code")
       expect(json_body["subjects"].map { |s| s["name"] }).not_to include("Outros")
 
       expect(json_body["health_units"]).to contain_exactly(

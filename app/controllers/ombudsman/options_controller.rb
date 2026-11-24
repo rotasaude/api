@@ -5,6 +5,7 @@
 # Técnico e ouvidor. Sem dado de pessoa além do nome do profissional.
 # Módulo 35b (Q13): com o zoonoses e a ouvidoria utilizáveis (lido aqui, fora
 # da transação), a UVZ com alguém da equipe do centro conta como coberta.
+# Os assuntos trazem `code` (Q14; nulo no assunto da cidade).
 module Ombudsman
   class OptionsController < BaseController
     before_action :require_staff!
@@ -25,8 +26,8 @@ module Ombudsman
 
     def subjects
       OmbudsmanSubject.active.includes(:children).where(parent_id: nil).order(:position, :name).map do |subject|
-        { id: subject.id, name: subject.name,
-          children: subject.children.select(&:active).map { |child| { id: child.id, name: child.name } } }
+        { id: subject.id, name: subject.name, code: subject.code,
+          children: subject.children.select(&:active).map { |child| { id: child.id, name: child.name, code: child.code } } }
       end
     end
 

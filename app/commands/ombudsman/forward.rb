@@ -21,6 +21,10 @@
 #   automático;
 # - `by: nil` é o automático (Zoonoses::OpenDemand): `created_by_system`, e o
 #   evento com o ator `system`.
+# Q34: outro encaminhamento `pending` da mesma manifestação ao mesmo destino
+# → 409 forwarding_already_pending (path destination), nada gravado; vale para
+# o manual e o automático, sob a trava da manifestação. Respondido, recusado
+# ou cancelado o primeiro, o novo passa (e, na UVZ, cria outra demanda).
 module Ombudsman
   module Forward
     FROM = %w[in_analysis forwarded].freeze
@@ -30,6 +34,7 @@ module Ombudsman
     # -> Result.ok(manifestation:, forwarding:, demand:) (demand nil fora da UVZ com o gate)
     #  | fail(:invalid_request, details: { path:, problems: })
     #  | fail(:destination_without_responder) | fail(:not_found) | fail(:manifestation_changed) | fail(:invalid_transition)
+    #  | fail(:forwarding_already_pending, details: { path: "destination", problems: })
     def call(manifestation_id:, expected_state:, department_id:, health_unit_id:, extract:, by:, zoonoses: false, now: Time.current)
       return Input.refuse("department_id") if department_id.nil? && health_unit_id.nil?
       return Input.refuse("health_unit_id") if !department_id.nil? && !health_unit_id.nil?
@@ -54,6 +59,9 @@ module Ombudsman
 
         destination = { key.to_sym => destination_id.downcase }
         next Result.fail(:destination_without_responder) if Access.responder_ids_for(**destination, zoonoses: zoonoses).empty?
+        if OmbudsmanForwarding.where(ombudsman_manifestation_id: manifestation.id, state: "pending", **destination).exists?
+          next Input.refuse("destination", :forwarding_already_pending)
+        end
 
         forwarding = OmbudsmanForwarding.create!(
           ombudsman_manifestation: manifestation, **destination, extract: text, state: "pending", created_by_user: by,

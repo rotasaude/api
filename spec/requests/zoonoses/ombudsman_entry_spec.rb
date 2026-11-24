@@ -6,7 +6,9 @@ require "rails_helper"
 # `zoonoses_subtype` e `place_address` só valem com o zoonoses E a ouvidoria
 # utilizáveis (Q10); com subtipo, `kind` só request ou report (Q14) e o
 # `place_address` é obrigatório nos três modos (Q15). O cidadão nunca vê de
-# volta o `place_address`; a equipe da ouvidoria o vê no detalhe. O
+# volta o `place_address`; a equipe da ouvidoria o vê no detalhe do 33, para
+# reencaminhar a manifestação que ficou in_analysis (Q33), mas o ponto de
+# resposta (o inbox do respondente) e a lista da caixa não. O
 # encaminhamento manual do 33 à UVZ, com o gate, também cria a demanda.
 RSpec.describe "Zoonoses — demandas pela ouvidoria", type: :request do
   include ActiveSupport::Testing::TimeHelpers
@@ -106,7 +108,7 @@ RSpec.describe "Zoonoses — demandas pela ouvidoria", type: :request do
     expect(OmbudsmanManifestation.count).to eq(0)
   end
 
-  it "balcão com subtipo → encaminhado à UVZ com a demanda; o detalhe da equipe traz o place_address" do
+  it "balcão com subtipo → encaminhado à UVZ com a demanda; o detalhe da equipe traz o place_address, a lista e o inbox não (Q33)" do
     zoonoses_ombudsman!
     uvz = uvz_unit!
     zoonoses_team!
@@ -134,10 +136,28 @@ RSpec.describe "Zoonoses — demandas pela ouvidoria", type: :request do
     expect(OmbudsmanManifestation.find(json_body["id"])).to have_attributes(state: "forwarded", identification_mode: "anonymous")
     expect(ZoonosesDemand.count).to eq(2)
 
+    # A lista da caixa não traz.
+    get "/ombudsman/manifestations"
+    expect(response).to have_http_status(:ok)
+    expect(response.body).not_to include(address)
+    expect(json_body["items"].flat_map(&:keys)).not_to include("place_address")
+
     # Sem subtipo, o detalhe da manifestação comum traz place_address nulo.
     plain = raw_manifestation!
     get "/ombudsman/manifestations/#{plain.id}"
     expect(json_body["place_address"]).to be_nil
+
+    # O ponto de resposta do 33 (o respondente da UVZ, sem ombudsman_staff):
+    # o inbox não traz, e o detalhe da manifestação é 403.
+    uvz_responder = responder!(uvz)
+    sign_in_as(uvz_responder)
+    get "/ombudsman/inbox"
+    expect(response).to have_http_status(:ok)
+    expect(json_body["items"].map { |item| item["id"] }).to include(forwarding.id)
+    expect(json_body["items"].flat_map(&:keys)).not_to include("place_address")
+    expect(response.body).not_to include(address)
+    get "/ombudsman/manifestations/#{m.id}"
+    expect(response).to have_http_status(:forbidden)
   end
 
   it "wpda identificada e anônima com subtipo → 201 e encaminhadas" do
@@ -208,9 +228,14 @@ RSpec.describe "Zoonoses — demandas pela ouvidoria", type: :request do
       uvz = uvz_unit!
       zoonoses_team!
       sign_in_as(ombudsman_staff!)
+      Ombudsman::Subjects.ensure_zoonoses! # sob demanda (Q14): o registro com subtipo ou a lista de assuntos
 
       get "/ombudsman/options"
       expect(json_body["health_units"].find { |u| u["id"] == uvz.id }).to include("has_active_responder" => true)
+      zoonoses = json_body["subjects"].find { |s| s["code"] == "zoonoses" }
+      expect(zoonoses).to be_present
+      expect(zoonoses["children"].map { |c| c["code"] }).to eq(Zoonoses::Catalog::SUBTYPES.map { |s| "zoonoses.#{s}" })
+      expect(json_body["subjects"].find { |s| s["name"] == "Atendimento" }).to include("code" => nil)
 
       m = raw_manifestation!(state: "in_analysis", subject: subject_leaf!)
       forward!(m, uvz)
@@ -229,6 +254,36 @@ RSpec.describe "Zoonoses — demandas pela ouvidoria", type: :request do
       expect(response).to have_http_status(:ok)
       expect(ZoonosesDemand.joins(:ombudsman_forwarding)
                            .find_by!(ombudsman_forwardings: { ombudsman_manifestation_id: other.id }).subtype).to eq("tick")
+    end
+
+    # Q34: um segundo encaminhamento à mesma unidade com outro pending → 409
+    # forwarding_already_pending (path destination); respondido ou recusado
+    # o primeiro, o novo passa e cria outra demanda.
+    it "segundo encaminhamento à UVZ com outro pending → 409 forwarding_already_pending; respondido o primeiro, aceito com nova demanda" do
+      zoonoses_ombudsman!
+      uvz = uvz_unit!
+      zoonoses_team!
+      uvz_responder = responder!(uvz)
+      sign_in_as(ombudsman_staff!)
+      m = raw_manifestation!(state: "in_analysis", subject: subject_leaf!)
+      forward!(m, uvz)
+      expect(response).to have_http_status(:ok)
+
+      json_post("/ombudsman/manifestations/#{m.id}/forward", expected_state: "forwarded", health_unit_id: uvz.id, extract: extract)
+      expect(response).to have_http_status(:conflict)
+      expect(json_body).to include("error" => "forwarding_already_pending", "path" => "destination")
+      expect(OmbudsmanForwarding.where(ombudsman_manifestation_id: m.id).count).to eq(1)
+      expect(ZoonosesDemand.count).to eq(1)
+
+      first = OmbudsmanForwarding.where(ombudsman_manifestation_id: m.id).sole
+      replied = Ombudsman::ReplyForwarding.call(forwarding_id: first.id, expected_state: "pending",
+                                                body: "Vistoria feita e terreno notificado para limpeza.", by: uvz_responder)
+      expect(replied).to be_ok
+      expect(m.reload.state).to eq("in_analysis")
+      forward!(m, uvz)
+      expect(response).to have_http_status(:ok)
+      expect(OmbudsmanForwarding.where(ombudsman_manifestation_id: m.id).count).to eq(2)
+      expect(ZoonosesDemand.count).to eq(2)
     end
 
     it "sem o gate, a UVZ sem respondente do 33 → 422 destination_without_responder e nenhuma demanda" do
