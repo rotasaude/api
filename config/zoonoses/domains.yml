@@ -78,3 +78,26 @@ removal_reasons:
   - { code: lost, label: "Perdida" }
   - { code: death, label: "Óbito" }
   - { code: other, label: "Outro" }
+# Task 15 (relatórios): rótulos que só os relatórios usam.
+modalities:
+  - { code: house, label: "Casa a casa" }
+  - { code: fixed_post, label: "Posto fixo" }
+  - { code: routine, label: "Rotina" }
+demand_states:
+  - { code: open, label: "Aberta" }
+  - { code: scheduled, label: "Agendada" }
+  - { code: inspected, label: "Inspecionada" }
+  - { code: closed, label: "Encerrada" }
+deadline_colors:
+  - { code: green, label: "No prazo" }
+  - { code: yellow, label: "Perto do prazo" }
+  - { code: red, label: "Vencida" }
+  - { code: none, label: "Sem prazo" }
+observation_outcomes:
+  - { code: open, label: "Em observação" }
+  - { code: healthy, label: "Sadio" }
+  - { code: died, label: "Morreu" }
+  - { code: missing, label: "Desapareceu" }
+  - { code: rabies_signs, label: "Sinais de raiva" }
+  - { code: sent_to_exam, label: "Enviado a exame" }
+  - { code: euthanized, label: "Eutanasiado" }

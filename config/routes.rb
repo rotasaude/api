@@ -1145,6 +1145,8 @@ Rails.application.routes.draw do
     post   "neuterings",                      to: "neuterings#create"
     # Eutanásia imutável (§7): só a criação, sem leitura avulsa, edição nem exclusão.
     post   "euthanasias",                     to: "euthanasias#create"
+    # Relatórios (§8): JSON e `.csv`; nome e extensão conferidos no controller (404).
+    get    "reports/:name",                   to: "reports#show"
   end
 
   # Módulo 24b (ADR 0052; contrato §9.1): aparelhos de campo pelo dashboard
