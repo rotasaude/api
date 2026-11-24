@@ -17,6 +17,8 @@ require Rails.root.join("lib/zoonoses_crew").to_s
 # nacional de doenças e a vigilante (vigilancia@) fazem as vezes do
 # SurveillanceCrew. Idempotente; tudo pelos comandos do módulo.
 RSpec.describe ZoonosesCrew, type: :model do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:city) { City.find_by!(slug: TEST_CITY_A.slug) }
   let(:today) { Time.zone.today }
   let(:team_user) { User.find_by!(email_address: "zoonoses@curitiba.demo") }
@@ -146,6 +148,14 @@ RSpec.describe ZoonosesCrew, type: :model do
       lines = described_class.summary_lines(result, password: "dev-password").join("\n")
       expect(lines).to include(result[:microchip], "veterinaria@curitiba.demo", "zoonoses@curitiba.demo")
     end
+  end
+
+  it "semear de novo em outro dia não muda nenhuma tabela (doses ancoradas no início da campanha)" do
+    seed
+    tables = [ User, Membership, Professional, ProfessionalLink, VectorProduct, StockLot, StockMovement, StockEntry, Animal, RabiesCampaign,
+               RabiesVaccination, LeishSurvey, LeishTest, Collar, BiteObservation, ShelterStay, ZoonosesDemand, Euthanasia, DiseaseNotification,
+               OmbudsmanManifestation, OmbudsmanForwarding, OmbudsmanEvent, ProcessedEvent, DomainEvent, CityFeature, Patient ]
+    expect { travel_to(Time.current + 3.days) { seed } }.not_to(change { tables.map(&:count) })
   end
 
   it "nenhuma eutanásia; nenhum CPF/CNS inválido" do

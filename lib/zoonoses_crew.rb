@@ -4,6 +4,7 @@ require_relative "care_lines_crew"
 require_relative "territory_registry_crew"
 require_relative "home_visit_crew"
 require_relative "vector_control_crew"
+require_relative "campaign_history"
 
 # Semente de dev do módulo 35b (ADR 0054; contrato §17, Q30), para a prova no
 # navegador e no app. Dev é fictício mas imita o real: em Curitiba (só nela),
@@ -260,7 +261,7 @@ class ZoonosesCrew
         seed = "#{slug}:#{STAFF.dig(:veterinarian, :email_prefix)}"
         attrs = { professional_name: VETERINARIAN[:professional_name], council: "CRMV", council_state: VETERINARIAN[:council_state],
                   registration_number: VETERINARIAN[:registration_number], cns: Professionals::Cns.generate(seed),
-                  cpf: ScreeningCrew.send(:cpf_for, seed), phone: TerritoryRegistryCrew.phone_for(ddd, VETERINARIAN_PHONE_INDEX) }
+                  cpf: CampaignHistory.cpf_for(seed), phone: TerritoryRegistryCrew.phone_for(ddd, VETERINARIAN_PHONE_INDEX) }
         professional = check!(Professionals::Create.call(user_id: user.id, attrs: attrs, by: place[:admin]), "perfil da veterinária").payload[:professional]
       end
       return if professional.links.active.exists?(health_unit: place[:uvz], cbo_code: Zoonoses::Catalog::VETERINARIAN_CBO)
@@ -344,20 +345,25 @@ class ZoonosesCrew
         animal = animals.fetch(key)
         next if RabiesVaccination.exists?(campaign_id: campaign.id, animal_id: animal.id, cancelled_at: nil)
 
-        dose!({ "modality" => "house", "campaign_id" => campaign.id, "animal_id" => animal.id, "vaccinated_on" => (today - days_ago).iso8601,
+        dose!({ "modality" => "house", "campaign_id" => campaign.id, "animal_id" => animal.id, "vaccinated_on" => dose_day(campaign, days_ago).iso8601,
                 "vector_product_id" => vaccine.id, "adverse_event" => false }, staff, field, "dose de #{animal.name}")
       end
-      POST_DOSES.each do |dose|
-        day = today - dose[:days_ago]
-        next if RabiesVaccination.exists?(campaign_id: campaign.id, modality: "fixed_post", animal_id: nil, species: dose[:species], vaccinated_on: day,
-                                          cancelled_at: nil)
-
-        dose!({ "modality" => "fixed_post", "campaign_id" => campaign.id, "species" => dose[:species], "vaccinated_on" => day.iso8601,
-                "vector_product_id" => vaccine.id, "adverse_event" => false, "health_unit_id" => place[:unit].id }, staff, field,
-              "dose de posto fixo (#{dose[:species]})")
+      # Posto fixo sem animal: a chave é campanha + modalidade + espécie contra a
+      # contagem esperada (as datas são ancoradas no início da campanha).
+      POST_DOSES.group_by { |dose| dose[:species] }.each do |species, expected|
+        existing = RabiesVaccination.where(campaign_id: campaign.id, modality: "fixed_post", animal_id: nil, species: species, cancelled_at: nil).count
+        expected.drop(existing).each do |dose|
+          dose!({ "modality" => "fixed_post", "campaign_id" => campaign.id, "species" => species,
+                  "vaccinated_on" => dose_day(campaign, dose[:days_ago]).iso8601, "vector_product_id" => vaccine.id, "adverse_event" => false,
+                  "health_unit_id" => place[:unit].id }, staff, field, "dose de posto fixo (#{species})")
+        end
       end
       campaign
     end
+
+    # O dia da dose ancorado no início da campanha (gravado uma vez, na criação):
+    # semear em outro dia não muda a data nem cria dose nova.
+    def dose_day(campaign, days_ago) = campaign.starts_on + (CAMPAIGN[:starts_days_ago] - days_ago)
 
     def dose!(params, staff, field, what)
       check!(Zoonoses::RecordVaccination.call(params: params, by: staff[:team], zoonoses_field: field), what)
@@ -446,7 +452,9 @@ class ZoonosesCrew
     end
 
     # A coleira do Thor vence daqui a COLLAR_DUE_IN_DAYS dias (colocada há
-    # collar_months − 10 dias); uma coleira ativa só por cão.
+    # collar_months − 10 dias); uma coleira ativa só por cão. A data de validade
+    # fica ancorada no dia da primeira semeadura: semear depois não recoloca a
+    # coleira, e a janela de 15 dias se afasta com o tempo.
     def collar!(staff, animals, products)
       animal = animals.fetch(:thor)
       return if Collar.active.exists?(animal_id: animal.id)

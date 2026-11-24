@@ -471,8 +471,8 @@ else
 
         # ── Centro de zoonoses (módulo 35b, ADR 0054) ─────────────────────────
         # Depois do VectorControlCrew (a UVZ, o local de insumos, a coordenação,
-        # o almoxarife e o ACE), do OmbudsmanCrew (a manifestação de escorpião
-        # encaminhada sozinha) e do SurveillanceCrew (a vigilante que notifica o
+        # o almoxarife e o ACE), do OmbudsmanCrew (a ouvidoria que registra
+        # a manifestação de escorpião, encaminhada sozinha pelo ZoonosesCrew) e do SurveillanceCrew (a vigilante que notifica o
         # acidente). Só em Curitiba. Só e-mail, papel e otpauth: nunca dado de
         # tutor nem de paciente (o microchip é fictício, para a busca da prova).
         zoonoses = ZoonosesCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
