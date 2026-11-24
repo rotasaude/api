@@ -28,6 +28,7 @@ RSpec.describe "Zoonoses — observações do animal agressor", type: :request d
   # Notificação do 25 com o bloco do animal na ficha e a observação aberta.
   def observed!(exposure_on: today - 2, **over)
     patient = tutor!
+    patient.update!(cns: valid_cns(registry_seq!)) # o CNS marcado entra na varredura
     notification = notification!(patient: patient, disease_code: Zoonoses::Catalog::OBSERVATION_DISEASE, by: officer)
     form = notification.form.merge("animal_species" => "dog", "animal_condition" => "suspect", "animal_observable" => "true",
                                    "exposure_on" => exposure_on.iso8601, "animal_tutor_name" => tutor_name,
@@ -37,7 +38,7 @@ RSpec.describe "Zoonoses — observações do animal agressor", type: :request d
   end
 
   def secrets(notification, patient)
-    [ patient.full_name, patient.cpf, patient.birth_date.to_s, notification.id, notification.health_unit_id,
+    [ patient.full_name, patient.cpf, patient.cns, patient.birth_date.to_s, notification.id, notification.health_unit_id,
       notification.health_unit.name, tutor_name, tutor_phone, animal_address ].compact.map(&:to_s)
   end
 

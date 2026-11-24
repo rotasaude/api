@@ -42,6 +42,7 @@ module Zoonoses
       return Result.ok(observation: row) if row.animal_id == animal.id
       return Result.fail(:observation_changed) unless row.animal_id.nil?
       return invalid("animal_id") unless animal.species == row.species
+      # O status do animal não é conferido de propósito: ele pode ter morrido durante a observação.
 
       row.update!(animal_id: animal.id, version: row.version + 1)
       Result.ok(observation: row)

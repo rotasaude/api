@@ -13,7 +13,8 @@
 #     outcome_on (o dia ends_on exato vale: o 10º dia);
 #   - euthanized exige a eutanásia gravada com a bite_observation_id desta
 #     observação (Zoonoses::RecordEuthanasia, que já exige o animal ligado),
-#     senão invalid_request path outcome.
+#     senão invalid_request path outcome; e, com essa eutanásia gravada, só
+#     euthanized fecha (outro desfecho → invalid_request path outcome).
 # Não trava nem muda o animal: a eutanásia é imutável (basta lê-la), e a
 # morte do animal é do RecordEuthanasia / AnimalDeath. Sem trava do animal
 # não há ciclo com o EnterShelter (animal → observação).
@@ -50,7 +51,9 @@ module Zoonoses
       if attrs[:outcome] == "healthy" && outcome_on < row.ends_on
         return Result.fail(:observation_not_finished, details: { path: "outcome_on" })
       end
-      return invalid("outcome") if attrs[:outcome] == "euthanized" && !Euthanasia.exists?(bite_observation_id: row.id)
+      # Desfecho coerente: com a eutanásia ligada, só euthanized; sem ela, nunca euthanized.
+      euthanized = Euthanasia.exists?(bite_observation_id: row.id)
+      return invalid("outcome") if (attrs[:outcome] == "euthanized") != euthanized
 
       row.update!(state: "closed", outcome: attrs[:outcome], outcome_on: outcome_on, outcome_note: attrs[:outcome_note],
                   closed_by_user: by, version: row.version + 1)

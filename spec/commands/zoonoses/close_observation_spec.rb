@@ -63,6 +63,17 @@ RSpec.describe Zoonoses::CloseObservation, type: :model do
     expect(linked.reload).to have_attributes(state: "closed", outcome: "euthanized")
   end
 
+  it "com a eutanásia ligada, só euthanized fecha (desfecho coerente) → senão path outcome" do
+    dog = animal!
+    observation = bite_observation!(animal: dog, exposure_on: today - 10)
+    euthanasia!(animal: dog, bite_observation: observation)
+    %w[healthy died missing rabies_signs sent_to_exam].each do |outcome|
+      expect(refusal(close(observation, outcome: outcome, outcome_on: today.iso8601))).to eq([ :invalid_request, { path: "outcome" } ])
+    end
+    expect(observation.reload).to have_attributes(state: "open", version: 1)
+    expect(close(observation, outcome: "euthanized", outcome_on: today.iso8601)).to be_ok
+  end
+
   it "versão velha → observation_changed; fechada → invalid_transition path status" do
     observation = bite_observation!(exposure_on: today - 10)
     expect(refusal(close(observation, expected_version: 2))).to eq([ :observation_changed, {} ])

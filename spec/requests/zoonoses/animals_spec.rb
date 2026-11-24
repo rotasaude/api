@@ -157,6 +157,18 @@ RSpec.describe "Zoonoses — animais", type: :request do
     expect([ body["vaccinations"], body["observations"], body["tests"], body["collars"] ]).to eq([ [], [], [], [] ])
   end
 
+  # Decisão 32 / §16: a observação ligada aparece no histórico sem a notificação do 25.
+  it "detalhe com observação ligada não traz disease_notification_id nem o id da notificação" do
+    animal = animal!
+    observation = bite_observation!(animal: animal)
+    get "/zoonoses/animals/#{animal.id}"
+    expect(response).to have_http_status(:ok)
+    item = json_body["observations"].sole
+    expect(item).to include("id" => observation.id, "state" => "open")
+    expect(item).not_to have_key("disease_notification_id")
+    expect(response.body).not_to include(observation.disease_notification_id)
+  end
+
   it "PATCH: missing → active → ok; deceased → active → 409 animal_not_active; nome do transferred → 409 animal_not_active" do
     animal = animal!(status: "missing", status_on: Time.zone.today - 10)
     edit(animal, status: "active", expected_version: 1)

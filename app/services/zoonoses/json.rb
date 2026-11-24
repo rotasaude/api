@@ -138,9 +138,10 @@ module Zoonoses
         vector_product_id: row.vector_product_id, adverse_event: row.adverse_event, cancelled: row.cancelled? }
     end
 
+    # Sem a disease_notification_id (decisão 32, §16): a notificação do 25 não sai do 35b.
     def observation(row)
-      { id: row.id, disease_notification_id: row.disease_notification_id, exposure_on: row.exposure_on.iso8601,
-        ends_on: row.ends_on.iso8601, place: row.place, state: row.state, outcome: row.outcome, outcome_on: row.outcome_on&.iso8601 }
+      { id: row.id, exposure_on: row.exposure_on.iso8601, ends_on: row.ends_on.iso8601, place: row.place, state: row.state,
+        outcome: row.outcome, outcome_on: row.outcome_on&.iso8601 }
     end
 
     def leish_test(row)

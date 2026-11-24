@@ -47,10 +47,15 @@ module OmbudsmanHelpers
     (nums + [ first, CitizenIdentity::Cpf.check_digit(nums + [ first ]) ]).join
   end
 
-  # Um subassunto ativo da semente (assunto classificável).
-  def subject_leaf!
+  # Um subassunto ativo da semente (assunto classificável). Sem `reserved:`,
+  # só os da cidade (sem `code`): os reservados (zoonoses.*, criados sob
+  # demanda pelo Ombudsman::Subjects.ensure_zoonoses!) nunca entram por acaso
+  # na ordem (position, id).
+  def subject_leaf!(reserved: false)
     OmbudsmanSubject.ensure_defaults!
-    OmbudsmanSubject.where(active: true).where.not(parent_id: nil).order(:position, :id).first!
+    scope = OmbudsmanSubject.where(active: true).where.not(parent_id: nil)
+    scope = scope.where(code: nil) unless reserved
+    scope.order(:position, :id).first!
   end
 
   # Manifestação gravada direto, com protocolo da sequência e o ciclo do dia
