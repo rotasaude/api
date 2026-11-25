@@ -5099,3 +5099,56 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 27b (BNAFAR; Q7, Q15, Q16): o lote deixa de ser só acréscimo. O
+-- UPDATE sobe bnafar_version em 1 e só completa os dados BNAFAR (de NULL a
+-- valor; ium de NULL a lista; manufacturer_international de false a true com o
+-- CNPJ nulo, e então o nome do fabricante, de NULL a valor, no mesmo UPDATE),
+-- mais a troca do preço unitário. O resto do lote nunca muda e o lote nunca
+-- some. O TRUNCATE segue recusado (stock_lots_append_only_truncate). O bloco só
+-- vale quando a coluna existe (o arquivo roda em migrações antigas).
+CREATE OR REPLACE FUNCTION rota_stock_lot_bnafar_guard() RETURNS trigger AS $fn$
+DECLARE
+  bnafar_keys text[] := ARRAY['unit_price_cents', 'manufacturer_cnpj', 'manufacturer_international', 'manufacturer',
+                              'anvisa_registration', 'health_program', 'ium', 'ampp_code', 'bnafar_version'];
+  becomes_international boolean;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION '% is append-only: DELETE refused', TG_TABLE_NAME;
+  END IF;
+  IF NEW.bnafar_version IS DISTINCT FROM OLD.bnafar_version + 1 THEN
+    RAISE EXCEPTION '% is append-only: UPDATE refused (bnafar_version must rise by 1)', TG_TABLE_NAME;
+  END IF;
+  IF (to_jsonb(NEW) - bnafar_keys) IS DISTINCT FROM (to_jsonb(OLD) - bnafar_keys) THEN
+    RAISE EXCEPTION '% is append-only: UPDATE refused (only the bnafar data may change)', TG_TABLE_NAME;
+  END IF;
+  becomes_international := NOT OLD.manufacturer_international AND NEW.manufacturer_international;
+  IF NEW.manufacturer_international IS DISTINCT FROM OLD.manufacturer_international AND NOT becomes_international THEN
+    RAISE EXCEPTION '% is append-only: UPDATE refused (manufacturer_international only goes false to true)', TG_TABLE_NAME;
+  END IF;
+  IF NEW.manufacturer IS DISTINCT FROM OLD.manufacturer AND NOT (OLD.manufacturer IS NULL AND becomes_international) THEN
+    RAISE EXCEPTION '% is append-only: UPDATE refused (manufacturer only completes with the international)', TG_TABLE_NAME;
+  END IF;
+  IF (NEW.manufacturer_cnpj IS DISTINCT FROM OLD.manufacturer_cnpj AND OLD.manufacturer_cnpj IS NOT NULL)
+     OR (NEW.anvisa_registration IS DISTINCT FROM OLD.anvisa_registration AND OLD.anvisa_registration IS NOT NULL)
+     OR (NEW.health_program IS DISTINCT FROM OLD.health_program AND OLD.health_program IS NOT NULL)
+     OR (NEW.ium IS DISTINCT FROM OLD.ium AND OLD.ium IS NOT NULL)
+     OR (NEW.ampp_code IS DISTINCT FROM OLD.ampp_code AND OLD.ampp_code IS NOT NULL) THEN
+    RAISE EXCEPTION '% is append-only: UPDATE refused (a filled bnafar column never changes)', TG_TABLE_NAME;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.stock_lots') IS NOT NULL
+     AND EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'stock_lots' AND column_name = 'bnafar_version') THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_lots_append_only ON stock_lots';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_lots_bnafar_guard ON stock_lots';
+    EXECUTE 'CREATE TRIGGER stock_lots_bnafar_guard BEFORE UPDATE OR DELETE ON stock_lots
+      FOR EACH ROW EXECUTE FUNCTION rota_stock_lot_bnafar_guard()';
+  END IF;
+END
+$do$;

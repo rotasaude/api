@@ -18,4 +18,8 @@ class StockLocation < ApplicationRecord
   def cold_chain_central? = kind == "cold_chain_central"
   def vaccine_room? = kind == "vaccine_room"
   def vector_control? = kind == "vector_control"
+
+  # CNES enviado à BNAFAR (módulo 27b): o próprio nos dois centrais; nos
+  # demais, o da unidade.
+  def bnafar_cnes = central? || cold_chain_central? ? cnes : health_unit&.cnes
 end

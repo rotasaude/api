@@ -36,6 +36,8 @@ RSpec.describe "Integrações da cidade", type: :request do
       { "kind" => "cadsus", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
         "last_check_status" => nil, "last_check_message" => nil },
       { "kind" => "rnds", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
+        "last_check_status" => nil, "last_check_message" => nil },
+      { "kind" => "bnafar", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
         "last_check_status" => nil, "last_check_message" => nil }
     ])
     expect(json["features"].first).to eq("key" => "ledi_export", "enabled" => false, "usable" => false,

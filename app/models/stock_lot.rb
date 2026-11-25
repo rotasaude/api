@@ -14,6 +14,14 @@ class StockLot < ApplicationRecord
   has_many :movements, class_name: "StockMovement", inverse_of: :stock_lot
   has_many :blocks, class_name: "StockLotBlock", inverse_of: :stock_lot
 
+  # Dados do envio à BNAFAR (módulo 27b): preenchem-se depois, uma vez (trigger
+  # stock_lots_bnafar_guard; o preço pode trocar), e cada escrita sobe
+  # bnafar_version.
+  BNAFAR_COLUMNS = %w[unit_price_cents manufacturer_cnpj manufacturer_international anvisa_registration health_program ium
+                      ampp_code].freeze
+
+  def bnafar_fields = attributes.slice(*BNAFAR_COLUMNS)
+
   def immunobiological? = item_kind == "immunobiological"
   def vector_control? = item_kind == "vector_control"
 

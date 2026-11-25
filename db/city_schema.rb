@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_23_900003) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_25_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -2030,6 +2030,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900003) do
 
   create_table "integration_credentials", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.string "environment", default: "production", null: false
     t.string "kind", null: false
     t.datetime "last_check_at"
     t.string "last_check_message", limit: 200
@@ -2038,9 +2039,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900003) do
     t.datetime "set_at", null: false
     t.uuid "set_by_user_id", null: false
     t.datetime "updated_at", null: false
-    t.index ["kind"], name: "index_integration_credentials_on_kind", unique: true
+    t.index ["kind", "environment"], name: "idx_integration_credentials_kind_environment", unique: true
     t.index ["set_by_user_id"], name: "index_integration_credentials_on_set_by_user_id"
-    t.check_constraint "kind::text = ANY (ARRAY['ledi'::text, 'cadsus'::text, 'rnds'::text]::text[])", name: "ck_integration_credentials_kind"
+    t.check_constraint "environment::text = ANY (ARRAY['homologation'::text, 'production'::text])", name: "ck_integration_credentials_environment"
+    t.check_constraint "kind::text = 'bnafar'::text OR environment::text = 'production'::text", name: "ck_integration_credentials_environment_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['ledi'::text, 'cadsus'::text, 'rnds'::text, 'bnafar'::text])", name: "ck_integration_credentials_kind"
     t.check_constraint "last_check_status IS NULL OR last_check_status::text = ANY (ARRAY['ok', 'unauthorized', 'unreachable', 'error']::text[])", name: "ck_integration_credentials_status"
   end
 
@@ -4496,6 +4499,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900003) do
 
   create_table "stock_locations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
+    t.string "cnes", limit: 7
     t.datetime "created_at", null: false
     t.uuid "health_unit_id"
     t.string "kind", null: false
@@ -4506,6 +4510,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900003) do
     t.index ["health_unit_id", "kind"], name: "idx_stock_locations_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
     t.index ["kind"], name: "idx_stock_locations_one_central", unique: true, where: "((kind)::text = 'central'::text)"
     t.index ["kind"], name: "idx_stock_locations_one_cold_chain_central", unique: true, where: "((kind)::text = 'cold_chain_central'::text)"
+    t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_stock_locations_cnes"
+    t.check_constraint "cnes IS NULL OR kind::text = ANY (ARRAY['central'::text, 'cold_chain_central'::text])", name: "ck_stock_locations_cnes_kind"
     t.check_constraint "(kind::text = ANY (ARRAY['unit'::text, 'vaccine_room'::text, 'vector_control'::text])) = (health_unit_id IS NOT NULL)", name: "ck_stock_locations_unit"
     t.check_constraint "kind::text = ANY (ARRAY['central'::text, 'unit'::text, 'cold_chain_central'::text, 'vaccine_room'::text, 'vector_control'::text])", name: "ck_stock_locations_kind"
   end
@@ -4527,22 +4533,36 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900003) do
   end
 
   create_table "stock_lots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "ampp_code", limit: 25
+    t.string "anvisa_registration", limit: 13
+    t.integer "bnafar_version", default: 0, null: false
     t.uuid "catalog_item_id"
     t.integer "catmat_code"
     t.datetime "created_at", null: false
     t.uuid "created_by_user_id", null: false
     t.string "dispensing_unit", limit: 20, null: false
     t.date "expires_on", null: false
+    t.string "health_program", limit: 10
     t.string "immunobiological_code", limit: 10
+    t.text "ium", array: true
     t.string "item_kind", default: "medication", null: false
     t.string "lot_number", limit: 40, null: false
     t.string "manufacturer", limit: 120
+    t.string "manufacturer_cnpj", limit: 14
+    t.boolean "manufacturer_international", default: false, null: false
     t.string "manufacturer_key", limit: 40
+    t.integer "unit_price_cents"
     t.uuid "vector_product_id"
     t.index ["catalog_item_id", "lot_number"], name: "idx_stock_lots_number", unique: true
     t.index ["expires_on"], name: "idx_stock_lots_expires_on"
     t.index ["immunobiological_code", "lot_number"], name: "idx_stock_lots_immunobiological_number", unique: true, where: "(immunobiological_code IS NOT NULL)"
     t.index ["vector_product_id", "lot_number"], name: "idx_stock_lots_vector_product_number", unique: true, where: "(vector_product_id IS NOT NULL)"
+    t.check_constraint "NOT manufacturer_international OR (manufacturer_cnpj IS NULL AND manufacturer IS NOT NULL)", name: "ck_stock_lots_international"
+    t.check_constraint "ampp_code IS NULL OR item_kind::text <> 'vector_control'::text", name: "ck_stock_lots_ampp_vector"
+    t.check_constraint "anvisa_registration IS NULL OR anvisa_registration::text ~ '^([0-9]{11}|[0-9]{13})$'::text", name: "ck_stock_lots_anvisa"
+    t.check_constraint "bnafar_version >= 0", name: "ck_stock_lots_bnafar_version"
+    t.check_constraint "manufacturer_cnpj IS NULL OR manufacturer_cnpj::text ~ '^[0-9A-Z]{12}[0-9]{2}$'::text", name: "ck_stock_lots_manufacturer_cnpj"
+    t.check_constraint "unit_price_cents IS NULL OR unit_price_cents > 0", name: "ck_stock_lots_unit_price"
     t.check_constraint "item_kind::text = ANY (ARRAY['medication'::text, 'immunobiological'::text, 'vector_control'::text]) AND (item_kind::text = 'immunobiological'::text) = (immunobiological_code IS NOT NULL) AND (item_kind::text = 'vector_control'::text) = (vector_product_id IS NOT NULL) AND (item_kind::text = 'medication'::text) = (catalog_item_id IS NOT NULL) AND (catalog_item_id IS NULL) = (catmat_code IS NULL) AND (item_kind::text = 'immunobiological'::text OR manufacturer_key IS NULL) AND (item_kind::text <> 'immunobiological'::text OR dispensing_unit::text = 'dose'::text)", name: "ck_stock_lots_item"
   end
 
@@ -5455,6 +5475,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900003) do
 
   create_table "vector_products", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
+    t.integer "catmat_code"
     t.decimal "charge_size", precision: 10, scale: 2, null: false
     t.string "code", limit: 10, null: false
     t.datetime "created_at", null: false
@@ -5466,6 +5487,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_900003) do
     t.index "lower((code)::text)", name: "idx_vector_products_code", unique: true
     t.check_constraint "cardinality(uses) >= 1 AND uses <@ ARRAY['focal'::text, 'perifocal'::text, 'spatial'::text, 'rabies_vaccine'::text, 'collar'::text]", name: "ck_vector_products_uses"
     t.check_constraint "NOT (uses && ARRAY['rabies_vaccine'::text, 'collar'::text]) OR (cardinality(uses) = 1 AND unit::text = 'un'::text AND charge_size = 1::numeric)", name: "ck_vector_products_zoonoses_uses"
+    t.check_constraint "catmat_code IS NULL OR catmat_code > 0", name: "ck_vector_products_catmat"
     t.check_constraint "charge_size > 0::numeric", name: "ck_vector_products_charge_size"
     t.check_constraint "unit::text = ANY (ARRAY['g'::text, 'ml'::text, 'un'::text])", name: "ck_vector_products_unit"
     t.check_constraint "version >= 1", name: "ck_vector_products_version"

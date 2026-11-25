@@ -110,7 +110,8 @@ RSpec.describe CitySchema do
   # Módulo 27a (ADR 0045): o dump não representa trigger; um banco de cidade
   # novo (dump + city_triggers.sql) tem de nascer com a guarda de saldo, as
   # re-cifras, as guardas de transferência, ajuste e vínculo, os só-acréscimo,
-  # os no-delete e o truncate das 15 tabelas.
+  # os no-delete e o truncate das 15 tabelas (o lote troca o só-acréscimo pela
+  # guarda do 27b).
   it "loads the 27a pharmacy triggers into a database restored from the dump" do
     names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
     tables = %w[stock_locations stock_location_staff pharmacy_settings stock_minimums stock_lots stock_entries stock_openings stock_transfers
@@ -121,9 +122,18 @@ RSpec.describe CitySchema do
                              "external_prescriptions_reencryption_only", "external_prescription_items_reencryption_only",
                              "stock_transfers_guard", "stock_transfer_items_guard", "stock_adjustments_guard", "stock_location_staff_guard",
                              "dispensation_items_lot_item",
-                             *%w[stock_lots stock_entries stock_openings dispensation_items].map { |t| "#{t}_append_only" },
+                             *%w[stock_entries stock_openings dispensation_items].map { |t| "#{t}_append_only" },
                              *%w[stock_locations stock_minimums pharmacy_settings].map { |t| "#{t}_no_delete" },
                              *tables.map { |t| "#{t}_append_only_truncate" })
+  end
+
+  # Módulo 27b (Task 3): o lote deixa o só-acréscimo pela guarda do BNAFAR; o
+  # truncate segue recusado.
+  it "loads the 27b stock lot guard into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+
+    expect(names).to include("stock_lots_bnafar_guard", "stock_lots_append_only_truncate")
+    expect(names).not_to include("stock_lots_append_only")
   end
 
   # Módulo 28 (ADR 0046): o dump não representa trigger; um banco de cidade

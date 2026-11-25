@@ -5,10 +5,13 @@
 # cidade — `serialize` vem ANTES de `encrypts` (o tipo cifrado embrulha o
 # serializado). Nunca aparece em resposta, log, evento ou argumento de job.
 class IntegrationCredential < ApplicationRecord
-  KINDS = %w[ledi cadsus rnds].freeze
+  KINDS = %w[ledi cadsus rnds bnafar].freeze
+  # Ambiente da credencial (módulo 27b, Q9): só a bnafar tem homologação.
+  ENVIRONMENTS = %w[homologation production].freeze
   # Chaves do segredo por tipo; ledi/cadsus { username, password }, rnds o
   # certificado A1 (PKCS#12 em base64), a senha e o CNES solicitante (ADR 0047).
   SECRET_KEYS = { "ledi" => %w[password username], "cadsus" => %w[password username],
+                  "bnafar" => %w[password username],
                   "rnds" => %w[pfx_base64 pfx_password requester_cnes] }.freeze
   PFX_MAX_BYTES = 100 * 1024
   PFX_BASE64_MAX = ((PFX_MAX_BYTES + 2) / 3) * 4
@@ -21,7 +24,8 @@ class IntegrationCredential < ApplicationRecord
 
   belongs_to :set_by_user, class_name: "User"
 
-  validates :kind, inclusion: { in: KINDS }, uniqueness: true
+  validates :kind, inclusion: { in: KINDS }, uniqueness: { scope: :environment }
+  validates :environment, inclusion: { in: ENVIRONMENTS }
   validates :set_at, presence: true
   validates :last_check_status, inclusion: { in: STATUSES }, allow_nil: true
   validates :last_check_message, length: { maximum: FIELD_MAX }
