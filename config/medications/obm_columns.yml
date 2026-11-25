@@ -1,0 +1,14 @@
+# Mapa de colunas da carga OBM (contrato 27b Q12). O portal OBM não tem API nem
+# download automático: o operador baixa o arquivo e o carrega (rake
+# medications:import_obm ou, fora de produção, importObmCatalog). Cada coluna
+# lógica aceita mais de um cabeçalho; o cabeçalho do arquivo é normalizado
+# (sem acento, maiúsculo, não alfanumérico vira "_") antes de casar. Quando o
+# portal mudar o nome de uma coluna, acrescente o nome novo aqui.
+required: [ampp, vmp, catmat, descricao]
+columns:
+  ampp: [AMPP, CODIGO_AMPP, COD_AMPP]
+  vmp: [VMP, CODIGO_VMP, COD_VMP]
+  catmat: [CATMAT, CODIGO_CATMAT, COD_CATMAT]
+  registro_anvisa: [REGISTRO_ANVISA, REGISTRO_MS, REGISTRO]
+  cnpj_fabricante: [CNPJ_FABRICANTE, CNPJ_DETENTOR, CNPJ]
+  descricao: [DESCRICAO, DESCRICAO_AMPP, NOME_AMPP, APRESENTACAO]

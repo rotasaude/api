@@ -9,7 +9,16 @@ module Maintenance
         argument :first, Integer, required: false, default_value: 50
       end
 
+      # A lista de revisão da carga OBM: apresentação sem item ativo no catálogo.
+      field :obm_unmatched, [ ObmPresentationType ], null: false do
+        argument :first, Integer, required: false, default_value: 50
+      end
+
       def current_release = MedicationCatalogRelease.current
+
+      def obm_unmatched(first:)
+        ObmPresentation.unmatched.order(:ampp_code).limit(first.clamp(1, 200))
+      end
 
       def review_items(first:)
         MedicationCatalogItem.where(parse_status: "review", status: "active").order(:catmat_code).limit(first.clamp(1, 200))

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_25_600001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -368,7 +368,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
     t.uuid "first_release_id", null: false
     t.boolean "hidden", default: false, null: false
     t.uuid "last_release_id", null: false
-    t.string "obm_code"
     t.string "parse_status", null: false
     t.integer "pdm_code"
     t.string "review_reason"
@@ -379,16 +378,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
     t.string "strength"
     t.string "unit", limit: 20
     t.datetime "updated_at", null: false
+    t.string "vmp_code"
     t.index ["catmat_code"], name: "index_medication_catalog_items_on_catmat_code", unique: true
     t.index ["parse_status"], name: "index_medication_catalog_items_on_parse_status"
     t.index ["status", "hidden"], name: "idx_medication_catalog_items_prescribable"
+    t.index ["vmp_code"], name: "idx_medication_catalog_items_vmp_code"
     t.check_constraint "catmat_code > 0", name: "ck_medication_catalog_items_catmat_code"
     t.check_constraint "controlled = (controlled_list IS NOT NULL)", name: "ck_medication_catalog_items_controlled_list"
-    t.check_constraint "obm_code IS NULL", name: "ck_medication_catalog_items_obm_reserved"
     t.check_constraint "parse_status::text = 'ok'::text OR hidden", name: "ck_medication_catalog_items_review_hidden"
     t.check_constraint "(parse_status::text = 'review'::text) OR strength IS NOT NULL", name: "ck_medication_catalog_items_strength"
     t.check_constraint "parse_status::text = ANY (ARRAY['ok'::text, 'review'::text])", name: "ck_medication_catalog_items_parse_status"
     t.check_constraint "status::text = ANY (ARRAY['active'::text, 'removed'::text])", name: "ck_medication_catalog_items_status"
+    t.check_constraint "vmp_code IS NULL OR vmp_code::text ~ '^[@0-9A-Za-z]{1,25}$'::text", name: "ck_medication_catalog_items_vmp_code"
   end
 
   create_table "medication_catalog_releases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -438,6 +439,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_13_900001) do
     t.check_constraint "deadline::text = ANY (ARRAY['immediate'::text, 'weekly'::text])", name: "ck_notifiable_diseases_deadline"
     t.check_constraint "jsonb_typeof(cid10) = 'array'::text AND jsonb_typeof(ciap2) = 'array'::text", name: "ck_notifiable_diseases_codes"
     t.check_constraint "repeat_after_days >= 1 AND repeat_after_days <= 36500", name: "ck_notifiable_diseases_repeat"
+  end
+
+  create_table "obm_presentations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "ampp_code", null: false
+    t.string "anvisa_registration", limit: 13
+    t.integer "catmat_code"
+    t.datetime "created_at", null: false
+    t.string "description", limit: 500, null: false
+    t.datetime "imported_at", null: false
+    t.string "manufacturer_cnpj", limit: 14
+    t.datetime "updated_at", null: false
+    t.string "vmp_code", null: false
+    t.index ["ampp_code"], name: "idx_obm_presentations_ampp", unique: true
+    t.index ["catmat_code"], name: "idx_obm_presentations_catmat"
+    t.index ["vmp_code"], name: "idx_obm_presentations_vmp"
+    t.check_constraint "ampp_code::text ~ '^[@0-9A-Za-z]{1,25}$'::text AND vmp_code::text ~ '^[@0-9A-Za-z]{1,25}$'::text", name: "ck_obm_presentations_codes"
+    t.check_constraint "anvisa_registration IS NULL OR anvisa_registration::text ~ '^[0-9]{1,13}$'::text", name: "ck_obm_presentations_anvisa"
+    t.check_constraint "catmat_code IS NULL OR catmat_code > 0", name: "ck_obm_presentations_catmat"
+    t.check_constraint "char_length(description::text) >= 1 AND char_length(description::text) <= 500", name: "ck_obm_presentations_description"
+    t.check_constraint "manufacturer_cnpj IS NULL OR manufacturer_cnpj::text ~ '^[0-9]{14}$'::text", name: "ck_obm_presentations_cnpj"
   end
 
   create_table "operator_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

@@ -111,6 +111,16 @@ RSpec.describe "Maintenance analyzers" do
   # 2); quando esta fatia ganhar uma mutation não restrita, acrescente aqui o
   # positivo simétrico.
 
+  # Módulo 27b: a carga OBM é de sessão humana; nem token read_write a alcança.
+  it "refuses a read_write token on importObmCatalog before the resolver runs" do
+    expect(Medications::ObmImport).not_to receive(:call)
+    result = execute('mutation { importObmCatalog(fileBase64: "", code: "000000") { ok } }',
+                     credential: token_credential(access: "read_write"))
+
+    expect(result["errors"].map { |e| e["message"] }).to include(a_string_matching(/token de serviço não alcança: importObmCatalog/))
+    expect(result["data"]).to be_nil
+  end
+
   # Item 4: token + campo de raiz restrito de Query → recusado. `auditEvents`
   # ainda não existe (a Task 6 o acrescenta) — a classificação dele já está em
   # RESTRICTED (guarda de cobertura abaixo cobre isso); a recusa em execução

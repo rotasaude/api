@@ -17,13 +17,23 @@ RSpec.describe Medications::CatalogImport do
     release = result.payload[:release]
     expect(release).to have_attributes(status: "active", items_count: 17, hidden_count: 1, added_count: 17)
     expect(catalog_item(267_778)).to have_attributes(active_ingredient: "PARACETAMOL", strength: "500 MG", dosage_form: "comprimido",
-                                                     parse_status: "ok", hidden: false, status: "active", obm_code: nil)
+                                                     parse_status: "ok", hidden: false, status: "active", vmp_code: nil)
     expect(catalog_item(384_258)).to have_attributes(parse_status: "review", hidden: true, review_reason: "manipulated")
     expect(catalog_item(271_089)).to have_attributes(antimicrobial: true, controlled: false)
     expect(catalog_item(273_009)).to have_attributes(controlled: true, controlled_list: "C1")
     expect(catalog_item(267_778).search_text).to include("PARACETAMOL 500 MG COMPRIMIDO")
     expect(PlatformEvent.where(name: "medication_catalog.imported").last.payload)
       .to eq("release_id" => release.id, "added" => 17, "changed" => 0, "removed" => 0)
+  end
+
+  it "a importação do CATMAT não toca vmp_code" do
+    import!
+    catalog_item(268_856).update_columns(vmp_code: "@brasil10000001")
+    WebMock.reset!
+    rows = catmat_rows
+    rows.find { |row| row["codigoItem"] == 268_856 }["descricaoItem"] = "LOSARTANA POTÁSSICA, CONCENTRAÇÃO: 50 MG, FORMA FARMACÊUTICA: COMPRIMIDO"
+    expect(import!(rows).payload).to include(changed: 1)
+    expect(catalog_item(268_856).vmp_code).to eq("@brasil10000001")
   end
 
   it "segunda importação: mudou, saiu e entrou; o id do item não muda; a anterior é substituída" do

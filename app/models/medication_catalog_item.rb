@@ -1,7 +1,7 @@
 # app/models/medication_catalog_item.rb
 # Um medicamento do catálogo da plataforma (ADR 0033; spec §3): um por código
 # CATMAT, estável, nunca apagado. `hidden` = fora da busca (revisão do
-# analisador); `controlled` = bloqueado na receita (19d); `obm_code` reservado.
+# analisador); `controlled` = bloqueado na receita (19d); `vmp_code` = o VMP do OBM, preenchido pela carga OBM (Medications::ObmImport).
 class MedicationCatalogItem < PlatformRecord
   PARSE_STATUSES = %w[ok review].freeze
   STATUSES = %w[active removed].freeze

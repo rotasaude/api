@@ -266,3 +266,21 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- obm_presentations (módulo 27b; contrato Q12): a apresentação do OBM nunca é
+-- apagada; a que sai do arquivo fica `active = false`.
+CREATE OR REPLACE FUNCTION obm_presentations_no_delete() RETURNS trigger AS $fn$
+BEGIN
+  RAISE EXCEPTION 'obm_presentations are never deleted';
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.obm_presentations') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS obm_presentations_no_delete ON obm_presentations';
+    EXECUTE 'CREATE TRIGGER obm_presentations_no_delete BEFORE DELETE ON obm_presentations
+      FOR EACH ROW EXECUTE FUNCTION obm_presentations_no_delete()';
+  END IF;
+END
+$do$;

@@ -33,13 +33,24 @@ RSpec.describe "Catálogo de medicamentos (plataforma)" do
     expect(MedicationCatalogRelease.current).to eq(release)
   end
 
-  it "o banco recusa apagar item, código repetido, obm_code preenchido e duas releases ativas" do
+  it "o banco recusa apagar item, código repetido e duas releases ativas" do
     release = release!
     item = item!(release)
     expect { refused { item.destroy } }.to raise_error(ActiveRecord::StatementInvalid, /never deleted/)
     expect { refused { item!(release) } }.to raise_error(ActiveRecord::RecordNotUnique)
-    expect { refused { item.update_columns(obm_code: "123") } }.to raise_error(ActiveRecord::StatementInvalid, /ck_medication_catalog_items_obm_reserved/)
     expect { refused { release! } }.to raise_error(ActiveRecord::RecordNotUnique)
+  end
+
+  it "vmp_code aceita @brasil20038375080 e recusa o que não é código OBM" do
+    item = item!(release!)
+    item.update!(vmp_code: "@brasil20038375080")
+    expect(item.reload.vmp_code).to eq("@brasil20038375080")
+    [ "com espaço", "", "a" * 26, "ação" ].each do |bad|
+      expect { refused { item.update_columns(vmp_code: bad) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /ck_medication_catalog_items_vmp_code/)
+    end
+    item.update_columns(vmp_code: nil)
+    expect(item.reload.vmp_code).to be_nil
   end
 
   it "release ativa ou substituída não volta; com falha não ativa" do

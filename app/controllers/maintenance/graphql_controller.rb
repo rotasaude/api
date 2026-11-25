@@ -10,6 +10,12 @@ module Maintenance
     # de propósito: ele é o teto absoluto da requisição inteira.
     MAX_QUERY_BYTES = 10_000
     MAX_BODY_BYTES = 64_000
+    # Q12: o arquivo da carga OBM (até 5 MB, em Base64 dentro de `variables`) é a
+    # única razão para um corpo maior, e só para a operação cujo ÚNICO campo de
+    # raiz é `importObmCatalog`. O texto da query segue em 10 KB: o arquivo não
+    # cabe nela, só em `variables`.
+    UPLOAD_BODY_BYTES = 7_000_000
+    UPLOAD_FIELD = "importObmCatalog".freeze
     INTROSPECTION = /\b__(schema|type)\b/
 
     # Teto por IP: o mais LARGO dos dois, porque um IP pode ser um NAT com
@@ -45,9 +51,8 @@ module Maintenance
                if: -> { Current.maintenance_credential&.token? }
 
     def execute
-      return head(:payload_too_large) if request.raw_post.bytesize > MAX_BODY_BYTES
-
       query = params[:query].to_s
+      return head(:payload_too_large) if request.raw_post.bytesize > body_limit(query)
       return head(:payload_too_large) if query.bytesize > MAX_QUERY_BYTES
 
       # Introspecção só em development: em ambiente publicado o schema é lido do
@@ -80,6 +85,31 @@ module Maintenance
     end
 
     private
+
+    # O corpo só passa de MAX_BODY_BYTES numa operação de upload; o teto do
+    # upload ainda vale para a requisição inteira. A query só é analisada se já
+    # coube nos 10 KB (o parser nunca vê um texto maior que isso).
+    def body_limit(query)
+      return MAX_BODY_BYTES if request.raw_post.bytesize <= MAX_BODY_BYTES
+
+      upload_operation?(query) ? UPLOAD_BODY_BYTES : MAX_BODY_BYTES
+    end
+
+    # Uma operação só, e todos os campos de raiz dela são `importObmCatalog`
+    # (sem fragmento): outro campo junto, ou um documento com várias operações,
+    # volta ao limite comum.
+    def upload_operation?(query)
+      return false if query.bytesize > MAX_QUERY_BYTES
+
+      definitions = GraphQL.parse(query).definitions
+      return false unless definitions.size == 1 && definitions.first.is_a?(GraphQL::Language::Nodes::OperationDefinition)
+
+      fields = definitions.first.selections
+      definitions.first.operation_type == "mutation" && fields.size == 1 &&
+        fields.first.is_a?(GraphQL::Language::Nodes::Field) && fields.first.name == UPLOAD_FIELD
+    rescue GraphQL::ParseError
+      false
+    end
 
     # I1 (spec §9): "uso recusado de token … fora do escopo" não deixava rastro
     # nenhum — um token batendo em `auditEvents` ou tentando mutation era

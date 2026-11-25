@@ -17,4 +17,20 @@ namespace :medications do
     abort("[medications] catálogo: #{result.reason} #{result.message}") if result.failure?
     puts "[medications] catálogo ativo: +#{result.payload[:added]} ~#{result.payload[:changed]} -#{result.payload[:removed]}"
   end
+
+  # O portal OBM não tem API nem download automático (contrato 27b, Q12): o
+  # operador da plataforma baixa o arquivo e o entrega por aqui. O mapa de
+  # colunas é config/medications/obm_columns.yml. Nada do arquivo vai à saída.
+  desc "Carrega o arquivo do OBM (CSV): apresentações e o VMP dos itens do catálogo"
+  task :import_obm, [ :path ] => :environment do |_task, args|
+    path = args[:path].to_s
+    abort("[medications] uso: rake medications:import_obm[caminho/do/arquivo.csv]") if path.empty?
+    abort("[medications] arquivo não encontrado: #{path}") unless File.file?(path)
+
+    result = Medications::ObmImport.call(csv: File.binread(path, Medications::ObmImport::MAX_BYTES + 1), by: "system")
+    abort("[medications] OBM: #{result.reason} #{result.message}") if result.failure?
+    counts = result.payload
+    puts "[medications] OBM: +#{counts[:added]} ~#{counts[:changed]} -#{counts[:deactivated]}; " \
+         "VMP ligado a #{counts[:vmp_linked]} itens; #{counts[:unmatched]} sem item no catálogo"
+  end
 end

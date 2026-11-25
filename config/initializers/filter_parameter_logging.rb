@@ -147,7 +147,10 @@ Rails.application.config.filter_parameters += [
   # paciente (§16: nunca em log), na escrita do animal, na busca e na saída do
   # canil.
   /\A(microchip|place_address|animal_address|animal_tutor_name)\z/,
-  /\A(tutor|adopter)_patient_id\z/
+  /\A(tutor|adopter)_patient_id\z/,
+  # Módulo 27b: a planilha em Base64 (carga OBM no maintenance; importação do
+  # saldo inicial na cidade) — o arquivo nunca em log, nas duas grafias.
+  /\A(file_base64|fileBase64)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

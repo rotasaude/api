@@ -13,7 +13,7 @@ module Maintenance
         activateProtocol retireProtocol revertProtocolActivation
         setCityFeature cityPecConfig setCityPecOrigin rotateCityPecHmacKey
         signatureProviders signerStatus sncrStatus
-        medicationCatalog importMedicationCatalog importAnvisaLists
+        medicationCatalog importMedicationCatalog importAnvisaLists importObmCatalog
         labExamTemplates upsertLabExamTemplate upsertLabAnalyteTemplate
         careLineTemplates upsertCareLineTemplate
         notifiableDiseases publishNotifiableDiseaseList

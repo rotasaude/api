@@ -17,9 +17,11 @@ RSpec.describe "Maintenance GraphQL schema" do
   EXPECTED_TYPES = {
     "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus cityPecConfig labExamTemplates careLineTemplates notifiableDiseases fieldMaps fieldMapBase],
     "SignatureProvider" => %w[key configured lastCheckAt lastCheckOk],
-    "MedicationCatalog" => %w[currentRelease reviewItems],
+    "MedicationCatalog" => %w[currentRelease reviewItems obmUnmatched],
     "MedicationCatalogRelease" => %w[id importedAt itemsCount hiddenCount],
-    "MedicationCatalogItem" => %w[catmatCode sourceDescription parseStatus],
+    "MedicationCatalogItem" => %w[catmatCode sourceDescription parseStatus vmpCode],
+    "ObmPresentation" => %w[amppCode vmpCode catmatCode anvisaRegistration manufacturerCnpj description active importedAt],
+    "ImportObmCatalogPayload" => %w[ok errors added changed deactivated vmpLinked unmatched],
     "ImportMedicationCatalogPayload" => %w[ok errors releaseId added changed removed],
     "ImportAnvisaListsPayload" => %w[ok errors antimicrobials controlled],
     # Módulo 24c (ADR 0053): mapa de campo por município — só estado, datas e tamanho.
@@ -33,7 +35,7 @@ RSpec.describe "Maintenance GraphQL schema" do
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
                      saveProtocolDraft submitProtocolForReview publishProtocol
                      activateProtocol retireProtocol revertProtocolActivation setCityFeature
-                     importMedicationCatalog importAnvisaLists setCityPecOrigin rotateCityPecHmacKey
+                     importMedicationCatalog importAnvisaLists importObmCatalog setCityPecOrigin rotateCityPecHmacKey
                      upsertLabExamTemplate upsertLabAnalyteTemplate upsertCareLineTemplate publishNotifiableDiseaseList
                      buildFieldMap refreshFieldMapBase],
     "LabExamTemplate" => %w[id sigtapCode name sector material container suggestedMethod preparation active analytes],
