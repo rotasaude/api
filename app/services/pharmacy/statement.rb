@@ -73,6 +73,8 @@ module Pharmacy
         { type: "rabies_vaccination", id: movement.rabies_vaccination_id, number: nil }
       elsif movement.collar_id
         { type: "collar", id: movement.collar_id, number: nil }
+      elsif movement.stock_external_exit_id
+        { type: "external_exit", id: movement.stock_external_exit_id, number: nil }
       else
         { type: "adjustment", id: movement.stock_adjustment_id, number: nil }
       end

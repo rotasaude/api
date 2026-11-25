@@ -97,6 +97,42 @@ RSpec.describe "Farmácia — saídas externas", type: :request do
       expect(json_body).to include("error" => "item_not_allowed_here", "path" => "items[0]")
     end
 
+    it "lote bloqueado por excursão → 422 lot_blocked em items[0].lot_id, em todo tipo de saída; nada gravado" do
+      vaccination_city!
+      cold = cold_chain_central!
+      vial_lot = vaccine_lot!(cold, code: "15", doses: 100)
+      lot_block!(cold, vial_lot)
+      stepped_up!(pharmacy_staff!(cold, "stock_keeper"))
+      before = written
+      %w[S-DF S-TR S-D S-E].each do |type|
+        json_post "/pharmacy/external_exits", body([ { lot_id: vial_lot.id, quantity: 10 } ], location_id: cold.id, exit_type: type)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json_body).to include("error" => "lot_blocked", "path" => "items[0].lot_id")
+      end
+      expect(written).to eq(before)
+    end
+
+    it "o extrato do lote mostra a saída como documento external_exit" do
+      stepped_up!(keeper)
+      json_post "/pharmacy/external_exits", body
+      get "/pharmacy/lots/#{lot.id}/movements", params: { location_id: central.id }
+      row = json_body["movements"].find { |movement| movement["kind"] == "external_exit" }
+      expect(row["document"]).to eq("type" => "external_exit", "id" => StockExternalExit.sole.id, "number" => nil)
+    end
+
+    it "lote vencido: S-TR, S-D e S-E → 422 lot_expired em items[0].lot_id; S-DF (devolução ao fornecedor) aceita" do
+      old = stocked_lot!(central, item: paracetamol, quantity: "50", lot_number: "EX-OLD", expires_on: Time.zone.today - 2)
+      stepped_up!(keeper)
+      %w[S-TR S-D S-E].each do |type|
+        json_post "/pharmacy/external_exits", body([ { lot_id: old.id, quantity: 5 } ], exit_type: type)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json_body).to include("error" => "lot_expired", "path" => "items[0].lot_id")
+      end
+      json_post "/pharmacy/external_exits", body([ { lot_id: old.id, quantity: 5 } ], exit_type: "S-DF")
+      expect(response).to have_http_status(:created)
+      expect(balance_of(central, old)).to eq(45)
+    end
+
     it "local desativado → 409 location_inactive" do
       stepped_up!(keeper)
       central.update_columns(active: false)

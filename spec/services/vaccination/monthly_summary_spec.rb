@@ -66,7 +66,8 @@ RSpec.describe "Sala de vacina — resumo mensal", type: :request do
 
   def reconciled?(entry)
     entry["closing_balance"] == entry["opening_balance"] + entry["received"] + entry["transferred_in"] - entry["transferred_out"] -
-      entry["vial_doses"] - entry["unit_doses"] + entry["adjustment"] - entry["physical_loss"].values.sum
+      entry["vial_doses"] - entry["unit_doses"] + entry["adjustment"] - entry["physical_loss"].values.sum -
+      entry["external_out"] - entry["opening_reverted"]
   end
 
   describe "sala" do
@@ -190,6 +191,24 @@ RSpec.describe "Sala de vacina — resumo mensal", type: :request do
       expect(reconciled?(row_of("22"))).to be(true)
       summary(central_path, "2026-10")
       expect(row_of("22")).to include("opening_balance" => 0, "received" => 100, "transferred_out" => 10, "closing_balance" => 90)
+    end
+
+    it "Q27: saída externa e abertura desfeita entram em colunas próprias, fora de transferred_out, e a conta fecha" do
+      lot = vaccine_lot!(central, code: "42", doses: 20)
+      done = Pharmacy::RecordExternalExit.call(
+        location: central, by: keeper,
+        attrs: { "exit_type" => "S-D", "destination_kind" => "cnes", "destination_code" => "2384299",
+                 "reason" => "Doação ao município vizinho", "items" => [ { "lot_id" => lot.id, "quantity" => 6 } ] }
+      )
+      raise done.inspect if done.failure?
+
+      StockMovement.create!(stock_location: central, stock_lot: lot, immunobiological_code: "42", kind: "opening_reversal", quantity: -4,
+                            stock_entry: StockMovement.find_by!(stock_lot_id: lot.id, kind: "receipt").stock_entry,
+                            recorded_by_user: keeper, recorded_at: Time.current)
+      summary(central_path, Time.zone.today.strftime("%Y-%m"))
+      expect(row_of("42")).to include("received" => 20, "transferred_out" => 0, "external_out" => 6, "opening_reverted" => 4, "closing_balance" => 10)
+      expect(reconciled?(row_of("42"))).to be(true)
+      expect(row_of("22")).to include("external_out" => 0, "opening_reverted" => 0)
     end
 
     it "mês inválido → 422 month" do

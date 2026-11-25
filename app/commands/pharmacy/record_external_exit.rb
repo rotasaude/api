@@ -13,6 +13,10 @@
 # do local (`item_not_allowed_here`, path `items[i]`) e não se repete
 # (`invalid_items`).
 #
+# Lote bloqueado por excursão de temperatura → `lot_blocked` (path `items[i].lot_id`), em
+# todo tipo de saída, conferido antes da trava e de novo sob ela. Lote vencido →
+# `lot_expired` (mesmo path) em S-TR, S-D e S-E; a devolução ao fornecedor (S-DF) o aceita (Q29).
+#
 # Todas as recusas voltam de uma vez: `error`/`path` do primeiro e `problems:
 # [ { path, error } ]` com todas, inclusive `insufficient_balance` (apurado sob
 # trava). Nada é gravado se houver recusa.
@@ -42,7 +46,8 @@ module Pharmacy
         return failure(problems + [ problem("items", :invalid_request) ])
       end
 
-      rows, row_problems = validate_rows(items, location)
+      expiry_refused = header[:exit_type] != "S-DF" # Q29: só a devolução ao fornecedor aceita lote vencido
+      rows, row_problems = validate_rows(items, location, now.in_time_zone.to_date, expiry_refused)
       problems += row_problems + short_problems(location, rows)
       return failure(problems) if problems.any?
 
@@ -80,23 +85,24 @@ module Pharmacy
     end
 
     # -> [ [ Row ], [ problem ] ]. As linhas só valem sem problema algum.
-    def validate_rows(items, location)
+    def validate_rows(items, location, today, expiry_refused)
       candidates = items.filter_map { |raw| raw["lot_id"] if raw.is_a?(Hash) && raw["lot_id"].is_a?(String) && raw["lot_id"].match?(UUID) }
       lots = StockLot.where(id: candidates.uniq).index_by(&:id)
+      blocked = blocked_lot_ids(location, lots.keys)
       seen = Set.new
       rows = []
       problems = []
       items.each_with_index do |raw, index|
         next problems << problem("items[#{index}]", :invalid_request) unless raw.is_a?(Hash)
 
-        row, found = validate_row(raw, index, lots, seen, location)
+        row, found = validate_row(raw, index, lots, seen, location, today: today, expiry_refused: expiry_refused, blocked: blocked)
         problems.concat(found)
         rows << row if row
       end
       [ rows, problems ]
     end
 
-    def validate_row(raw, index, lots, seen, location)
+    def validate_row(raw, index, lots, seen, location, today:, expiry_refused:, blocked:)
       prefix = "items[#{index}]"
       problems = []
       lot = raw["lot_id"].is_a?(String) ? lots[raw["lot_id"]] : nil
@@ -105,6 +111,13 @@ module Pharmacy
         lot = nil
       elsif !Stock::Domain.allows?(location, lot)
         problems << problem(prefix, :item_not_allowed_here)
+        lot = nil
+      elsif expiry_refused && lot.expires_on < today
+        # O dia da validade ainda vale (como na transferência).
+        problems << problem("#{prefix}.lot_id", :lot_expired)
+        lot = nil
+      elsif blocked.include?(lot.id)
+        problems << problem("#{prefix}.lot_id", :lot_blocked)
         lot = nil
       end
       quantity = parse_quantity(raw["quantity"])
@@ -130,6 +143,19 @@ module Pharmacy
       rows.select { |row| balances.fetch(row.lot.id) < row.quantity }.map { |row| problem("items[#{row.index}].quantity", :insufficient_balance) }
     end
 
+    # Lotes com bloqueio aberto (excursão de temperatura) no local. -> Set
+    def blocked_lot_ids(location, lot_ids)
+      return Set.new if lot_ids.empty?
+
+      StockLotBlock.open_blocks.where(stock_location_id: location.id, stock_lot_id: lot_ids).pluck(:stock_lot_id).to_set
+    end
+
+    # Bloqueio relido com os lotes travados. -> [ problem ]
+    def blocked_problems(location, rows)
+      blocked = blocked_lot_ids(location, rows.map { |row| row.lot.id })
+      rows.select { |row| blocked.include?(row.lot.id) }.map { |row| problem("items[#{row.index}].lot_id", :lot_blocked) }
+    end
+
     def persist(location:, header:, rows:, by:, now:)
       result = nil
       StockExternalExit.transaction(requires_new: true) do
@@ -146,6 +172,9 @@ module Pharmacy
       rescue Ledger::Inactive
         return Result.fail(:location_inactive, details: { path: "location_id" })
       end
+
+      blocked = blocked_problems(location, rows)
+      return failure(blocked) if blocked.any?
 
       short = short_problems(location, rows)
       return failure(short) if short.any?
@@ -170,6 +199,6 @@ module Pharmacy
       Result.fail(first[:error], details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :header, :destination_code, :validate_rows, :validate_row, :parse_quantity, :short_problems, :persist, :write, :problem, :failure
+    private_class_method :header, :destination_code, :validate_rows, :validate_row, :parse_quantity, :short_problems, :blocked_lot_ids, :blocked_problems, :persist, :write, :problem, :failure
   end
 end

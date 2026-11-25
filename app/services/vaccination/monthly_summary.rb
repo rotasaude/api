@@ -5,6 +5,7 @@
 #   { month: "YYYY-MM", location: <location do 27a>,
 #     rows: [ { immunobiological: { code, name }, lot: { id, number, expires_on },
 #               opening_balance, received, transferred_in, transferred_out,
+#               external_out, opening_reverted,
 #               vials_opened, doses_applied, technical_loss,
 #               physical_loss: { "<loss_code>" => n }, closing_balance,
 #               vial_doses, unit_doses, adjustment } ] }
@@ -15,6 +16,12 @@
 #
 #   closing = opening + received + transferred_in − transferred_out
 #             − vial_doses − unit_doses + adjustment − Σ physical_loss
+#             − external_out − opening_reverted
+#
+# `external_out` = doses que saíram por saída externa (doação, devolução, remanejamento
+# ou empréstimo a outro ente; módulo 27b, Q27) e `opening_reverted` = doses retiradas
+# ao desfazer a abertura: positivas, nunca somadas em `transferred_out` (saída a outro
+# ente não é transferência interna). A abertura em si segue em `received`.
 #
 # `vial_doses` = doses que saíram do estoque ao abrir frascos (vials_opened ×
 # doses por frasco) e `unit_doses` = doses de unidose (líquido das devoluções
@@ -63,6 +70,7 @@ module Vaccination
         lot: { id: lot.id, number: lot.lot_number, expires_on: lot.expires_on.iso8601 },
         opening_balance: sums["opening"].to_i, received: sums["received"].to_i,
         transferred_in: sums["transferred_in"].to_i, transferred_out: sums["transferred_out"].to_i,
+        external_out: sums["external_out"].to_i, opening_reverted: sums["opening_reverted"].to_i,
         vials_opened: opened.to_i, doses_applied: applied.to_i, technical_loss: technical.to_i,
         physical_loss: loss.sort.to_h, closing_balance: sums["closing"].to_i,
         vial_doses: sums["vial_doses"].to_i, unit_doses: sums["unit_doses"].to_i, adjustment: sums["adjustment"].to_i }
@@ -82,6 +90,8 @@ module Vaccination
                COALESCE(SUM(m.quantity) FILTER (WHERE m.recorded_at >= :from AND m.kind IN (:entries)), 0) AS received,
                COALESCE(SUM(m.quantity) FILTER (WHERE m.recorded_at >= :from AND m.kind = 'transfer_in'), 0) AS transferred_in,
                COALESCE(-SUM(m.quantity) FILTER (WHERE m.recorded_at >= :from AND m.kind = 'transfer_out'), 0) AS transferred_out,
+               COALESCE(-SUM(m.quantity) FILTER (WHERE m.recorded_at >= :from AND m.kind = 'external_exit'), 0) AS external_out,
+               COALESCE(-SUM(m.quantity) FILTER (WHERE m.recorded_at >= :from AND m.kind = 'opening_reversal'), 0) AS opening_reverted,
                COALESCE(-SUM(m.quantity) FILTER (WHERE m.recorded_at >= :from AND m.kind = 'vial_opening'), 0) AS vial_doses,
                COALESCE(-SUM(m.quantity) FILTER (WHERE m.recorded_at >= :from AND m.kind IN ('immunization', 'immunization_reversal')), 0) AS unit_doses,
                COALESCE(SUM(m.quantity) FILTER (WHERE m.recorded_at >= :from AND m.kind = 'adjustment'), 0) AS adjustment,
