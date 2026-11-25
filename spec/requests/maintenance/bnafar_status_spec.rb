@@ -15,8 +15,13 @@ RSpec.describe "Maintenance: ambiente e situação do envio à BNAFAR", type: :r
   end
   let(:city) { City.find_by!(slug: TEST_CITY_A.slug) }
   let(:set_env) do
-    "mutation($citySlug: String!, $environment: String!) { setBnafarEnvironment(citySlug: $citySlug, environment: $environment) " \
-      "{ ok errors { path message } } }"
+    "mutation($citySlug: String!, $environment: String!, $code: String) { setBnafarEnvironment(citySlug: $citySlug, " \
+      "environment: $environment, code: $code) { ok errors { path message } } }"
+  end
+
+  def with_fresh_totp
+    @totp_clock = (@totp_clock || Time.current) + 31.seconds
+    travel_to(@totp_clock) { yield(ROTP::TOTP.new(maintainer.otp_secret).now) }
   end
   let(:status_query) do
     "query($citySlug: String!) { cityBnafarStatus(citySlug: $citySlug) { environment environmentEditable enabledDomains " \
@@ -57,9 +62,27 @@ RSpec.describe "Maintenance: ambiente e situação do envio à BNAFAR", type: :r
     expect(events.map(&:payload)).to all(include("environment" => "homologation", "module" => "bnafar"))
     expect(events.flat_map { |e| e.payload.keys }.uniq - %w[outcome module maintainer_id credential correlation_id city_slug environment ip request_id]).to be_empty
 
+  end
+
+  it "staging → production sem code (ou com código errado) → erro de step-up e nada gravado" do
+    BnafarSetting.where(id: 1).update_all(environment: "homologation")
+
     gql!(set_env, citySlug: city.slug, environment: "production")
-    expect(json.dig("data", "setBnafarEnvironment", "ok")).to be(true)
-    expect(BnafarSetting.current.environment).to eq("production")
+    expect(json.dig("data", "setBnafarEnvironment", "errors", 0)).to include("path" => "code", "message" => "código inválido")
+    gql!(set_env, citySlug: city.slug, environment: "production", code: "000000")
+    expect(json.dig("data", "setBnafarEnvironment", "ok")).to be(false)
+    expect(BnafarSetting.current.environment).to eq("homologation")
+    expect(PlatformEvent.where(name: "maintenance.bnafar.environment_changed").map { |e| e.payload["outcome"] }.uniq).to contain_exactly("attempted", "rejected")
+  end
+
+  it "→ production com code válido → ok, e o código não é auditado" do
+    BnafarSetting.where(id: 1).update_all(environment: "homologation")
+    code = nil
+    with_fresh_totp { |c| code = c; gql!(set_env, citySlug: city.slug, environment: "production", code: c) }
+
+    expect(json.dig("data", "setBnafarEnvironment")).to eq("ok" => true, "errors" => [])
+    expect(BnafarSetting.current).to have_attributes(environment: "production", updated_by_maintainer_id: maintainer.id)
+    expect(PlatformEvent.where(name: "maintenance.bnafar.environment_changed").map { |e| e.payload.to_s }.join).not_to include(code)
   end
 
   it "ambiente fora do catálogo → erro no campo environment, sem auditoria nem gravação" do
@@ -132,7 +155,7 @@ RSpec.describe "Maintenance: ambiente e situação do envio à BNAFAR", type: :r
     fields = ->(type) { sdl[/^type #{type} \{\n.*?^\}/m].scan(/^  (\w+: .+)$/).flatten }
 
     expect(sdl).to match(/setBnafarEnvironment\([^)]*\benvironment: String![^)]*\): SetBnafarEnvironmentPayload/m)
-    expect(sdl).not_to match(/setBnafarEnvironment\([^)]*\bcode:/m)
+    expect(sdl).to match(/setBnafarEnvironment\([^)]*\bcode: String(?![!\w])[^)]*\): SetBnafarEnvironmentPayload/m)
     expect(sdl).to match(/cityBnafarStatus\(citySlug: String!\): CityBnafarStatus/)
     expect(fields.call("SetBnafarEnvironmentPayload")).to eq([ "errors: [UserError!]!", "ok: Boolean!" ])
     expect(fields.call("CityBnafarStatus")).to eq(

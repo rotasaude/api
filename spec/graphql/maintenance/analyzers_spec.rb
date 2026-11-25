@@ -324,9 +324,12 @@ RSpec.describe "Maintenance analyzers" do
   # spec/requests/maintenance/protocol_mutations_spec.rb (código errado não
   # abre a cidade).
   describe "step-up on the acts that approve or put a version in use" do
-    def step_up_required = %w[publishProtocol activateProtocol retireProtocol revertProtocolActivation rotateCityPecHmacKey]
+    # setBnafarEnvironment (Q39): step-up só ao trocar para production — passa
+    # `step_up_code:` condicional; a guarda confere o argumento e a passagem.
+    def step_up_required = %w[publishProtocol activateProtocol retireProtocol revertProtocolActivation rotateCityPecHmacKey
+                           setBnafarEnvironment]
     # buildFieldMap (24c, Q22): pede a geração do mapa de campo; nada é apagado nem posto em uso.
-    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview setCityFeature setCityPecOrigin buildFieldMap setBnafarEnvironment]
+    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview setCityFeature setCityPecOrigin buildFieldMap]
 
     include MaintenanceCityMutationSpecHelpers
 
