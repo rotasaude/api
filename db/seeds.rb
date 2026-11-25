@@ -73,6 +73,7 @@ else
   require Rails.root.join("lib/home_visit_crew").to_s
   require Rails.root.join("lib/vector_control_crew").to_s
   require Rails.root.join("lib/zoonoses_crew").to_s
+  require Rails.root.join("lib/bnafar_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -153,6 +154,12 @@ else
   # dos itens do cenário, que o recorte do CATMAT de dev não traz. Depois dos
   # medicamentos; só completa o que está em branco.
   puts "[seeds] farmácia (catálogo) . forma farmacêutica completada em #{PharmacyCrew.seed_platform![:forms]} itens"
+
+  # BNAFAR (módulo 27b): três apresentações fictícias do OBM (duas com o VMP de
+  # losartana e metformina, uma sem item, para a lista de revisão). Depois dos
+  # medicamentos; nunca toca uma apresentação real nem um VMP já gravado.
+  bnafar_platform = BnafarCrew.seed_platform!
+  puts "[seeds] bnafar (OBM) . #{bnafar_platform[:presentations]} apresentações novas; VMP ligado em #{bnafar_platform[:linked]} itens"
 
   # Saúde bucal (módulo 28, ADR 0046): a SIGTAP odontológica no recorte de dev (mês e
   # anterior) e o D82 na CIAP-2 de dev. Uma release real ativa nunca é tocada.
@@ -477,6 +484,14 @@ else
         # tutor nem de paciente (o microchip é fictício, para a busca da prova).
         zoonoses = ZoonosesCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         ZoonosesCrew.summary_lines(zoonoses, password: password).each { |line| puts line }
+
+        # ── Envio à BNAFAR (módulo 27b) ───────────────────────────────────────
+        # Depois do PharmacyCrew (central e UBS), do VaccinationCrew (rede de
+        # frio), do VectorControlCrew e do ZoonosesCrew (os lotes da UVZ). Só em
+        # Curitiba. Credencial de dev nos dois ambientes (o simulado aceita
+        # qualquer Basic); nunca segredo de staging nem de produção.
+        bnafar = BnafarCrew.seed_current_city(slug: slug)
+        BnafarCrew.summary_lines(bnafar).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
