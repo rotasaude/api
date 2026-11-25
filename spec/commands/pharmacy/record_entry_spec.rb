@@ -366,4 +366,136 @@ RSpec.describe Pharmacy::RecordEntry do
       expect(DomainEvent.where(name: "stock_receipt.recorded")).not_to exist
     end
   end
+
+  # Módulo 27b, Task 5 (Q7, Q15, Q17, Q21): campos BNAFAR do lote na entrada.
+  describe "campos BNAFAR" do
+    let(:cnpj) { "11222333000181" }
+    let(:other_cnpj) { "11444777000161" }
+
+    def bnafar_line(**over)
+      line(manufacturer: "EMS", unit_price_cents: 1250, manufacturer_cnpj: cnpj, anvisa_registration: "1234567890123",
+           health_program: "AFB", **over)
+    end
+
+    def required_entry!(items, **opts) = entry_with!(items, bnafar_required: true, **opts)
+
+    def entry_with!(items, location: central, bnafar_required: false, kind: "invoice", at: now)
+      catalog = Pharmacy::Json.catalog_for(items.filter_map { |row| row["catalog_item_id"] })
+      described_class.call(location: location, kind: kind, document: document, items: items, by: keeper, catalog: catalog, now: at,
+                           bnafar_required: bnafar_required)
+    end
+
+    it "com bnafar_required: true, item sem preço → required em items[0].unit_price_cents, e todas as recusas vêm de uma vez" do
+      result = required_entry!([ line, line(lot_number: "B", expires_on: (today - 1).iso8601) ])
+      expect(result.reason).to eq(:required)
+      expect(result.details[:problems]).to include({ path: "items[0].unit_price_cents", error: "required" },
+                                                   { path: "items[1].expires_on", error: "expired_lot" })
+      expect(result.details[:path]).to eq("items[0].unit_price_cents")
+      expect(StockLot.count).to eq(0)
+    end
+
+    it "com false, os campos são opcionais e, quando vêm, gravados" do
+      expect(entry_with!([ line ])).to be_ok
+      expect(StockLot.sole).to have_attributes(unit_price_cents: nil, manufacturer_cnpj: nil, bnafar_version: 0)
+
+      result = entry_with!([ bnafar_line(lot_number: "LOTE-B", "ium" => [ "ABC", "DEF" ]) ])
+      expect(result).to be_ok
+      expect(StockLot.find_by!(lot_number: "LOTE-B")).to have_attributes(
+        unit_price_cents: 1250, manufacturer_cnpj: cnpj, anvisa_registration: "1234567890123", health_program: "AFB", ium: %w[ABC DEF],
+        manufacturer_international: false
+      )
+    end
+
+    it "campo inválido volta com o path items[i].campo e nada é gravado" do
+      before = written
+      result = entry_with!([ bnafar_line(health_program: "XYZ", manufacturer_cnpj: "11222333000180") ])
+      expect(result.details[:problems]).to contain_exactly({ path: "items[0].health_program", error: "program_unknown" },
+                                                           { path: "items[0].manufacturer_cnpj", error: "invalid_cnpj" })
+      expect(written).to eq(before)
+    end
+
+    it "segunda nota com outro preço → o lote guarda o novo e bnafar_version sobe" do
+      entry_with!([ bnafar_line ])
+      lot = StockLot.sole
+      expect(entry_with!([ bnafar_line(unit_price_cents: 1500) ])).to be_ok
+      expect(lot.reload).to have_attributes(unit_price_cents: 1500, bnafar_version: 1)
+      expect(entry_with!([ bnafar_line(unit_price_cents: 1500) ])).to be_ok
+      expect(lot.reload.bnafar_version).to eq(1)
+    end
+
+    it "segunda nota completa o lote antigo (campo nulo é preenchido) e sobe a versão uma vez" do
+      entry_with!([ line(manufacturer: "EMS") ])
+      expect(entry_with!([ bnafar_line ])).to be_ok
+      expect(StockLot.sole).to have_attributes(unit_price_cents: 1250, manufacturer_cnpj: cnpj, health_program: "AFB", bnafar_version: 1)
+    end
+
+    it "outro CNPJ ou outro programa já gravado → lot_mismatch em items[0].lot_number" do
+      entry_with!([ bnafar_line ])
+      before = written
+      [ { manufacturer_cnpj: other_cnpj }, { health_program: "HIPERTEN" }, { anvisa_registration: "12345678901" } ].each do |over|
+        result = entry_with!([ bnafar_line(**over) ])
+        expect([ result.reason, result.details[:path] ]).to eq([ :lot_mismatch, "items[0].lot_number" ])
+      end
+      expect(written).to eq(before)
+      expect(StockLot.sole.bnafar_version).to eq(0)
+    end
+
+    it "o mesmo lote duas vezes no pedido com CNPJ diferente → lot_mismatch na segunda linha" do
+      result = entry_with!([ bnafar_line, bnafar_line(manufacturer_cnpj: other_cnpj) ])
+      expect([ result.reason, result.details[:path] ]).to eq([ :lot_mismatch, "items[1].lot_number" ])
+    end
+
+    it "fabricante internacional grava o nome e o indicador, sem CNPJ" do
+      result = required_entry!([ bnafar_line(manufacturer: "Pfizer Inc.", manufacturer_cnpj: nil, manufacturer_international: true) ])
+      expect(result).to be_ok
+      expect(StockLot.sole).to have_attributes(manufacturer: "Pfizer Inc.", manufacturer_international: true, manufacturer_cnpj: nil)
+    end
+
+    it "AMPP: item com VMP exige o código; apresentação do VMP grava" do
+      paracetamol.update_columns(vmp_code: "@brasil1000") if paracetamol.respond_to?(:vmp_code)
+      ObmPresentation.create!(ampp_code: "@brasil20038375080", vmp_code: "@brasil1000", anvisa_registration: "1234567890123",
+                              description: "Paracetamol 500 mg", imported_at: Time.current)
+      expect(required_entry!([ bnafar_line ]).details[:problems]).to eq([ { path: "items[0].ampp_code", error: "required" } ])
+      expect(required_entry!([ bnafar_line(ampp_code: "@brasil20038375080") ])).to be_ok
+      expect(StockLot.sole.ampp_code).to eq("@brasil20038375080")
+    ensure
+      paracetamol.update_columns(vmp_code: nil)
+    end
+
+    context "vacina (Q21)" do
+      let(:cold_chain) { cold_chain_central! }
+
+      def vaccine_line(**over)
+        { "immunobiological_code" => "42", "manufacturer_key" => "serum", "lot_number" => "V-1", "expires_on" => (today + 200).iso8601,
+          "package" => { "units_per_package" => 1, "packages" => 10 }, "unit_price_cents" => 900, "anvisa_registration" => "1234567890123",
+          "health_program" => "IMUN" }.merge(over.transform_keys(&:to_s))
+      end
+
+      def vaccine_entry!(items, required: true)
+        described_class.call(location: cold_chain, kind: "invoice", document: document, items: items, by: keeper, catalog: {}, now: now,
+                             bnafar_required: required)
+      end
+
+      it "não pede CNPJ, grava os campos e o CNPJ não entra no lote" do
+        expect(vaccine_entry!([ vaccine_line ])).to be_ok
+        expect(StockLot.sole).to have_attributes(unit_price_cents: 900, health_program: "IMUN", manufacturer_cnpj: nil, manufacturer_key: "serum")
+      end
+
+      it "recusa manufacturer_cnpj no corpo da vacina" do
+        result = vaccine_entry!([ vaccine_line(manufacturer_cnpj: cnpj) ])
+        expect(result.details[:problems]).to eq([ { path: "items[0].manufacturer_cnpj", error: "invalid_request" } ])
+      end
+
+      it "vacina com ampp_code válido grava" do
+        product = Vaccination::Immunobiologicals.find("42")
+        allow(Vaccination::Immunobiologicals).to receive(:find).and_call_original
+        allow(Vaccination::Immunobiologicals).to receive(:find).with("42").and_return(product.with(obm_vmp: "@brasil7000"))
+        ObmPresentation.create!(ampp_code: "@brasil7000100", vmp_code: "@brasil7000", anvisa_registration: "1234567890123",
+                                description: "Vacina", imported_at: Time.current)
+        expect(vaccine_entry!([ vaccine_line ]).details[:problems]).to eq([ { path: "items[0].ampp_code", error: "required" } ])
+        expect(vaccine_entry!([ vaccine_line(ampp_code: "@brasil7000100") ])).to be_ok
+        expect(StockLot.sole.ampp_code).to eq("@brasil7000100")
+      end
+    end
+  end
 end

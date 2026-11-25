@@ -67,12 +67,20 @@ module Pharmacy
     # imunobiológico (§15 V19): o <item> acima, o nome do fabricante pelo
     # catálogo (a `key` gravada no lote; sem achar, o nome gravado) e a
     # `manufacturer_key`; nunca o código RNDS do fabricante.
-    def lot(lot, catalog:)
-      return immunobiological_lot(lot) if lot.immunobiological?
-      return vector_lot(lot) if lot.vector_control?
+    #
+    # Módulo 27b: com `bnafar: true` (posição e extrato) o lote leva `bnafar:
+    # { version, missing }`: a versão do complemento e o que falta para o envio.
+    def lot(lot, catalog:, bnafar: false)
+      body = if lot.immunobiological? then immunobiological_lot(lot)
+             elsif lot.vector_control? then vector_lot(lot)
+             else
+               { id: lot.id, item: item(catalog.fetch(lot.catalog_item_id), dispensing_unit: lot.dispensing_unit),
+                 lot_number: lot.lot_number, expires_on: lot.expires_on.iso8601, manufacturer: lot.manufacturer }
+             end
+      return body unless bnafar
 
-      { id: lot.id, item: item(catalog.fetch(lot.catalog_item_id), dispensing_unit: lot.dispensing_unit),
-        lot_number: lot.lot_number, expires_on: lot.expires_on.iso8601, manufacturer: lot.manufacturer }
+      vmp = lot.immunobiological? || lot.vector_control? ? :lookup : catalog[lot.catalog_item_id]&.vmp_code
+      body.merge(bnafar: { version: lot.bnafar_version, missing: ::Bnafar::LotFields.missing(lot, vmp_code: vmp) })
     end
 
     def vector_lot(lot)

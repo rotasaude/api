@@ -369,6 +369,9 @@ Rails.application.config.to_prepare do
   # Entrada de estoque gravada (nota, doação ou inventário de abertura); só
   # trilha, só ids (stock_entry_id, user_id), sem consumidor.
   DomainEvents.bind "stock_receipt.recorded", to: []
+  # Complemento dos dados BNAFAR de um lote (módulo 27b); só ids (stock_lot_id,
+  # user_id), sem consumidor.
+  DomainEvents.bind "stock_lot.bnafar_completed", to: []
   # Receita externa digitada na farmácia; só trilha, só ids
   # (external_prescription_id, user_id) — nunca prescritor, número da
   # notificação, item nem paciente —, sem consumidor.

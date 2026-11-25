@@ -55,8 +55,10 @@ module Pharmacy
 
     def record(kind)
       items = body_param("items")
+      # Módulo 27b: o interruptor do envio é lido AQUI, fora da transação da cidade.
+      required = ::Bnafar::Gate.required_for?(Current.city, @location)
       result = RecordEntry.call(location: @location, kind: kind, document: body_param("document"), items: items, by: Current.user,
-                                catalog: catalog_for(items))
+                                catalog: catalog_for(items), bnafar_required: required)
       return render_failure(result) if result.failure?
 
       entry = result.payload.fetch(:entry)

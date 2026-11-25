@@ -31,7 +31,7 @@ module Pharmacy
       end
       rows = scope.includes(*PRELOAD).order(recorded_at: :desc, created_at: :desc, id: :desc).limit(limit + 1).to_a
       page = rows.first(limit)
-      { lot: Json.lot(lot, catalog: Json.catalog_for([ lot.catalog_item_id ])),
+      { lot: Json.lot(lot, catalog: Json.catalog_for([ lot.catalog_item_id ]), bnafar: true),
         balance: Quantity.dump(Ledger.balance(location_id: location.id, lot_id: lot.id)),
         movements: page.map { |movement| present(movement, reasons) },
         next_before: rows.size > limit ? cursor_for(page.last) : nil }

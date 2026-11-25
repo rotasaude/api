@@ -581,6 +581,8 @@ Rails.application.routes.draw do
     # Posição, extrato do lote e alertas: leitura sem trilha e sem dado pessoal (Task 8).
     get    "positions",                 to: "positions#index"
     get    "lots/:id/movements",        to: "statements#index"
+    # Complemento dos dados BNAFAR do lote: só o estoque do domínio, nunca o `bnafar` (módulo 27b, Q23).
+    patch  "lots/:id/bnafar",           to: "lot_complements#update"
     get    "alerts",                    to: "alerts#show"
     # Receita para a farmácia: busca por código ou paciente, busca de pessoa e
     # duplicados, nominais e com trilha (Task 9).

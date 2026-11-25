@@ -788,4 +788,10 @@ RSpec.describe "home visit bindings (ADR 0052)" do
     expect(DomainEvents.registry.keys).to include(*contract)
     expect(contract.flat_map { |name| DomainEvents.registry[name] }).to be_empty
   end
+
+  # Módulo 27b, Task 5: complemento BNAFAR do lote; só ids (stock_lot_id, user_id).
+  it "declares stock_lot.bnafar_completed with no consumer" do
+    expect(DomainEvents.registry.keys).to include("stock_lot.bnafar_completed")
+    expect(DomainEvents.registry["stock_lot.bnafar_completed"]).to be_empty
+  end
 end

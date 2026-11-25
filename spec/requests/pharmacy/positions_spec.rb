@@ -28,7 +28,8 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
     { "id" => lot.id,
       "item" => { "catalog_item_id" => item.id, "catmat_code" => item.catmat_code, "name" => item.label, "unit" => item.unit,
                   "dispensing_unit" => "comprimido", "controlled" => false, "controlled_list" => nil },
-      "lot_number" => lot.lot_number, "expires_on" => lot.expires_on.iso8601, "manufacturer" => lot.manufacturer }
+      "lot_number" => lot.lot_number, "expires_on" => lot.expires_on.iso8601, "manufacturer" => lot.manufacturer,
+      "bnafar" => { "version" => 0, "missing" => %w[unit_price_cents manufacturer_cnpj anvisa_registration health_program] } }
   end
 
   def location_json(location, unit_record = nil)

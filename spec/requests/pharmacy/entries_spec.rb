@@ -38,6 +38,38 @@ RSpec.describe "Farmácia — entradas e inventário de abertura", type: :reques
     Rails.logger.stop_broadcasting_to(capture)
   end
 
+  # Módulo 27b, Task 5 (Q7, Q17): campos BNAFAR na entrada; o controller lê o
+  # interruptor FORA da transação e o passa como `bnafar_required:`.
+  describe "campos BNAFAR" do
+    let(:cnpj) { "11222333000181" }
+
+    def bnafar_fields = { unit_price_cents: 1250, manufacturer_cnpj: cnpj, anvisa_registration: "1234567890123", health_program: "AFB" }
+
+    it "com o envio ligado para o domínio, item sem os campos → 422 required com path items[0].campo e todas as recusas" do
+      allow(Bnafar::Gate).to receive(:required_for?).with(city, central).and_return(true)
+      sign_in_as(keeper)
+      json_post "/pharmacy/receipts", receipt([ line ])
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body["error"]).to eq("required")
+      expect(json_body["path"]).to eq("items[0].unit_price_cents")
+      expect(json_body["problems"].map { |p| p["path"] }).to eq(%w[unit_price_cents manufacturer_cnpj anvisa_registration health_program].map { |f| "items[0].#{f}" })
+      expect(StockLot.count).to eq(0)
+    end
+
+    it "com o envio desligado, os campos são opcionais e, quando vêm, gravados" do
+      sign_in_as(keeper)
+      json_post "/pharmacy/receipts", receipt([ line(**bnafar_fields) ])
+      expect(response).to have_http_status(:created)
+      expect(StockLot.sole).to have_attributes(unit_price_cents: 1250, manufacturer_cnpj: cnpj, health_program: "AFB")
+    end
+
+    it "campo inválido → 422 com path items[0].campo" do
+      sign_in_as(keeper)
+      json_post "/pharmacy/receipts", receipt([ line(**bnafar_fields, health_program: "XYZ") ])
+      expect(json_body).to eq(refusal("program_unknown", "items[0].health_program"))
+    end
+  end
+
   describe "POST /pharmacy/receipts" do
     it "201 sem envelope: id, kind, local, itens com o lote e a quantidade em duas casas, e a hora; item.unit é a concentração e item.dispensing_unit vem do lote" do
       sign_in_as(keeper)

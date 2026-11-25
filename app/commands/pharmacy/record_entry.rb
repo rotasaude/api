@@ -58,6 +58,17 @@
 # SHARE antes dos lotes (produto → lotes → local): a troca de unidade ou carga
 # do produto (VectorControl::SaveProduct, FOR UPDATE) não passa entre a
 # leitura e o primeiro lote. O lote é único por (produto, número).
+#
+# Módulo 27b (Task 5; contrato §2, Q7, Q15, Q17, Q21): cada linha aceita os
+# campos BNAFAR do lote (::Bnafar::LotFields; dentro de `Pharmacy` o domínio é
+# sempre `::Bnafar`, a constante solta cai no namespace `Pharmacy::Bnafar`).
+# Com `bnafar_required:` (lido pelo controlador FORA da transação, a partir do
+# interruptor do domínio do local) os obrigatórios do envio são exigidos, com
+# `path` `items[i].campo`. Lote novo grava os campos; lote existente: campo
+# nulo é preenchido, o preço troca, qualquer outro já preenchido e diferente é
+# `lot_mismatch` (guard do banco). Toda escrita no lote sobe `bnafar_version`
+# uma vez, sob a trava do lote. Na vacina o CNPJ vem do YAML (Q21): o corpo
+# não o traz.
 module Pharmacy
   module RecordEntry
     ISO_DATE = /\A\d{4}-\d{2}-\d{2}\z/
@@ -78,7 +89,7 @@ module Pharmacy
     # Linha já validada: `item` (medicamento), `product` (imunobiológico, com
     # a `manufacturer_key`) OU `vector_product` (insumo de campo).
     Row = Struct.new(:index, :item, :product, :vector_product, :lot_number, :expires_on, :manufacturer, :manufacturer_key, :quantity,
-                     :package, keyword_init: true) do
+                     :package, :bnafar, keyword_init: true) do
       def item_key
         return "#{IMMUNOBIOLOGICAL_KEY}#{product.code}" if product
         return "#{VECTOR_KEY}#{vector_product.id}" if vector_product
@@ -87,6 +98,7 @@ module Pharmacy
       end
 
       def key = [ item_key, lot_number ]
+      def bnafar_fields = bnafar || {}
       # O fabricante que precisa bater com o lote: a key na vacina, o nome no medicamento e no insumo.
       def maker = product ? manufacturer_key : manufacturer
 
@@ -103,7 +115,7 @@ module Pharmacy
 
     # -> Result.ok(entry:, movements:) |
     # fail(<primeiro erro>, details: { path:, problems: [ { path:, error: } ] })
-    def call(location:, kind:, document:, items:, by:, catalog:, now: Time.current)
+    def call(location:, kind:, document:, items:, by:, catalog:, now: Time.current, bnafar_required: false)
       today = now.in_time_zone.to_date
       problems = kind == "opening" ? [] : document_problems(document, kind)
       unless items.is_a?(Array) && items.size.between?(1, Catalog::MAX_ENTRY_ITEMS)
@@ -113,7 +125,7 @@ module Pharmacy
 
       domain = Stock::Domain.for(location)
       products = domain == Stock::Domain::VECTOR_CONTROL ? vector_products(items) : {}
-      rows, row_problems = validate_rows(items, catalog, today, domain, products)
+      rows, row_problems = validate_rows(items, catalog, today, domain, products, bnafar_required)
       problems += merge_by_line(row_problems, stored_lot_problems(rows))
       return failure(problems) if problems.any?
 
@@ -145,8 +157,15 @@ module Pharmacy
       mismatches = mismatch_problems(rows, lots)
       return failure(mismatches) if mismatches.any?
 
-      Ledger.lock_lots!(lots.values.map(&:id).sort)
+      locked = Ledger.lock_lots!(lots.values.map(&:id).sort)
+      # Sob a trava o lote é o do banco agora (um complemento pode ter passado
+      # entre a leitura e a trava): confere de novo e só então escreve.
+      lots = lots.transform_values { |lot| locked.fetch(lot.id) }
+      mismatches = mismatch_problems(rows, lots)
+      return failure(mismatches) if mismatches.any?
+
       Ledger.lock_location!(location.id)
+      update_bnafar!(rows, lots)
 
       if kind == "opening"
         existing = opening_problems(location, rows)
@@ -183,14 +202,14 @@ module Pharmacy
     end
 
     # -> [ [ Row ], [ problem ] ]. As linhas só valem sem problema algum.
-    def validate_rows(items, catalog, today, domain, products)
+    def validate_rows(items, catalog, today, domain, products, bnafar_required)
       rows = []
       problems = []
       declared = {}
       items.each_with_index do |raw, index|
         next problems << problem("items[#{index}]", :invalid_request) unless raw.is_a?(Hash)
 
-        row, found = validate_row(raw, index, catalog, today, domain, products)
+        row, found = validate_row(raw, index, catalog, today, domain, products, bnafar_required)
         problems.concat(found)
         next unless row
 
@@ -201,17 +220,17 @@ module Pharmacy
     end
 
     # -> [ Row | nil, [ problem ] ]
-    def validate_row(raw, index, catalog, today, domain, products)
+    def validate_row(raw, index, catalog, today, domain, products, bnafar_required)
       prefix = "items[#{index}]"
       foreign = FOREIGN_KEYS.fetch(domain).any? { |key| !raw[key].nil? }
       return [ nil, [ problem(prefix, :item_not_allowed_here) ] ] if foreign
 
-      return validate_immunobiological_row(raw, index, today) if domain == Stock::Domain::IMMUNOBIOLOGICAL
+      return validate_immunobiological_row(raw, index, today, bnafar_required) if domain == Stock::Domain::IMMUNOBIOLOGICAL
 
       if domain == Stock::Domain::VECTOR_CONTROL
         id = raw["vector_product_id"]
         vector_product = id.is_a?(String) ? products[id.downcase] : nil
-        return validate_vector_row(raw, index, (vector_product if vector_product&.active), today)
+        return validate_vector_row(raw, index, (vector_product if vector_product&.active), today, bnafar_required)
       end
 
       problems = []
@@ -234,16 +253,19 @@ module Pharmacy
 
       quantity, package, quantity_problems = quantity_and_package(raw, prefix)
       problems.concat(quantity_problems)
+      bnafar, bnafar_problems = ::Bnafar::LotFields.parse(raw, prefix: prefix, stock_domain: Stock::Domain::MEDICATION, required: bnafar_required,
+                                                          vmp_code: item.try(:vmp_code))
+      problems.concat(bnafar_problems)
       return [ nil, problems ] if problems.any?
 
       [ Row.new(index: index, item: item, lot_number: lot_number, expires_on: expires_on, manufacturer: manufacturer,
-                quantity: quantity, package: package), [] ]
+                quantity: quantity, package: package, bnafar: bnafar), [] ]
     end
 
     # Linha do insumo de campo (35a): produto ativo, sem embalagem, quantidade
     # do papel; o fabricante (nome) opcional, como no medicamento.
     # -> [ Row | nil, [ problem ] ]
-    def validate_vector_row(raw, index, vector_product, today)
+    def validate_vector_row(raw, index, vector_product, today, bnafar_required)
       prefix = "items[#{index}]"
       problems = []
       problems << problem("#{prefix}.vector_product_id", :invalid_item) unless vector_product
@@ -253,10 +275,13 @@ module Pharmacy
       problems << problem("#{prefix}.package", :invalid_request) unless raw["package"].nil?
       quantity = Quantity.parse(raw["quantity"])
       problems << problem("#{prefix}.quantity", :invalid_quantity) unless quantity
+      bnafar, bnafar_problems = ::Bnafar::LotFields.parse(raw, prefix: prefix, stock_domain: Stock::Domain::VECTOR_CONTROL, required: bnafar_required,
+                                                          vmp_code: nil)
+      problems.concat(bnafar_problems)
       return [ nil, problems ] if problems.any?
 
       [ Row.new(index: index, vector_product: vector_product, lot_number: raw["lot_number"], expires_on: parse_date(raw["expires_on"]),
-                manufacturer: manufacturer, quantity: quantity), [] ]
+                manufacturer: manufacturer, quantity: quantity, bnafar: bnafar), [] ]
     end
 
     # -> [ String | nil, [ problem ] ]
@@ -298,7 +323,7 @@ module Pharmacy
     # Linha de vacina (§15 V4/V19): código do catálogo, fabricante pela key da
     # lista do produto, embalagem obrigatória com as doses por frasco do
     # catálogo. -> [ Row | nil, [ problem ] ]
-    def validate_immunobiological_row(raw, index, today)
+    def validate_immunobiological_row(raw, index, today, bnafar_required)
       prefix = "items[#{index}]"
       problems = []
       code = raw["immunobiological_code"]
@@ -318,10 +343,13 @@ module Pharmacy
       elsif package && product && package[:units_per_package] != product.doses_per_vial
         problems << problem("#{prefix}.package", :invalid_quantity)
       end
+      bnafar, bnafar_problems = ::Bnafar::LotFields.parse(raw, prefix: prefix, stock_domain: Stock::Domain::IMMUNOBIOLOGICAL, required: bnafar_required,
+                                                          vmp_code: product&.obm_vmp)
+      problems.concat(bnafar_problems)
       return [ nil, problems.uniq ] if problems.any?
 
       [ Row.new(index: index, product: product, lot_number: raw["lot_number"], expires_on: parse_date(raw["expires_on"]),
-                manufacturer: maker.name, manufacturer_key: maker.key, quantity: quantity, package: package), [] ]
+                manufacturer: maker.name, manufacturer_key: maker.key, quantity: quantity, package: package, bnafar: bnafar), [] ]
     end
 
     # Número e validade do lote (comuns aos dois domínios). -> [ problem ]
@@ -390,7 +418,8 @@ module Pharmacy
         return []
       end
 
-      clash = first.expires_on != row.expires_on || (row.maker && first.maker && row.maker != first.maker)
+      clash = first.expires_on != row.expires_on || (row.maker && first.maker && row.maker != first.maker) ||
+              ::Bnafar::LotFields.conflict?(first.bnafar_fields, row.bnafar_fields)
       clash ? [ problem("items[#{row.index}].lot_number", :lot_mismatch) ] : []
     end
 
@@ -429,21 +458,21 @@ module Pharmacy
         StockLot.insert_all(vectors.map do |row|
           { item_kind: Stock::Domain::VECTOR_CONTROL, vector_product_id: row.vector_product.id, lot_number: row.lot_number,
             expires_on: row.expires_on, manufacturer: first_declared.fetch(row.key), dispensing_unit: row.vector_product.unit,
-            created_by_user_id: by.id }
+            created_by_user_id: by.id }.merge(bnafar_columns(rows, row.key))
         end, unique_by: :idx_stock_lots_vector_product_number)
       end
       if medications.any?
         first_declared = medications.to_h { |row| [ row.key, rows.select { |other| other.key == row.key }.filter_map(&:manufacturer).first ] }
         StockLot.insert_all(medications.map do |row|
           { catalog_item_id: row.item.id, catmat_code: row.item.catmat_code, lot_number: row.lot_number, expires_on: row.expires_on,
-            manufacturer: first_declared.fetch(row.key), dispensing_unit: DispensingUnit.for(row.item), created_by_user_id: by.id }
+            manufacturer: first_declared.fetch(row.key), dispensing_unit: DispensingUnit.for(row.item), created_by_user_id: by.id }.merge(bnafar_columns(rows, row.key))
         end, unique_by: :idx_stock_lots_number)
       end
       if immunobiologicals.any?
         StockLot.insert_all(immunobiologicals.map do |row|
           { item_kind: Stock::Domain::IMMUNOBIOLOGICAL, immunobiological_code: row.product.code, lot_number: row.lot_number,
             expires_on: row.expires_on, manufacturer: row.manufacturer, manufacturer_key: row.manufacturer_key, dispensing_unit: "dose",
-            created_by_user_id: by.id }
+            created_by_user_id: by.id }.merge(bnafar_columns(rows, row.key))
         end, unique_by: :idx_stock_lots_immunobiological_number)
       end
       find_lots(keys)
@@ -481,9 +510,31 @@ module Pharmacy
         lot = lots[row.key]
         next unless lot
         stored_maker = row.product ? lot.manufacturer_key : lot.manufacturer
-        next unless lot.expires_on != row.expires_on || (row.maker && row.maker != stored_maker)
+        # O lote anterior ao 27b sem fabricante aceita o nome do internacional (Q15).
+        completes_name = lot.manufacturer.nil? && row.bnafar_fields[:manufacturer_international]
+        differs = row.maker && row.maker != stored_maker && !completes_name
+        next unless lot.expires_on != row.expires_on || differs || ::Bnafar::LotFields.diff(lot, row.bnafar_fields).last.any?
 
         problem("items[#{row.index}].lot_number", :lot_mismatch)
+      end
+    end
+
+    # Campos BNAFAR de todas as linhas do lote, como colunas do INSERT (a
+    # primeira linha que traz o campo vale; sem conflito, `repeated_lot_problems`).
+    def bnafar_columns(rows, key)
+      fields = rows.select { |row| row.key == key }.reverse.reduce({}) { |acc, row| acc.merge(row.bnafar_fields) }
+      { unit_price_cents: fields[:unit_price_cents], manufacturer_cnpj: fields[:manufacturer_cnpj],
+        manufacturer_international: fields[:manufacturer_international] || false, anvisa_registration: fields[:anvisa_registration],
+        health_program: fields[:health_program], ium: fields[:ium], ampp_code: fields[:ampp_code] }
+    end
+
+    # Lote existente: completa o nulo e troca o preço, UM UPDATE por lote com
+    # bnafar_version + 1 (o guard do banco exige). Sem mudança, sem UPDATE.
+    def update_bnafar!(rows, lots)
+      rows.group_by(&:key).each do |key, group|
+        lot = lots.fetch(key)
+        changes = group.reduce({}) { |acc, row| acc.merge(::Bnafar::LotFields.diff(lot, row.bnafar_fields).first) }
+        lot.update!(changes.merge(bnafar_version: lot.bnafar_version + 1)) if changes.any?
       end
     end
 
@@ -517,6 +568,6 @@ module Pharmacy
     private_class_method :persist, :write, :document_problems, :validate_rows, :validate_row, :validate_vector_row, :manufacturer_of,
                          :vector_products, :lock_vector_products!, :validate_immunobiological_row, :lot_problems,
                          :quantity_and_package, :package_product, :parse_date, :repeated_lot_problems, :stored_lot_problems, :merge_by_line,
-                         :ensure_lots, :find_lots, :lot_key, :mismatch_problems, :opening_problems, :mark_openings, :problem, :failure
+                         :ensure_lots, :find_lots, :lot_key, :mismatch_problems, :bnafar_columns, :update_bnafar!, :opening_problems, :mark_openings, :problem, :failure
   end
 end

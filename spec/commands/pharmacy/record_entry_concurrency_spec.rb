@@ -13,7 +13,7 @@ RSpec.describe "Entrada de estoque sob disputa" do
 
   let(:release) { Queue.new }
   let(:threads) { [] }
-  let(:item) { Struct.new(:id, :catmat_code, :status, :dosage_form).new(SecureRandom.uuid, 9_900_777, "active", "comprimido") }
+  let(:item) { Struct.new(:id, :catmat_code, :status, :dosage_form, :vmp_code).new(SecureRandom.uuid, 9_900_777, "active", "comprimido", nil) }
 
   def in_city(&) = CityConnection.with(TEST_CITY_A) { Current.set(city: TEST_CITY_A, &) }
 

@@ -168,7 +168,7 @@ module Pharmacy
           .sort_by { |lot, _row| [ lot.expires_on, lot.lot_number, lot.id ] }
           .map do |lot, row|
         expired = lot.expires_on < today
-        { lot: Json.lot(lot, catalog: catalog), balance: Quantity.dump(row["balance"].to_d), in_transit: Quantity.dump(row["in_transit"].to_d),
+        { lot: Json.lot(lot, catalog: catalog, bnafar: true), balance: Quantity.dump(row["balance"].to_d), in_transit: Quantity.dump(row["in_transit"].to_d),
           expiring_soon: !expired && lot.expires_on <= cutoff, expired: expired }
       end
     end

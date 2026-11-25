@@ -193,7 +193,8 @@ RSpec.describe "Estoque de imunobiológicos pelas rotas do 27a", type: :request 
       penta = positions.find { |p| p["item"]["immunobiological_code"] == "42" }
       expect(penta).to include("item" => penta_item, "balance" => "10.00", "minimum" => nil, "below_minimum" => false, "expiring_soon" => false)
       expect(penta["lots"]).to eq([ { "lot" => { "id" => lot.id, "item" => penta_item, "lot_number" => lot.lot_number, "expires_on" => lot.expires_on.iso8601,
-                                                 "manufacturer" => "Serum Institute of India", "manufacturer_key" => "serum" },
+                                                 "manufacturer" => "Serum Institute of India", "manufacturer_key" => "serum",
+                                                 "bnafar" => { "version" => 0, "missing" => %w[unit_price_cents manufacturer_cnpj anvisa_registration health_program] } },
                                       "balance" => "10.00", "in_transit" => "0.00", "expiring_soon" => false, "expired" => false, "blocked" => false } ])
       vip = positions.find { |p| p["item"]["immunobiological_code"] == "22" }
       expect(vip["lots"].sole["blocked"]).to be(true)
