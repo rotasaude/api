@@ -103,6 +103,24 @@ module Bnafar
       [ changes, conflicts ]
     end
 
+    # Coerência da apresentação (AMPP) com a ANVISA e o VMP sobre o estado
+    # MESCLADO (lote + `changes` do diff): chamar sob a trava do lote. Só vale
+    # quando a mudança toca o AMPP ou a ANVISA. -> [ { field:, error: } ]
+    def coherence(lot, changes, vmp_code:)
+      return [] unless (changes.keys & %i[ampp_code anvisa_registration]).any?
+
+      ampp = changes[:ampp_code] || lot.ampp_code
+      presentation = ampp && ObmPresentation.active.find_by(ampp_code: ampp)
+      return [] unless presentation
+
+      anvisa = changes[:anvisa_registration] || lot.anvisa_registration
+      found = []
+      found << { field: "anvisa_registration", error: "anvisa_mismatch" } if anvisa && presentation.anvisa_registration.present? &&
+                                                                              presentation.anvisa_registration != anvisa
+      found << { field: "ampp_code", error: "ampp_not_in_vmp" } if vmp_code.present? && presentation.vmp_code != vmp_code
+      found
+    end
+
     # Duas leituras do mesmo lote no mesmo pedido: algum campo em comum difere.
     def conflict?(first, second)
       (first.keys & second.keys).any? { |key| normalize(first[key]) != normalize(second[key]) }

@@ -37,6 +37,9 @@ module Bnafar
         next refuse(conflicts.map { |field| problem(field.to_s, :lot_mismatch) }) if conflicts.any?
         next Result.ok(lot: locked) if changes.empty?
 
+        incoherent = LotFields.coherence(locked, changes, vmp_code: vmp_of(locked, domain)).map { |found| problem(found[:field], found[:error]) }
+        next refuse(incoherent) if incoherent.any?
+
         locked.update!(changes.merge(bnafar_version: locked.bnafar_version + 1))
         DomainEvents.publish("stock_lot.bnafar_completed", stock_lot_id: locked.id, user_id: by.id)
         Result.ok(lot: locked)

@@ -144,6 +144,20 @@ RSpec.describe "Farmácia — complemento BNAFAR do lote", type: :request do
     expect(json_body.dig("bnafar", "missing")).to eq(%w[manufacturer_cnpj])
   end
 
+  it "complemento só com ANVISA diferente da apresentação do AMPP já gravado → anvisa_mismatch e lote intacto; coerente passa" do
+    ObmPresentation.create!(ampp_code: "@brasil20038375080", vmp_code: "@brasil1000", anvisa_registration: "1234567890123",
+                            description: "Paracetamol 500 mg", imported_at: Time.current)
+    lot.update!(ampp_code: "@brasil20038375080", bnafar_version: 1)
+    sign_in_as(keeper)
+    patch_lot(lot, anvisa_registration: "99999999999")
+    expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "anvisa_mismatch", "anvisa_registration" ])
+    expect(lot.reload).to have_attributes(anvisa_registration: nil, bnafar_version: 1)
+
+    patch_lot(lot, anvisa_registration: "1234567890123")
+    expect(response).to have_http_status(:ok)
+    expect(lot.reload).to have_attributes(anvisa_registration: "1234567890123", bnafar_version: 2)
+  end
+
   it "evento stock_lot.bnafar_completed só com ids" do
     sign_in_as(keeper)
     patch_lot(lot, fields)

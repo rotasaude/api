@@ -165,7 +165,8 @@ module Pharmacy
       return failure(mismatches) if mismatches.any?
 
       Ledger.lock_location!(location.id)
-      update_bnafar!(rows, lots)
+      incoherent = update_bnafar!(rows, lots)
+      return failure(incoherent) if incoherent.any?
 
       if kind == "opening"
         existing = opening_problems(location, rows)
@@ -530,12 +531,22 @@ module Pharmacy
 
     # Lote existente: completa o nulo e troca o preço, UM UPDATE por lote com
     # bnafar_version + 1 (o guard do banco exige). Sem mudança, sem UPDATE.
+    # Antes de escrever, confere a coerência AMPP × ANVISA × VMP do lote
+    # MESCLADO sob a trava (-> [ problem ], nada gravado se houver).
     def update_bnafar!(rows, lots)
-      rows.group_by(&:key).each do |key, group|
+      pending = rows.group_by(&:key).filter_map do |key, group|
         lot = lots.fetch(key)
         changes = group.reduce({}) { |acc, row| acc.merge(::Bnafar::LotFields.diff(lot, row.bnafar_fields).first) }
-        lot.update!(changes.merge(bnafar_version: lot.bnafar_version + 1)) if changes.any?
+        [ lot, changes, group.first ] if changes.any?
       end
+      problems = pending.flat_map do |lot, changes, row|
+        vmp = row.product ? row.product.obm_vmp : row.item.try(:vmp_code)
+        ::Bnafar::LotFields.coherence(lot, changes, vmp_code: vmp).map { |found| problem("items[#{row.index}].#{found[:field]}", found[:error]) }
+      end
+      return problems if problems.any?
+
+      pending.each { |lot, changes, _row| lot.update!(changes.merge(bnafar_version: lot.bnafar_version + 1)) }
+      []
     end
 
     # Itens da abertura que já têm abertura no local, uma recusa por linha.

@@ -462,6 +462,27 @@ RSpec.describe Pharmacy::RecordEntry do
       paracetamol.update_columns(vmp_code: nil)
     end
 
+    describe "coerência AMPP × ANVISA sobre o lote mesclado" do
+      before do
+        ObmPresentation.create!(ampp_code: "@brasil20038375080", vmp_code: "@brasil1000", anvisa_registration: "1234567890123",
+                                description: "Paracetamol 500 mg", imported_at: Time.current)
+      end
+
+      it "lote com ANVISA X + nota só com AMPP de apresentação com ANVISA Y → anvisa_mismatch e lote intacto" do
+        entry_with!([ line(manufacturer: "EMS", anvisa_registration: "99999999999") ])
+        lot = StockLot.sole
+        result = entry_with!([ line(manufacturer: "EMS", ampp_code: "@brasil20038375080") ])
+        expect([ result.reason, result.details[:path] ]).to eq([ :anvisa_mismatch, "items[0].anvisa_registration" ])
+        expect(lot.reload).to have_attributes(ampp_code: nil, bnafar_version: 0)
+      end
+
+      it "o caso coerente passa e completa o lote" do
+        entry_with!([ line(manufacturer: "EMS", anvisa_registration: "1234567890123") ])
+        expect(entry_with!([ line(manufacturer: "EMS", ampp_code: "@brasil20038375080") ])).to be_ok
+        expect(StockLot.sole).to have_attributes(ampp_code: "@brasil20038375080", bnafar_version: 1)
+      end
+    end
+
     context "vacina (Q21)" do
       let(:cold_chain) { cold_chain_central! }
 
