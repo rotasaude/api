@@ -154,8 +154,9 @@ module CityEncryption
     # da receita externa.
     [ StockMovement, :reason ], [ StockTransferItem, :difference_reason ],
     [ StockAdjustment, :reason ], [ StockAdjustment, :decision_reason ],
-    # Módulo 27b: motivo da saída externa do estoque.
-    [ StockExternalExit, :reason ],
+    # Módulo 27b: motivo da saída externa do estoque e o corpo enviado à
+    # BNAFAR (apagado em 30 dias).
+    [ StockExternalExit, :reason ], [ BnafarRecord, :payload ],
     [ ExternalPrescription, :notification_number ], [ ExternalPrescriptionItem, :dosage_instructions ],
     [ Dispensation, :notification_number ],
     # ADR 0046: motivos de cancelamento do plano, do item e da prótese.

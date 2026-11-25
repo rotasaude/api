@@ -42,7 +42,8 @@ RSpec.describe "Esquema da farmácia (ADR 0045)" do
     expect { movement(quantity: -1) }.to raise_error(ActiveRecord::StatementInvalid, /ck_stock_movements_sign/)
     expect { movement(stock_entry: nil) }.to raise_error(ActiveRecord::StatementInvalid, /ck_stock_movements_document/)
     expect { movement(quantity: BigDecimal("100000")) }.to raise_error(ActiveRecord::StatementInvalid, /ck_stock_movements_sign/)
-    refused(/append-only: TRUNCATE refused/) { ApplicationRecord.connection.execute("TRUNCATE stock_movements") }
+    # CASCADE: desde o 27b (900003) bnafar_movement_links referencia o movimento.
+    refused(/append-only: TRUNCATE refused/) { ApplicationRecord.connection.execute("TRUNCATE stock_movements CASCADE") }
   end
 
   it "o trigger recusa saldo negativo por local e lote" do

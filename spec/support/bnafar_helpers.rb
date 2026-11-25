@@ -4,7 +4,8 @@ require_relative "../../lib/fake_bnafar/app"
 # spec/support/bnafar_helpers.rb
 # Módulo 27b: o SI-BNAFAR simulado (FakeBnafar::App) servido por WebMock#to_rack
 # em http://fake-bnafar.test:8095. Nenhuma spec bate em URL real. Os demais
-# helpers do módulo entram nas tasks seguintes.
+# helpers do módulo entram nas tasks seguintes (Task 10: lote completo,
+# perda pelo razão e saída já ligada).
 FAKE_BNAFAR_BASE = "http://fake-bnafar.test:8095".freeze
 
 module BnafarHelpers
@@ -12,6 +13,40 @@ module BnafarHelpers
   def fake_bnafar!(app = FakeBnafar::App.new)
     stub_request(:any, /\A#{Regexp.escape(FAKE_BNAFAR_BASE)}/).to_rack(app)
     app
+  end
+
+  # Task 10: CNPJ válido de teste (formato da Receita, com os dígitos).
+  def bnafar_cnpj = Cnpj.with_check_digits("11222333000181"[0, 12])
+
+  # Completa os dados BNAFAR do lote direto na linha (o guard do lote pede
+  # bnafar_version + 1). A vacina não leva CNPJ (Q21: vem do YAML).
+  def bnafar_complete!(lot, **over)
+    attrs = { unit_price_cents: 1990, anvisa_registration: "1234567890123", health_program: "AFB" }
+    attrs[:manufacturer_cnpj] = bnafar_cnpj unless lot.immunobiological?
+    lot.update_columns(attrs.merge(over).merge(bnafar_version: lot.bnafar_version + 1))
+    lot.reload
+  end
+
+  # Perda (ou vencimento com `loss_code`) aplicada pelo razão, com o relógio do
+  # movimento em `at` (o `created_at` é o relógio da chamada). -> StockMovement
+  def bnafar_loss!(location, lot, quantity, at: Time.current, loss_code: nil, by: pharmacy_admin!)
+    balance = StockMovement.where(stock_location_id: location.id, stock_lot_id: lot.id).sum(:quantity)
+    adjustment = StockAdjustment.create!(stock_location: location, stock_lot: lot, kind: "loss", status: "applied", quantity: -quantity,
+                                         loss_code: loss_code, balance_at_request: balance, reason: "Frascos quebrados no transporte",
+                                         requested_by_user: by)
+    Pharmacy::Ledger.record!(location: location, lot: lot, kind: "loss", quantity: quantity, by: by, document: adjustment,
+                             reason: "Frascos quebrados no transporte", at: at)
+  end
+
+  # Registro aceito de uma saída já enviada e o link do movimento a ele.
+  # -> BnafarMovementLink
+  def bnafar_link!(movement, kind: "exit", reference_on: movement.created_at.to_date)
+    submission = BnafarSubmission.find_or_create_by!(reference_on: reference_on, subject: "exit", environment: "production")
+    record = BnafarRecord.create!(bnafar_submission: submission, origin_code: SecureRandom.uuid, subject: "exit",
+                                  stock_location_id: movement.stock_location_id, item_key: "test:#{movement.stock_lot_id}",
+                                  payload: "{}")
+    record.update_columns(status: "accepted", accepted_at: Time.current, sent_at: Time.current, bnafar_code: rand(1..999_999))
+    BnafarMovementLink.create!(stock_movement: movement, bnafar_record: record, kind: kind)
   end
 end
 

@@ -138,6 +138,16 @@ RSpec.describe CitySchema do
     expect(names).not_to include("stock_openings_append_only")
   end
 
+  # Módulo 27b (Task 10): o envio. Guardas de ajustes, remessa, parte e registro; o
+  # link só de acréscimo; truncate recusado nas cinco tabelas.
+  it "loads the 27b submission triggers into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+    tables = %w[bnafar_settings bnafar_submissions bnafar_batches bnafar_records bnafar_movement_links]
+
+    expect(names).to include("bnafar_settings_guard", "bnafar_submissions_guard", "bnafar_batches_guard", "bnafar_records_guard",
+                             "bnafar_movement_links_append_only", *tables.map { |t| "#{t}_append_only_truncate" })
+  end
+
   # Módulo 27b (Task 3): o lote deixa o só-acréscimo pela guarda do BNAFAR; o
   # truncate segue recusado.
   it "loads the 27b stock lot guard into a database restored from the dump" do

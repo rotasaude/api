@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_900002) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_25_900003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -397,6 +397,110 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900002) do
     t.check_constraint "species::text = ANY (ARRAY['dog'::text, 'cat'::text])", name: "ck_bite_observations_species"
     t.check_constraint "state::text = ANY (ARRAY['open'::text, 'closed'::text])", name: "ck_bite_observations_state"
     t.check_constraint "version >= 1", name: "ck_bite_observations_version"
+  end
+
+  create_table "bnafar_batches", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.uuid "bnafar_submission_id", null: false
+    t.datetime "created_at", null: false
+    t.jsonb "evidence"
+    t.datetime "finished_at"
+    t.string "last_error", limit: 20
+    t.datetime "last_attempted_at"
+    t.datetime "next_attempt_at"
+    t.string "operation", null: false
+    t.bigint "protocol"
+    t.datetime "sent_at"
+    t.string "status", default: "queued", null: false
+    t.datetime "updated_at", null: false
+    t.index ["bnafar_submission_id"], name: "index_bnafar_batches_on_bnafar_submission_id"
+    t.index ["status", "next_attempt_at"], name: "idx_bnafar_batches_due"
+    t.check_constraint "attempts >= 0", name: "ck_bnafar_batches_attempts"
+    t.check_constraint "evidence IS NULL OR jsonb_typeof(evidence) = 'array'::text", name: "ck_bnafar_batches_evidence"
+    t.check_constraint "last_error IS NULL OR last_error::text ~ '^[A-Za-z0-9_-]{2,20}$'::text", name: "ck_bnafar_batches_last_error"
+    t.check_constraint "operation::text = ANY (ARRAY['post'::text, 'put'::text, 'delete'::text])", name: "ck_bnafar_batches_operation"
+    t.check_constraint "protocol IS NULL OR protocol > 0", name: "ck_bnafar_batches_protocol"
+    t.check_constraint "status::text = ANY (ARRAY['queued'::text, 'sending'::text, 'processing'::text, 'finished'::text, 'failed'::text])", name: "ck_bnafar_batches_status"
+  end
+
+  create_table "bnafar_movement_links", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "bnafar_record_id", null: false
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.uuid "stock_movement_id", null: false
+    t.index ["bnafar_record_id"], name: "index_bnafar_movement_links_on_bnafar_record_id"
+    t.index ["stock_movement_id"], name: "idx_bnafar_movement_links_movement", unique: true
+    t.check_constraint "kind::text = ANY (ARRAY['exit'::text, 'deletion'::text, 'late_reversal'::text])", name: "ck_bnafar_movement_links_kind"
+  end
+
+  create_table "bnafar_records", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "accepted_at"
+    t.uuid "bnafar_batch_id"
+    t.bigint "bnafar_code"
+    t.uuid "bnafar_submission_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "deleted_at"
+    t.uuid "deletion_batch_id"
+    t.text "error_codes", default: [], null: false, array: true
+    t.string "item_key", limit: 60, null: false
+    t.uuid "origin_code", null: false
+    t.text "payload"
+    t.integer "rejected_items", default: 0, null: false
+    t.uuid "replaces_record_id"
+    t.datetime "sent_at"
+    t.string "status", default: "pending", null: false
+    t.uuid "stock_external_exit_id"
+    t.uuid "stock_location_id", null: false
+    t.string "subject", null: false
+    t.datetime "updated_at", null: false
+    t.index ["bnafar_batch_id"], name: "index_bnafar_records_on_bnafar_batch_id"
+    t.index ["bnafar_submission_id"], name: "index_bnafar_records_on_bnafar_submission_id"
+    t.index ["deletion_batch_id"], name: "idx_bnafar_records_deletion_batch", where: "(deletion_batch_id IS NOT NULL)"
+    t.index ["origin_code"], name: "idx_bnafar_records_origin_code", unique: true
+    t.index ["replaces_record_id"], name: "idx_bnafar_records_replaces", where: "(replaces_record_id IS NOT NULL)"
+    t.index ["status", "accepted_at"], name: "idx_bnafar_records_status"
+    t.index ["stock_external_exit_id"], name: "idx_bnafar_records_external_exit", where: "(stock_external_exit_id IS NOT NULL)"
+    t.index ["stock_location_id", "created_at"], name: "idx_bnafar_records_location"
+    t.check_constraint "(deleted_at IS NULL AND deletion_batch_id IS NULL) OR status::text = 'accepted'::text", name: "ck_bnafar_records_deletion"
+    t.check_constraint "(status::text = 'accepted'::text) = (accepted_at IS NOT NULL)", name: "ck_bnafar_records_accepted"
+    t.check_constraint "array_position(error_codes, NULL::text) IS NULL AND array_to_string(error_codes, ','::text) ~ '^([A-Za-z0-9_-]{2,20}(,[A-Za-z0-9_-]{2,20})*)?$'::text", name: "ck_bnafar_records_error_codes"
+    t.check_constraint "bnafar_code IS NULL OR bnafar_code > 0 AND status::text = 'accepted'::text", name: "ck_bnafar_records_code"
+    t.check_constraint "deleted_at IS NULL OR deletion_batch_id IS NOT NULL", name: "ck_bnafar_records_deleted_by_batch"
+    t.check_constraint "rejected_items >= 0", name: "ck_bnafar_records_rejected_items"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'accepted'::text, 'rejected'::text])", name: "ck_bnafar_records_status"
+    t.check_constraint "subject::text = ANY (ARRAY['position'::text, 'exit'::text])", name: "ck_bnafar_records_subject"
+  end
+
+  create_table "bnafar_settings", id: :smallint, default: nil, force: :cascade do |t|
+    t.string "environment", default: "production", null: false
+    t.date "started_on"
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_maintainer_id"
+    t.check_constraint "environment::text = ANY (ARRAY['homologation'::text, 'production'::text])", name: "ck_bnafar_settings_environment"
+    t.check_constraint "id = 1", name: "ck_bnafar_settings_singleton"
+  end
+
+  create_table "bnafar_submissions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.datetime "building_started_at"
+    t.datetime "created_at", null: false
+    t.string "environment", null: false
+    t.datetime "finished_at"
+    t.string "last_error", limit: 20
+    t.datetime "next_attempt_at"
+    t.date "reference_on", null: false
+    t.datetime "sent_at"
+    t.string "status", default: "building", null: false
+    t.string "subject", null: false
+    t.datetime "updated_at", null: false
+    t.index ["reference_on", "subject", "environment"], name: "idx_bnafar_submissions_once", unique: true
+    t.index ["status", "reference_on"], name: "idx_bnafar_submissions_status"
+    t.check_constraint "attempts >= 0", name: "ck_bnafar_submissions_attempts"
+    t.check_constraint "environment::text = ANY (ARRAY['homologation'::text, 'production'::text])", name: "ck_bnafar_submissions_environment"
+    t.check_constraint "last_error IS NULL OR last_error::text ~ '^[A-Za-z0-9_-]{2,20}$'::text", name: "ck_bnafar_submissions_last_error"
+    t.check_constraint "status::text <> 'finished'::text OR finished_at IS NOT NULL", name: "ck_bnafar_submissions_finished"
+    t.check_constraint "status::text = ANY (ARRAY['building'::text, 'queued'::text, 'sending'::text, 'processing'::text, 'finished'::text, 'failed'::text, 'lost'::text])", name: "ck_bnafar_submissions_status"
+    t.check_constraint "subject::text = ANY (ARRAY['position'::text, 'exit'::text])", name: "ck_bnafar_submissions_subject"
   end
 
   create_table "call_locations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -5733,6 +5837,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900002) do
   add_foreign_key "bite_observations", "animals"
   add_foreign_key "bite_observations", "disease_notifications"
   add_foreign_key "bite_observations", "users", column: "closed_by_user_id"
+  add_foreign_key "bnafar_batches", "bnafar_submissions"
+  add_foreign_key "bnafar_movement_links", "bnafar_records"
+  add_foreign_key "bnafar_movement_links", "stock_movements"
+  add_foreign_key "bnafar_records", "bnafar_batches"
+  add_foreign_key "bnafar_records", "bnafar_batches", column: "deletion_batch_id"
+  add_foreign_key "bnafar_records", "bnafar_records", column: "replaces_record_id"
+  add_foreign_key "bnafar_records", "bnafar_submissions"
+  add_foreign_key "bnafar_records", "stock_external_exits"
+  add_foreign_key "bnafar_records", "stock_locations"
   add_foreign_key "call_locations", "health_units"
   add_foreign_key "call_locations", "users", column: "updated_by_user_id"
   add_foreign_key "campaign_recipients", "campaigns"

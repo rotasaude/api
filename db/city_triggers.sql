@@ -5223,3 +5223,192 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 27b — envio (contrato §3; Q8, Q14, Q25; R10, R11): nada some (DELETE
+-- e TRUNCATE recusados nas cinco tabelas).
+--   - bnafar_settings: o primeiro dia enviado (`started_on`) grava-se uma vez;
+--   - bnafar_submissions: a identidade (dia, assunto, ambiente) nunca muda e a
+--     situação só anda para a frente: building → queued | finished | lost;
+--     queued, sending e processing entre si (a remessa agrega as partes `post`)
+--     e daí a finished | failed | lost; finished | failed → lost; e
+--     finished | failed → queued SÓ no reenvio, com uma parte `post` nova já
+--     `queued` (R10: `put` e `delete` têm ciclo próprio e nunca reabrem a
+--     remessa). `sent_at` grava-se uma vez; as tentativas nunca descem;
+--   - bnafar_batches: queued → sending | failed; sending → queued | processing |
+--     finished | failed; processing → finished | failed. O protocolo e o
+--     `sent_at` gravam-se uma vez; a evidência só existe em remessa de
+--     homologação (Q8);
+--   - bnafar_records: a identidade nunca muda; pending → accepted | rejected e
+--     rejected → pending só no reenvio, quando (e só então) o payload, a parte
+--     e os códigos trocam juntos (R11). Fora disso o payload só vira NULL (ou é
+--     re-cifrado sob rota.reencrypting), a parte grava-se uma vez, os códigos e
+--     `rejected_items` só mudam com a situação; `bnafar_code`, `sent_at`,
+--     `accepted_at` e a parte da exclusão gravam-se uma vez; `deleted_at` uma
+--     vez, só em registro aceito;
+--   - bnafar_movement_links: só acréscimo (o rastro de cada saída).
+CREATE OR REPLACE FUNCTION rota_bnafar_setting_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'bnafar_settings: DELETE refused';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id THEN
+    RAISE EXCEPTION 'bnafar_settings: id never changes';
+  END IF;
+  IF OLD.started_on IS NOT NULL AND NEW.started_on IS DISTINCT FROM OLD.started_on THEN
+    RAISE EXCEPTION 'bnafar_settings: started_on is recorded once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_bnafar_submission_guard() RETURNS trigger AS $fn$
+DECLARE
+  inflight text[] := ARRAY['queued', 'sending', 'processing'];
+  closed text[] := ARRAY['finished', 'failed'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'bnafar_submissions: DELETE refused';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.reference_on IS DISTINCT FROM OLD.reference_on
+     OR NEW.subject IS DISTINCT FROM OLD.subject OR NEW.environment IS DISTINCT FROM OLD.environment
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'bnafar_submissions: the day, subject and environment never change';
+  END IF;
+  IF NEW.attempts < OLD.attempts THEN
+    RAISE EXCEPTION 'bnafar_submissions: attempts never decrease';
+  END IF;
+  IF OLD.sent_at IS NOT NULL AND NEW.sent_at IS DISTINCT FROM OLD.sent_at THEN
+    RAISE EXCEPTION 'bnafar_submissions: sent_at is recorded once';
+  END IF;
+  IF NEW.building_started_at IS DISTINCT FROM OLD.building_started_at AND OLD.status <> 'building' THEN
+    RAISE EXCEPTION 'bnafar_submissions: building_started_at changes only while building';
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status AND NOT (
+       (OLD.status = 'building' AND NEW.status IN ('queued', 'finished', 'lost'))
+       OR (OLD.status = ANY (inflight) AND (NEW.status = ANY (inflight) OR NEW.status = ANY (closed) OR NEW.status = 'lost'))
+       OR (OLD.status = ANY (closed) AND NEW.status = 'lost')
+       OR (OLD.status = ANY (closed) AND NEW.status = 'queued'
+           AND EXISTS (SELECT 1 FROM bnafar_batches b
+                        WHERE b.bnafar_submission_id = NEW.id AND b.operation = 'post' AND b.status = 'queued'))
+     ) THEN
+    RAISE EXCEPTION 'bnafar_submissions: status % -> % refused (forward only; finished -> queued only with a new post batch)',
+      OLD.status, NEW.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_bnafar_batch_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'bnafar_batches: DELETE refused';
+  END IF;
+  IF NEW.evidence IS NOT NULL
+     AND (SELECT s.environment FROM bnafar_submissions s WHERE s.id = NEW.bnafar_submission_id) IS DISTINCT FROM 'homologation' THEN
+    RAISE EXCEPTION 'bnafar_batches: evidence only in homologation';
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.bnafar_submission_id IS DISTINCT FROM OLD.bnafar_submission_id
+     OR NEW.operation IS DISTINCT FROM OLD.operation OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'bnafar_batches: the submission and the operation never change';
+  END IF;
+  IF NEW.attempts < OLD.attempts THEN
+    RAISE EXCEPTION 'bnafar_batches: attempts never decrease';
+  END IF;
+  IF OLD.protocol IS NOT NULL AND NEW.protocol IS DISTINCT FROM OLD.protocol THEN
+    RAISE EXCEPTION 'bnafar_batches: protocol is recorded once';
+  END IF;
+  IF OLD.sent_at IS NOT NULL AND NEW.sent_at IS DISTINCT FROM OLD.sent_at THEN
+    RAISE EXCEPTION 'bnafar_batches: sent_at is recorded once';
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status AND NOT (
+       (OLD.status = 'queued' AND NEW.status IN ('sending', 'failed'))
+       OR (OLD.status = 'sending' AND NEW.status IN ('queued', 'processing', 'finished', 'failed'))
+       OR (OLD.status = 'processing' AND NEW.status IN ('finished', 'failed'))
+     ) THEN
+    RAISE EXCEPTION 'bnafar_batches: status % -> % refused (forward only)', OLD.status, NEW.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_bnafar_record_guard() RETURNS trigger AS $fn$
+DECLARE
+  retry boolean;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'bnafar_records: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'payload') = (to_jsonb(OLD) - 'payload') THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.bnafar_submission_id IS DISTINCT FROM OLD.bnafar_submission_id
+     OR NEW.origin_code IS DISTINCT FROM OLD.origin_code OR NEW.subject IS DISTINCT FROM OLD.subject
+     OR NEW.stock_location_id IS DISTINCT FROM OLD.stock_location_id OR NEW.item_key IS DISTINCT FROM OLD.item_key
+     OR NEW.replaces_record_id IS DISTINCT FROM OLD.replaces_record_id
+     OR NEW.stock_external_exit_id IS DISTINCT FROM OLD.stock_external_exit_id
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'bnafar_records: the identity of a record never changes';
+  END IF;
+  retry := OLD.status = 'rejected' AND NEW.status = 'pending';
+  IF NEW.status IS DISTINCT FROM OLD.status
+     AND NOT ((OLD.status = 'pending' AND NEW.status IN ('accepted', 'rejected')) OR retry) THEN
+    RAISE EXCEPTION 'bnafar_records: status % -> % refused (forward only; rejected -> pending only on retry)', OLD.status, NEW.status;
+  END IF;
+  IF NEW.payload IS DISTINCT FROM OLD.payload AND NEW.payload IS NOT NULL AND NOT retry THEN
+    RAISE EXCEPTION 'bnafar_records: payload only becomes NULL (or changes on retry)';
+  END IF;
+  IF OLD.bnafar_batch_id IS NOT NULL AND NEW.bnafar_batch_id IS DISTINCT FROM OLD.bnafar_batch_id AND NOT retry THEN
+    RAISE EXCEPTION 'bnafar_records: bnafar_batch_id is set once (changes only on retry)';
+  END IF;
+  IF (NEW.error_codes IS DISTINCT FROM OLD.error_codes OR NEW.rejected_items IS DISTINCT FROM OLD.rejected_items)
+     AND NEW.status = OLD.status THEN
+    RAISE EXCEPTION 'bnafar_records: error_codes and rejected_items change only with the status';
+  END IF;
+  IF OLD.bnafar_code IS NOT NULL AND NEW.bnafar_code IS DISTINCT FROM OLD.bnafar_code THEN
+    RAISE EXCEPTION 'bnafar_records: a recorded bnafar_code never changes';
+  END IF;
+  IF (OLD.sent_at IS NOT NULL AND NEW.sent_at IS DISTINCT FROM OLD.sent_at)
+     OR (OLD.accepted_at IS NOT NULL AND NEW.accepted_at IS DISTINCT FROM OLD.accepted_at)
+     OR (OLD.deletion_batch_id IS NOT NULL AND NEW.deletion_batch_id IS DISTINCT FROM OLD.deletion_batch_id) THEN
+    RAISE EXCEPTION 'bnafar_records: sent_at, accepted_at and deletion_batch_id are recorded once';
+  END IF;
+  IF NEW.deleted_at IS DISTINCT FROM OLD.deleted_at
+     AND (OLD.deleted_at IS NOT NULL OR OLD.status <> 'accepted' OR NEW.status <> 'accepted') THEN
+    RAISE EXCEPTION 'bnafar_records: deleted_at is recorded once, only on an accepted record';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.bnafar_settings') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS bnafar_settings_guard ON bnafar_settings';
+    EXECUTE 'CREATE TRIGGER bnafar_settings_guard BEFORE UPDATE OR DELETE ON bnafar_settings
+      FOR EACH ROW EXECUTE FUNCTION rota_bnafar_setting_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS bnafar_submissions_guard ON bnafar_submissions';
+    EXECUTE 'CREATE TRIGGER bnafar_submissions_guard BEFORE UPDATE OR DELETE ON bnafar_submissions
+      FOR EACH ROW EXECUTE FUNCTION rota_bnafar_submission_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS bnafar_batches_guard ON bnafar_batches';
+    EXECUTE 'CREATE TRIGGER bnafar_batches_guard BEFORE INSERT OR UPDATE OR DELETE ON bnafar_batches
+      FOR EACH ROW EXECUTE FUNCTION rota_bnafar_batch_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS bnafar_records_guard ON bnafar_records';
+    EXECUTE 'CREATE TRIGGER bnafar_records_guard BEFORE UPDATE OR DELETE ON bnafar_records
+      FOR EACH ROW EXECUTE FUNCTION rota_bnafar_record_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS bnafar_movement_links_append_only ON bnafar_movement_links';
+    EXECUTE 'CREATE TRIGGER bnafar_movement_links_append_only BEFORE UPDATE OR DELETE ON bnafar_movement_links
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    FOREACH item IN ARRAY ARRAY['bnafar_settings', 'bnafar_submissions', 'bnafar_batches', 'bnafar_records', 'bnafar_movement_links'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;
