@@ -94,7 +94,7 @@ RSpec.describe Platform::Features do
   end
 
   it "cidade com schema atrasado conta como inalcançável (R5)" do
-    allow(IntegrationCredential).to receive(:pluck).and_raise(ActiveRecord::StatementInvalid, "PG::UndefinedTable")
+    allow(IntegrationCredential).to receive(:in_use).and_raise(ActiveRecord::StatementInvalid, "PG::UndefinedTable")
     expect(described_class.city_state(city)).to be_nil
     expect(described_class.missing(city, "cadsus_lookup")).to eq([ "city_unreachable" ])
   end
@@ -249,5 +249,23 @@ RSpec.describe Platform::Features do
     state = { credentials: {}, ibge_code: nil, uf: "PR", pec_origin: false, pec_hmac_key: false }
     allow(described_class).to receive(:city_state).with(city).and_return(state)
     expect(described_class.missing(city, "bnafar")).to eq(%w[credential_missing:bnafar ibge_code_missing])
+  end
+
+  it "módulo 27b (Q9): só credencial de homologação com a cidade em produção → credential_missing:bnafar" do
+    IntegrationCredential.create!(kind: "bnafar", environment: "homologation", secret: { "username" => "u", "password" => "p" },
+                                  set_by_user: admin, set_at: Time.current)
+    expect(Bnafar::Environment.current(env: "production")).to eq("production")
+    expect(described_class.city_state(city)[:credentials]).not_to have_key("bnafar")
+    expect(described_class.missing(city, "bnafar")).to include("credential_missing:bnafar")
+  end
+
+  it "módulo 27b (Q9): com o ambiente em uso homologação, a credencial de homologação conta; a de produção não" do
+    IntegrationCredential.create!(kind: "bnafar", environment: "production", secret: { "username" => "u", "password" => "p" },
+                                  set_by_user: admin, set_at: Time.current, last_check_status: "ok")
+    IntegrationCredential.create!(kind: "bnafar", environment: "homologation", secret: { "username" => "u", "password" => "p" },
+                                  set_by_user: admin, set_at: Time.current, last_check_status: "unauthorized")
+    expect(described_class.city_state(city)[:credentials]["bnafar"]).to eq("ok")
+    allow(Bnafar::Environment).to receive(:current).and_return("homologation")
+    expect(described_class.city_state(city)[:credentials]["bnafar"]).to eq("unauthorized")
   end
 end

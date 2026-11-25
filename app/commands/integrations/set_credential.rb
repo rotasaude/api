@@ -3,16 +3,23 @@
 # 2026-10-05 §3.3; ADR 0047). Escrita só: nada devolve o segredo. Trocar zera o
 # último teste. `secret` é o Hash do corpo: ledi/cadsus { username, password };
 # rnds { pfx_base64, pfx_password, requester_cnes }. O evento leva só kind e
-# user_id; a trilha da plataforma (rnds.credential_set) só city_id. O PFX é
-# aberto aqui, nunca a mensagem da exceção é repassada.
+# user_id (e o ambiente, na bnafar); a trilha da plataforma (rnds.credential_set)
+# só city_id, a da bnafar (bnafar.credential_set) city_id e environment. O PFX é
+# aberto aqui, nunca a mensagem da exceção é repassada. A `bnafar` tem uma linha
+# por ambiente (Q9): `homologation` só fora de produção; os outros tipos só têm
+# `production`.
 # Reasons: :unknown_kind, :invalid_credential, :invalid_requester_cnes,
-# :invalid_certificate, :certificate_expired.
+# :invalid_certificate, :certificate_expired, :invalid_environment,
+# :environment_not_allowed.
 module Integrations
   module SetCredential
     module_function
 
-    def call(kind:, secret:, by:, city:)
+    def call(kind:, secret:, by:, city:, environment: "production")
       return Result.fail(:unknown_kind) unless IntegrationCredential::KINDS.include?(kind)
+      return Result.fail(:invalid_environment) unless IntegrationCredential::ENVIRONMENTS.include?(environment)
+      return Result.fail(:invalid_environment) if kind != "bnafar" && environment != "production"
+      return Result.fail(:environment_not_allowed) unless Bnafar::Environment.allowed?(environment)
 
       secret = secret.respond_to?(:to_h) ? secret.to_h.stringify_keys : nil
       reason = kind == "rnds" ? validate_rnds(secret) : validate_login(secret)
@@ -21,12 +28,15 @@ module Integrations
       stored = kind == "rnds" ? secret.slice(*IntegrationCredential::SECRET_KEYS["rnds"]) : login_secret(secret)
       credential = nil
       ApplicationRecord.transaction do
-        credential = IntegrationCredential.lock.find_or_initialize_by(kind: kind)
+        credential = IntegrationCredential.lock.find_or_initialize_by(kind: kind, environment: environment)
         credential.update!(secret: stored, set_by_user: by,
                            set_at: Time.current, last_check_at: nil, last_check_status: nil, last_check_message: nil)
-        DomainEvents.publish("integration_credential.changed", kind: kind, user_id: by.id)
+        payload = { kind: kind, user_id: by.id }
+        payload[:environment] = environment if kind == "bnafar"
+        DomainEvents.publish("integration_credential.changed", **payload)
       end
       Platform.audit("rnds.credential_set", city_id: city.id) if kind == "rnds"
+      Platform.audit("bnafar.credential_set", city_id: city.id, environment: environment) if kind == "bnafar"
       Result.ok(credential: credential)
     rescue ActiveRecord::RecordNotUnique
       retry

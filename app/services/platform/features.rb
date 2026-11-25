@@ -314,7 +314,7 @@ module Platform
 
       CityConnection.with(city) do
         pec = PecConfigState.read
-        { credentials: IntegrationCredential.pluck(:kind, :last_check_status).to_h,
+        { credentials: IntegrationCredential.in_use(Bnafar::Environment.current).pluck(:kind, :last_check_status).to_h,
           ibge_code: CityProfile.current&.ibge_code, uf: CityProfile.current&.uf, pec_origin: pec[:origin], pec_hmac_key: pec[:key] }
       end
     rescue *Maintenance::CityConnectionErrors::CLASSES, ActiveRecord::StatementInvalid

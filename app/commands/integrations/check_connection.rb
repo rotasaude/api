@@ -2,6 +2,7 @@
 # Testa a credencial da cidade (ADR 0028; spec 2026-10-05 §3.3): LEDI = login
 # no PEC da cidade; CADSUS = consulta de saúde do serviço. Grava o resultado com
 # uma mensagem NOSSA — nunca o corpo da resposta nem a mensagem da exceção.
+# A bnafar testa a credencial do ambiente em uso (Q9): token novo do jwtauth.
 # Reasons: :unknown_kind, :credential_missing.
 module Integrations
   module CheckConnection
@@ -14,13 +15,15 @@ module Integrations
     def call(kind:, city:)
       return Result.fail(:unknown_kind) unless IntegrationCredential::KINDS.include?(kind)
 
-      credential = IntegrationCredential.find_by(kind: kind)
+      credential = IntegrationCredential.in_use(Bnafar::Environment.current).find_by(kind: kind)
       return Result.fail(:credential_missing) unless credential
 
       status, message = case kind
       when "ledi" then check_ledi(city, credential)
       when "rnds" then check_rnds(city, credential)
-      else check_cadsus(city)
+      when "bnafar" then check_bnafar(city, credential)
+      when "cadsus" then check_cadsus(city)
+      else raise ArgumentError, "tipo de integração sem teste de conexão"
       end
       credential.update!(last_check_at: Time.current, last_check_status: status, last_check_message: message)
       Result.ok(credential: credential)
@@ -60,6 +63,19 @@ module Integrations
       [ "unauthorized", "A RNDS recusou o certificado" ]
     rescue Rnds::Errors::Unavailable
       [ "unreachable", "RNDS inalcançável" ]
+    end
+
+    # Pede um token novo ao jwtauth (o simulado, com bnafar_mock). Mensagens
+    # nossas: nunca a da exceção nem o corpo da resposta.
+    def check_bnafar(city, credential)
+      Bnafar::Client.for(city, environment: credential.environment).token!(fresh: true)
+      [ "ok", "Token do SI-BNAFAR emitido" ]
+    rescue Bnafar::Errors::NotConfigured
+      [ "error", "SI-BNAFAR não configurado pela plataforma" ]
+    rescue Bnafar::Errors::Unauthorized
+      [ "unauthorized", "O SI-BNAFAR recusou usuário ou senha" ]
+    rescue Bnafar::Errors::Unavailable
+      [ "unreachable", "SI-BNAFAR inalcançável" ]
     end
 
     def check_cadsus(city)

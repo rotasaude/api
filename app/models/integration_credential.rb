@@ -24,6 +24,10 @@ class IntegrationCredential < ApplicationRecord
 
   belongs_to :set_by_user, class_name: "User"
 
+  # As credenciais em uso (Q9): a `production` de cada tipo (ledi, cadsus e
+  # rnds só têm essa) e a `bnafar` do ambiente em uso.
+  scope :in_use, ->(bnafar_environment) { where("kind <> 'bnafar' OR environment = ?", bnafar_environment) }
+
   validates :kind, inclusion: { in: KINDS }, uniqueness: { scope: :environment }
   validates :environment, inclusion: { in: ENVIRONMENTS }
   validates :set_at, presence: true

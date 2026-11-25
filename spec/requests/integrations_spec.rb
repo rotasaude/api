@@ -31,13 +31,13 @@ RSpec.describe "Integrações da cidade", type: :request do
     get "/integrations"
     expect(json).to include("record_mode" => "integrated", "pec_url_set" => false, "ibge_code_set" => true)
     expect(json["credentials"]).to eq([
-      { "kind" => "ledi", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
+      { "kind" => "ledi", "environment" => "production", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
         "last_check_status" => nil, "last_check_message" => nil },
-      { "kind" => "cadsus", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
+      { "kind" => "cadsus", "environment" => "production", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
         "last_check_status" => nil, "last_check_message" => nil },
-      { "kind" => "rnds", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
+      { "kind" => "rnds", "environment" => "production", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
         "last_check_status" => nil, "last_check_message" => nil },
-      { "kind" => "bnafar", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
+      { "kind" => "bnafar", "environment" => "production", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
         "last_check_status" => nil, "last_check_message" => nil }
     ])
     expect(json["features"].first).to eq("key" => "ledi_export", "enabled" => false, "usable" => false,

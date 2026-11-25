@@ -1,0 +1,15 @@
+# Massa de dados da homologação do SI-BNAFAR (módulo 27b, Task 8): valores da
+# coleção Postman v1.25 do Portal de Serviços do DATASUS (IBGE 520010, CNES
+# 2384043). `a_conferir: true`: os códigos de produto abaixo são provisórios e
+# se conferem contra a coleção na homologação real (gate do módulo). Só a
+# homologação usa este arquivo (Bnafar::Homologation).
+a_conferir: true
+ibge: "520010"
+cnes: "2384043"
+program: "AF"
+products:
+  - numero: "BR0270616"
+    codigo_ampp: null
+    codigo_vmp: "123"
+    registro_anvisa: "1234567890123"
+    tipo_produto: "B"
