@@ -150,7 +150,10 @@ Rails.application.config.filter_parameters += [
   /\A(tutor|adopter)_patient_id\z/,
   # Módulo 27b: a planilha em Base64 (carga OBM no maintenance; importação do
   # saldo inicial na cidade) — o arquivo nunca em log, nas duas grafias.
-  /\A(file_base64|fileBase64)\z/
+  /\A(file_base64|fileBase64)\z/,
+  # Módulo 27b: o usuário da credencial do SI-BNAFAR (PUT /integrations/credentials/bnafar)
+  # nunca em log; a senha já cai em `:passw`. Só a chave inteira.
+  /\Ausername\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

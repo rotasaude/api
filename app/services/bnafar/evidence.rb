@@ -5,6 +5,9 @@
 # `Rnds::Errors.sanitize` (sem CPF/CNS, uma linha, 200 caracteres).
 module Bnafar
   module Evidence
+    TOKEN_FIELD = /("(?:access_token|refresh_token|id_token|token)"\s*:\s*)"[^"]*"/i
+    JWT = /eyJ[\w-]+\.[\w-]+\.?[\w-]*/
+
     module_function
 
     def curl(method:, url:, body:, status: nil, response: nil, environment: Environment.current)
@@ -17,20 +20,26 @@ module Bnafar
       render(lines, status, response)
     end
 
-    def login(url:, status: nil, response: nil, environment: Environment.current)
+    # Sem o corpo da resposta: o do jwtauth é o próprio token (e o JWT leva o usuário).
+    def login(url:, status: nil, environment: Environment.current)
       return "" unless environment == "homologation"
 
-      render([ "curl -X POST '#{quote(url)}'", "  -u '<USUARIO>:<SENHA>'" ], status, response)
+      render([ "curl -X POST '#{quote(url)}'", "  -u '<USUARIO>:<SENHA>'" ], status, nil)
     end
 
     def render(lines, status, response)
       text = lines.join(" \\\n")
       text += "\n# HTTP #{status.to_i}" if status
-      text += "\n# #{Rnds::Errors.sanitize(response)}" if response.present?
+      text += "\n# #{Rnds::Errors.sanitize(scrub(response))}" if response.present?
       text
     end
 
+    # Nenhum campo de token da resposta chega à evidência, nem um JWT solto.
+    def scrub(text)
+      text.to_s.gsub(TOKEN_FIELD, '\\1"***"').gsub(JWT, "***")
+    end
+
     def quote(text) = text.to_s.gsub("'", "'\\\\''")
-    private_class_method :render, :quote
+    private_class_method :render, :quote, :scrub
   end
 end

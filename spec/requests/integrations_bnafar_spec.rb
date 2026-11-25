@@ -52,6 +52,7 @@ RSpec.describe "Integrações da cidade: bnafar", type: :request do
     expect(response.body).not_to include("senha-bnafar-secreta")
     expect(response.body).not_to include("usuario-bnafar-x")
     expect(logs.string).not_to include("senha-bnafar-secreta")
+    expect(logs.string).not_to include("usuario-bnafar-x")
     expect(DomainEvent.all.map(&:payload).to_s).not_to include("senha-bnafar-secreta")
     expect(PlatformEvent.all.map(&:payload).to_s).not_to include("usuario-bnafar-x")
   ensure

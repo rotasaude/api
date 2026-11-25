@@ -308,6 +308,22 @@ RSpec.describe Bnafar::Client, type: :model do
       expect(text).not_to include(password)
     end
 
+    it "login nunca contém o access_token devolvido pelo fake" do
+      token = client.token!(fresh: true)
+      text = described_class.login(url: "https://hom.test/jwtauth/auth", status: 200, environment: "homologation")
+      expect(text).not_to include(token)
+      expect(text).not_to include("access_token")
+    end
+
+    it "curl não repete campo de token nem JWT da resposta" do
+      jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c3VhcmlvIn0.assinaturaxyz"
+      body = JSON.generate("access_token" => jwt, "token" => "outro-segredo", "msg" => jwt)
+      text = described_class.curl(method: "GET", url: "https://hom.test/a", body: nil, status: 200, response: body, environment: "homologation")
+      expect(text).not_to include(jwt)
+      expect(text).not_to include("outro-segredo")
+      expect(text).not_to include("assinaturaxyz")
+    end
+
     it "só em homologação: em produção devolve vazio" do
       expect(described_class.curl(method: "POST", url: "https://x.test/a", body: [], environment: "production")).to eq("")
       expect(described_class.login(url: "https://x.test/a", environment: "production")).to eq("")
