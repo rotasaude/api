@@ -23,9 +23,12 @@
 # ou medida nasce entre a conferência e a gravação (o trigger
 # rota_vector_product_guard é o cinto, sem trava). version + 1 a cada escrita;
 # `vector_product.changed` só com ids, só quando algo mudou.
+#
+# Módulo 27b (Q13, Q23): `catmat_code` (Integer > 0 ou null), o CATMAT enviado à
+# BNAFAR; dado de origem, exige só o estoque vetorial (nunca o `bnafar`).
 module VectorControl
   module SaveProduct
-    KEYS = %w[code name unit charge_size uses active].freeze
+    KEYS = %w[code name unit charge_size uses active catmat_code].freeze
     REQUIRED = %w[code name unit charge_size uses].freeze
     FIXED = %w[unit charge_size].freeze
     CHARGE_SIZE = /\A\d{1,8}(\.\d{1,2})?\z/
@@ -95,7 +98,7 @@ module VectorControl
         parsed = parse_value(key, value)
         return [ nil, key ] if parsed.nil?
 
-        attrs[key.to_sym] = parsed
+        attrs[key.to_sym] = parsed == :clear ? nil : parsed
       end
       [ attrs, nil ]
     end
@@ -112,6 +115,9 @@ module VectorControl
       when "uses"
         value if value.is_a?(Array) && value.any? && value.uniq.size == value.size && value.all? { |use| Catalog::ALL_PRODUCT_USES.include?(use) }
       when "active" then value if [ true, false ].include?(value)
+      # Módulo 27b (Q13): `null` limpa e é válido; o nil de "recusado" não o
+      # distingue, por isso o :clear (parse o troca por nil).
+      when "catmat_code" then value.nil? ? :clear : (value if value.is_a?(Integer) && value.positive? && value <= 2_147_483_647)
       end
     end
 

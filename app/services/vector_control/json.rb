@@ -176,7 +176,7 @@ module VectorControl
       return products([ product ]).first if in_use.nil?
 
       { id: product.id, code: product.code, name: product.name, unit: product.unit, charge_size: format("%.2f", product.charge_size),
-        uses: product.uses, active: product.active, in_use: in_use }
+        uses: product.uses, active: product.active, in_use: in_use, catmat_code: product.catmat_code }
     end
 
     def settings(setting)

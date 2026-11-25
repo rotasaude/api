@@ -871,6 +871,7 @@ Rails.application.routes.draw do
     post   "admin/rooms/:id/staff",       to: "admin/room_staff#create"
     delete "admin/rooms/:id/staff",       to: "admin/room_staff#destroy"
     post   "admin/cold_chain_central",    to: "admin/cold_chain_central#create"
+    patch  "admin/cold_chain_central",    to: "admin/cold_chain_central#update"
     get    "admin/settings",              to: "admin/settings#show"
     patch  "admin/settings",              to: "admin/settings#update"
     # Locais da pessoa (salas com o papel; rede de frio).

@@ -17,7 +17,7 @@ module Pharmacy
         health_unit: unit && { id: unit.id, name: unit.name }, active: location.active }
     end
 
-    # Locais para a administração (contrato §3): <location> + `staff` ativo
+    # Locais para a administração (contrato §3): <location> + `cnes`, `bnafar_type` + `staff` ativo
     # `[ { user_id, name, role } ]`, sem e-mail. O nome vem do perfil
     # profissional (quem não tem perfil, como o almoxarife, vai com `name: null`).
     def admin_locations(locations)
@@ -27,7 +27,10 @@ module Pharmacy
         staff = (links[row.id] || []).map do |link|
           { user_id: link.user_id, name: link.user.professional&.professional_name, role: link.role }
         end
-        location(row).merge(staff: staff.sort_by { |member| [ member[:name].to_s, member[:role], member[:user_id] ] })
+        # Módulo 27b: `cnes` (o enviado à BNAFAR: o próprio nos dois centrais, o
+        # da unidade nos demais) e `bnafar_type` (DM01).
+        location(row).merge(cnes: row.bnafar_cnes, bnafar_type: ::Bnafar::LocationTypes.for(row),
+                            staff: staff.sort_by { |member| [ member[:name].to_s, member[:role], member[:user_id] ] })
       end
     end
 

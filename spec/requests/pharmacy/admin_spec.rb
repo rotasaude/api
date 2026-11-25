@@ -29,14 +29,14 @@ RSpec.describe "Farmácia — administração", type: :request do
       expect(response).to have_http_status(:created)
       central = StockLocation.find_by!(kind: "central")
       expect(json_body).to eq("id" => central.id, "name" => "Central de Abastecimento Farmacêutico", "kind" => "central",
-                              "health_unit" => nil, "active" => true, "staff" => [])
+                              "health_unit" => nil, "active" => true, "cnes" => nil, "bnafar_type" => "A", "staff" => [])
 
       expect(unit.dispenses).to be(false)
       json_post "/pharmacy/admin/locations", kind: "unit", health_unit_id: unit.id, name: "Farmácia da UBS Jardim das Flores", active: true
       expect(response).to have_http_status(:created)
       farmacia = StockLocation.find_by!(kind: "unit")
       expect(json_body).to eq("id" => farmacia.id, "name" => "Farmácia da UBS Jardim das Flores", "kind" => "unit",
-                              "health_unit" => { "id" => unit.id, "name" => "UBS Jardim das Flores" }, "active" => true, "staff" => [])
+                              "health_unit" => { "id" => unit.id, "name" => "UBS Jardim das Flores" }, "active" => true, "cnes" => nil, "bnafar_type" => "F", "staff" => [])
       expect(unit.reload.dispenses).to be(true)
       expect(farmacia.updated_by_user).to eq(admin)
       expect(events).to eq([ { "subject" => "location", "stock_location_id" => central.id, "user_id" => admin.id },

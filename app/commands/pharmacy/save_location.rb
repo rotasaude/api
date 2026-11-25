@@ -20,8 +20,15 @@
 # unidade é travada FOR UPDATE (a troca de tipo dela trava a mesma linha e
 # recusa unit_has_vector_control_location, A-13); a marca `dispenses` não muda
 # (o local não dispensa). Reativar confere a unidade de novo.
+#
+# Módulo 27b (Q13, Q23): o PATCH do `central` aceita `cnes` (7 dígitos ou null),
+# dado de origem do envio à BNAFAR. Em outro tipo de local → `invalid_request`
+# path `cnes` (os demais usam o CNES da unidade); CNES de uma `health_units.cnes`
+# → `cnes_in_use` (o par CNES × DM01 nunca diverge). O mesmo CNES pode estar nos
+# dois centrais (almoxarifado e rede de frio).
 module Pharmacy
   module SaveLocation
+    CNES = /\A\d{7}\z/
     NAME_LENGTH = (3..Catalog::NAME_MAX)
     # Índices únicos da migração 20261029900001.
     CENTRAL_INDEX = "idx_stock_locations_one_central".freeze
@@ -29,9 +36,15 @@ module Pharmacy
 
     module_function
 
+    # nil (limpa) ou 7 dígitos em texto.
+    def valid_cnes?(value) = value.nil? || (value.is_a?(String) && value.match?(CNES))
+
+    # CNES de uma unidade de saúde (a fonte do DM01 dela).
+    def cnes_in_use?(cnes) = HealthUnit.exists?(cnes: cnes)
+
     # attrs: corpo JSON (chaves texto). -> Result.ok(location:) |
     # fail(:invalid_request, details: { path: }) | fail(:central_exists) |
-    # fail(:unit_taken) | fail(:location_has_stock).
+    # fail(:unit_taken) | fail(:location_has_stock) | fail(:cnes_in_use).
     def call(attrs:, by:, location: nil)
       attrs = attrs.to_h.stringify_keys
       location ? update(location, attrs, by) : create(attrs, by)
@@ -74,6 +87,7 @@ module Pharmacy
       name = attrs.key?("name") ? valid_name(attrs["name"]) : nil
       return refuse("name") if attrs.key?("name") && name.nil?
       return refuse("active") if attrs.key?("active") && ![ true, false ].include?(attrs["active"])
+      return refuse("cnes") if attrs.key?("cnes") && !(location.central? && valid_cnes?(attrs["cnes"]))
 
       StockLocation.transaction(requires_new: true) do
         # Passo 1: os lotes (lote → local), só quando a chamada desativa.
@@ -83,7 +97,9 @@ module Pharmacy
         active = attrs.key?("active") ? attrs["active"] : locked.active
         next refuse("name") if name && name != locked.name && name_taken?(name, except: locked.id)
         next Result.fail(:location_has_stock) if locked.active && !active && (stocked?(locked) || pending_work?(locked))
+        next Result.fail(:cnes_in_use) if attrs["cnes"] && cnes_in_use?(attrs["cnes"])
 
+        locked.cnes = attrs["cnes"] if attrs.key?("cnes")
         outcome = apply(locked, name: name, active: active, by: by)
         outcome.is_a?(Result) ? outcome : Result.ok(location: outcome)
       end

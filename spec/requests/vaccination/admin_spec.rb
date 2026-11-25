@@ -105,7 +105,7 @@ RSpec.describe "Sala de vacina — administração", type: :request do
       central = cold_chain_central!
       get "/vaccination/admin/rooms"
       expect(json_body["cold_chain_central"]).to eq("id" => central.id, "name" => central.name, "kind" => "cold_chain_central",
-                                                    "health_unit" => nil, "active" => true, "staff" => [])
+                                                    "health_unit" => nil, "active" => true, "cnes" => nil, "bnafar_type" => "A", "staff" => [])
     end
 
     it "só o municipal_admin; escrita sem step-up → 401" do
@@ -214,7 +214,7 @@ RSpec.describe "Sala de vacina — administração", type: :request do
       expect(response).to have_http_status(:created)
       central = StockLocation.find_by!(kind: "cold_chain_central")
       expect(json_body).to eq("id" => central.id, "name" => "Rede de frio municipal", "kind" => "cold_chain_central",
-                              "health_unit" => nil, "active" => true, "staff" => [])
+                              "health_unit" => nil, "active" => true, "cnes" => nil, "bnafar_type" => "A", "staff" => [])
       json_post "/vaccination/admin/cold_chain_central", name: "De novo"
       expect([ response.status, json_body["error"] ]).to eq([ 409, "already_exists" ])
     end

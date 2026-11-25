@@ -17,7 +17,7 @@ RSpec.describe "Vigilância ambiental — produtos", type: :request do
     expect(response).to have_http_status(:created)
     product = VectorProduct.sole
     expect(json_body).to eq("id" => product.id, "code" => "PYR", "name" => "Pyriproxyfen 0,5% G", "unit" => "g", "charge_size" => "0.50",
-                            "uses" => [ "focal" ], "active" => true, "in_use" => false)
+                            "uses" => [ "focal" ], "active" => true, "in_use" => false, "catmat_code" => nil)
     expect(product_events.map(&:payload)).to eq([ { "vector_product_id" => product.id, "user_id" => coordinator.id } ])
 
     get "/vector_control/products"
@@ -84,8 +84,36 @@ RSpec.describe "Vigilância ambiental — produtos", type: :request do
     expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
   end
 
+  it "catmat_code grava e sobe a versão; null limpa; 0 → 422 path catmat_code; funciona com o bnafar desligado" do
+    expect(Bnafar::Gate.usable?(city)).to be(false)
+    sign_in_as(coordinator)
+    json_post "/vector_control/products", input
+    product = VectorProduct.sole
+    version = product.version
+
+    json_patch "/vector_control/products/#{product.id}", catmat_code: 452_345
+    expect([ response.status, json_body["catmat_code"] ]).to eq([ 200, 452_345 ])
+    expect(product.reload).to have_attributes(catmat_code: 452_345, version: version + 1)
+
+    json_patch "/vector_control/products/#{product.id}", catmat_code: nil
+    expect([ response.status, json_body["catmat_code"] ]).to eq([ 200, nil ])
+    expect(product.reload).to have_attributes(catmat_code: nil, version: version + 2)
+
+    [ 0, -1, "123", 1.5 ].each do |bad|
+      json_patch "/vector_control/products/#{product.id}", catmat_code: bad
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "catmat_code" } ])
+    end
+    expect(product.reload.version).to eq(version + 2)
+  end
+
+  it "catmat_code já na criação" do
+    sign_in_as(coordinator)
+    json_post "/vector_control/products", input.merge(catmat_code: 99_001)
+    expect([ response.status, json_body["catmat_code"] ]).to eq([ 201, 99_001 ])
+  end
+
   def json_body_of(product)
     { "id" => product.id, "code" => product.code, "name" => product.name, "unit" => product.unit, "charge_size" => "0.50",
-      "uses" => product.uses, "active" => product.active, "in_use" => false }
+      "uses" => product.uses, "active" => product.active, "in_use" => false, "catmat_code" => nil }
   end
 end
