@@ -564,6 +564,9 @@ Rails.application.routes.draw do
     # Entradas por nota ou doação e inventário de abertura (Task 5).
     post   "receipts",                  to: "entries#receipt"
     post   "openings",                  to: "entries#opening"
+    # Aberturas do local e apresentações do OBM: só o estoque do domínio, nunca o `bnafar` (módulo 27b, Q13, Q16, Q19).
+    get    "openings",                  to: "openings#index"
+    get    "obm_presentations",         to: "obm_presentations#index"
     # Transferência do central para a unidade, em dois passos (Task 6).
     post   "transfers",                 to: "transfers#create"
     get    "transfers",                 to: "transfers#index"
