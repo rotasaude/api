@@ -252,6 +252,36 @@ RSpec.describe Bnafar::DeliverJob, type: :job do
     expect(position.records.sole.status).to eq("pending")
   end
 
+  it "Q31: parte em processing às 00:07 de R+2 não vira lost; a consulta segue e a remessa termina finished" do
+    lot!
+    build!
+    run! # envio: processing
+    expect(position.batches.sole.status).to eq("processing")
+
+    travel_to((today + 2).in_time_zone.change(hour: 0, min: 7)) do
+      Bnafar::DailyJob.perform_now
+      expect(position.reload.status).to eq("processing")
+      2.times { run! } # consultas: 2 (espera) e 3
+      expect(position.reload).to have_attributes(status: "finished")
+      expect(position.records.sole.status).to eq("accepted")
+    end
+    travel_to((today + 2).in_time_zone.change(hour: 1, min: 7)) { Bnafar::DailyJob.perform_now }
+    expect(position.reload.status).to eq("finished")
+  end
+
+  it "Q31: transitório que volta depois do fim de R+1 → failed window_closed (nunca fica queued para sempre)" do
+    lot!
+    build!
+    stub_request(:post, %r{\A#{Regexp.escape(FAKE_BNAFAR_BASE)}/bnafar/produto/}).to_timeout
+    deadline = position.reference_on.+(1).in_time_zone.end_of_day
+    allow(Bnafar::Window).to receive(:retry_until).and_call_original
+    allow(Bnafar::Window).to receive(:retry_until).with(an_object_having_attributes(subject: "position"))
+                                                  .and_return(deadline, Time.current - 1.second)
+    run!
+    expect(position.batches.sole).to have_attributes(status: "failed", last_error: "window_closed", attempts: 1)
+    expect(position.reload.status).to eq("failed")
+  end
+
   it "é recorrente a cada 5 minutos e um envio por cidade de cada vez" do
     recurring = YAML.load_file(Rails.root.join("config/recurring.yml"), aliases: true)
     expect(recurring.dig("production", "bnafar_deliver"))

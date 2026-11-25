@@ -14,7 +14,9 @@
 #       → `failed` e os registros `rejected` com os códigos; credencial
 #       recusada → volta `queued` sem contar tentativa, a credencial do
 #       ambiente fica `unauthorized` e a cidade pausa (Gate inutilizável, R31);
-#       transitório → `queued` com espera de 1, 2, 4… min até BACKOFF_CAP.
+#       transitório → `queued` com espera de 1, 2, 4… min até BACKOFF_CAP;
+#       transitório ou credencial recusada depois do fim da janela → `failed`
+#       com `window_closed` (Q31: nunca fica `queued` sob remessa perdida).
 #   `processing` (a consultar o protocolo):
 #     - situação 1, 2 ou 5 → espera a próxima rodada;
 #     - 3 ou 4 → `itensProcessados` e as `inconsistencias` paginadas: registro
@@ -29,7 +31,9 @@
 #
 # A remessa agrega só as partes `post` (R10): todas acabadas → `finished` (e
 # `bnafar_submission.finished`) ou, todas `failed`, `failed`. `put` e
-# `delete` nunca a reabrem.
+# `delete` nunca a reabrem. A parte em `processing` segue sendo consultada
+# depois do fim de R+1 (Q31: Window.close! não perde a remessa dela), e a
+# remessa segue esta agregação quando ela acaba.
 #
 # `delete` que acaba `failed` não volta: `deletion_batch_id` se grava uma vez.
 # O registro fica aceito, sem `deleted_at`, e o link do estorno segue
@@ -164,9 +168,16 @@ module Bnafar
     def after_submit(batch, token, records, response, evidence)
       now = Time.current
       attempts = batch.attempts + 1
+      limit = deadline(batch, batch.bnafar_submission, records)
       outcome = BnafarBatch.transaction(requires_new: true) do
         batch.own!(token, "sending")
         attrs = evidence_attrs(batch, evidence)
+        if %i[transient unauthorized].include?(response.status) && (limit.nil? || now > limit)
+          # A janela fechou durante a chamada (Q31): não volta à fila, que sob
+          # remessa perdida nunca mais sairia.
+          batch.update!(attrs.merge(status: "failed", attempts: attempts, last_error: Window::WINDOW_CLOSED, finished_at: now))
+          next(response.status == :unauthorized ? :paused : :sent)
+        end
         case response.status
         when :accepted
           batch.update!(attrs.merge(status: "processing", protocol: response.protocol, attempts: attempts, last_error: nil, next_attempt_at: now))
