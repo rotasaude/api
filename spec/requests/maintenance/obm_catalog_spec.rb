@@ -104,6 +104,15 @@ RSpec.describe "Maintenance: carga OBM", type: :request do
     expect(json.dig("data", "medicationCatalog", "reviewItems")).to include("catmatCode" => 268_856, "vmpCode" => "@brasil10000001")
   end
 
+  it "o SDL da carga OBM é o combinado com o maintenance" do
+    sdl = Maintenance::Schema.to_definition
+    expect(sdl).to match(/importObmCatalog\([^)]*\bcode: String![^)]*\bfileBase64: String![^)]*\): ImportObmCatalogPayload/m)
+    expect(sdl).to include("type ImportObmCatalogPayload {\n  added: Int\n  changed: Int\n  deactivated: Int\n  errors: [UserError!]!\n  ok: Boolean!\n  unmatched: Int\n  vmpLinked: Int\n}")
+    expect(sdl).to include("type ObmPresentation {\n  active: Boolean!\n  amppCode: String!\n  anvisaRegistration: String\n  catmatCode: Int\n  description: String!\n  importedAt: ISO8601DateTime!\n  manufacturerCnpj: String\n  vmpCode: String!\n}")
+    expect(sdl).to match(/obmUnmatched\([^)]*first: Int = 50[^)]*\): \[ObmPresentation!\]!/m)
+    expect(sdl).to include("type MedicationCatalogItem {\n  catmatCode: Int!\n  parseStatus: String!\n  sourceDescription: String!\n  vmpCode: String\n}")
+  end
+
   describe "limite do corpo" do
     def json_post!(query, variables)
       post "/graphql", params: { query: query, variables: variables }.to_json,
@@ -129,6 +138,12 @@ RSpec.describe "Maintenance: carga OBM", type: :request do
     it "acima do teto do upload → 413 mesmo em importObmCatalog" do
       huge = Base64.strict_encode64("x" * 5_300_000)
       json_post!(mutation, { file: huge, code: "000000" })
+      expect(response).to have_http_status(413)
+    end
+
+    it "acima do teto absoluto → 413 antes de decodificar o corpo (JSON inválido não vira 400)" do
+      body = "{" + ("x" * Maintenance::GraphqlController::UPLOAD_BODY_BYTES)
+      post "/graphql", params: body, headers: browser.merge("Content-Type" => "application/json")
       expect(response).to have_http_status(413)
     end
 

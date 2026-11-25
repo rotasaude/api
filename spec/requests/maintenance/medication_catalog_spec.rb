@@ -119,6 +119,7 @@ RSpec.describe "Maintenance: catálogo de medicamentos", type: :request do
       expect(limit_for("mutation { importMedicationCatalog { ok } }")).to eq(300)
       expect(limit_for("mutation { importAnvisaLists { ok } }")).to eq(300)
       expect(limit_for("mutation { a: importAnvisaLists { ok } b: importMedicationCatalog { ok } }")).to eq(300)
+      expect(limit_for("mutation { importObmCatalog(fileBase64: \"\", code: \"1\") { ok } }")).to eq(300)
       expect(limit_for("{ medicationCatalog { currentRelease { id } } }")).to eq(10)
       expect(limit_for("mutation { importMedicationCatalog { ok } revokeMaintenanceToken(id: \"x\") { ok } }")).to eq(10)
       expect(limit_for("mutation { ... on Mutation { importMedicationCatalog { ok } } }")).to eq(10)

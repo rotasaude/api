@@ -5,7 +5,7 @@ module Maintenance
   # APENAS dessas mutations (campos de topo, sem fragmento), para que ninguém
   # pendure outro campo nelas e herde o limite longo.
   class Timeout < GraphQL::Schema::Timeout
-    IMPORT_MUTATIONS = %w[importMedicationCatalog importAnvisaLists].freeze
+    IMPORT_MUTATIONS = %w[importMedicationCatalog importAnvisaLists importObmCatalog].freeze
     IMPORT_MAX_SECONDS = 300
 
     def max_seconds(query)
