@@ -28,6 +28,18 @@ RSpec.describe Bnafar::Alert, type: :model do
     expect(alert(at(16))).to include(late: 0, last_finished_on: today - 1)
   end
 
+  it "parte ainda em processamento de R-3 → late 1 depois das 15:00 de hoje (Q34); finished ou lost → 0" do
+    old = bnafar_submission!(reference_on: today - 3, status: "processing")
+
+    expect(alert(at(14, 59))[:late]).to eq(0)
+    expect(alert(at(15))[:late]).to eq(1)
+    old.update!(status: "finished", finished_at: Time.current)
+    expect(alert(at(15))[:late]).to eq(0)
+    lost = bnafar_submission!(reference_on: today - 4, status: "lost")
+    expect(lost.status).to eq("lost")
+    expect(alert(at(15))[:late]).to eq(0)
+  end
+
   it "credencial recusada o dia todo (sem remessa de ontem, com domínio devido) → late 1 às 15:00" do
     expect(alert(at(15), domains: [ Stock::Domain::MEDICATION ])[:late]).to eq(1)
     expect(alert(at(14, 59), domains: [ Stock::Domain::MEDICATION ])[:late]).to eq(0)

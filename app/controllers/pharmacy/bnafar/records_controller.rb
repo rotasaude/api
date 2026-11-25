@@ -1,7 +1,8 @@
 # POST /pharmacy/bnafar/records/:id/correct (módulo 27b; contrato §3, §6; Q8,
 # Q25): a correção da saída externa aceita, para a saída inteira, por PUT.
 # Corpo `{ expected_version, exit_type?, destination_kind?, destination_code?,
-# reason }`. `municipal_admin`, com step-up; exige o `bnafar`. Ordem: papel
+# reason }`. `municipal_admin`, com step-up; exige o `bnafar`. Só acha registro
+# do ambiente em uso (Q35); de outro ambiente → 404. Ordem: papel
 # (403) → registro (404) → step-up (401) → o comando (409 not_correctable |
 # correction_window_closed | external_exit_changed; 422 do corpo).
 # Responde `{ records: [<registro>] }`, os registros novos; nunca o payload.
@@ -11,7 +12,7 @@ module Pharmacy
       def correct
         return forbid unless admin?
 
-        record = uuid?(params[:id]) ? BnafarRecord.find_by(id: params[:id]) : nil
+        record = uuid?(params[:id]) ? BnafarRecord.joins(:bnafar_submission).find_by(id: params[:id], bnafar_submissions: { environment: environment }) : nil
         return not_found unless record
 
         require_step_up!

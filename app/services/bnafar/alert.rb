@@ -3,8 +3,10 @@
 # nunca registro nem pessoa. O "hoje" e as 15:00 são do fuso corrente (o da
 # cidade em CityConnection.with).
 #
-#   - `late`: as remessas de ONTEM (R = hoje - 1) do ambiente que não estão
-#     `finished` a partir das 15:00 de hoje (LATE_HOUR; Q16). Soma 1 quando
+#   - `late` (Q34): as remessas de ONTEM (R = hoje - 1) OU ANTERIORES do ambiente
+#     ainda não `finished` (e não `lost`, que conta em `lost`) a partir das 15:00
+#     de hoje (LATE_HOUR; Q16), sem limite em R+2: a parte em `processing` nunca
+#     vira `lost` (Q31) e segue alertando. Soma 1 quando
 #     não existe remessa nenhuma de R e `domains` (os domínios devidos em R,
 #     Gate.domains_through, lidos pelo chamador fora da transação) não é vazio
 #     (R25: o envio parado antes de montar, ex. credencial recusada o dia
@@ -22,18 +24,17 @@ module Bnafar
       local = now.in_time_zone
       today = local.to_date
       yesterday = BnafarSubmission.where(environment: environment, reference_on: today - 1)
-      { late: late(yesterday, local, domains),
+      { late: late(environment, yesterday, local, domains),
         lost: lost(environment, today),
         rejected: BnafarRecord.where(bnafar_submission_id: yesterday.select(:id), status: "rejected", replaces_record_id: nil).count,
         last_finished_on: BnafarSubmission.where(environment: environment, status: "finished").maximum(:reference_on) }
     end
 
-    def late(yesterday, local, domains)
+    def late(environment, yesterday, local, domains)
       return 0 if local.hour < Catalog::LATE_HOUR
 
-      return yesterday.where.not(status: "finished").count if yesterday.exists?
-
-      Array(domains).empty? ? 0 : 1
+      open = BnafarSubmission.where(environment: environment, reference_on: ..(local.to_date - 1)).where.not(status: %w[finished lost]).count
+      open + (yesterday.exists? || Array(domains).empty? ? 0 : 1)
     end
 
     def lost(environment, today)

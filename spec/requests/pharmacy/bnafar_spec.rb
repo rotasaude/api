@@ -11,6 +11,8 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
   let(:keeper) { pharmacy_staff!(central, "stock_keeper") }
   let(:admin) { pharmacy_admin! }
   let(:pharmacist) { pharmacy_staff!(unit, "pharmacist") }
+  let(:assistant) { pharmacy_staff!(unit, "pharmacy_assistant") }
+  let(:room_lead) { room_member!(vaccine_room!, role: "room_lead", cbo: "223505") }
   let(:today) { Time.zone.today }
   let(:off) { bnafar_on!(city, since: 10.days.ago, domains: []) }
   let(:on) { bnafar_on!(city, since: 10.days.ago) }
@@ -20,14 +22,14 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
   describe "GET /pharmacy/bnafar/status" do
     before { on }
 
-    it "admin e almoxarife leem; farmacêutico sem stock_keeper → 403" do
+    it "admin, almoxarife, farmacêutico e responsável de sala leem; auxiliar → 403 (Q32)" do
       submission = bnafar_submission!(reference_on: today - 1, status: "finished")
       batch = bnafar_batch!(submission)
       bnafar_record!(submission, status: "accepted", batch: batch)
       bnafar_record!(submission, status: "rejected", batch: batch, error_codes: [ "MSG12" ])
       bnafar_record!(submission, batch: batch)
 
-      [ admin, keeper ].each do |user|
+      [ admin, keeper, pharmacist, room_lead ].each do |user|
         sign_in_as(user)
         get "/pharmacy/bnafar/status"
         expect(response).to have_http_status(:ok)
@@ -38,7 +40,7 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
         expect(day["subjects"].sole).to eq("subject" => "position", "status" => "finished", "accepted" => 1, "rejected" => 1, "pending" => 1, "lost" => 0)
       end
 
-      sign_in_as(pharmacist)
+      sign_in_as(assistant)
       get "/pharmacy/bnafar/status"
       expect(response).to have_http_status(:forbidden)
     end
@@ -148,11 +150,17 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       expect(json_body).to include("path" => "cpf")
     end
 
-    it "remessa desconhecida → 404; pharmacist → 403" do
+    it "remessa desconhecida → 404; auxiliar → 403" do
       sign_in_as(admin)
       get "/pharmacy/bnafar/submissions/#{SecureRandom.uuid}"
       expect(response).to have_http_status(:not_found)
       sign_in_as(pharmacist)
+      get "/pharmacy/bnafar/submissions"
+      expect(response).to have_http_status(:ok)
+      sign_in_as(room_lead)
+      get "/pharmacy/bnafar/submissions"
+      expect(response).to have_http_status(:ok)
+      sign_in_as(assistant)
       get "/pharmacy/bnafar/submissions"
       expect(response).to have_http_status(:forbidden)
     end
@@ -170,10 +178,14 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       expect(json_body).to include("error" => "mfa_required")
     end
 
-    it "almoxarife (não admin) → 403" do
-      stepped_up!(keeper)
-      post_json "/pharmacy/bnafar/submissions/#{submission.id}/retry"
-      expect(response).to have_http_status(:forbidden)
+    it "almoxarife e farmacêutico (não admin) → 403, mesmo com step-up" do
+      [ keeper, pharmacist ].each do |user|
+        stepped_up!(user)
+        post_json "/pharmacy/bnafar/submissions/#{submission.id}/retry"
+        expect(response).to have_http_status(:forbidden)
+        post_json "/pharmacy/bnafar/records/#{SecureRandom.uuid}/correct", { expected_version: 1, reason: "Destino corrigido após a conferência" }
+        expect(response).to have_http_status(:forbidden)
+      end
     end
 
     it "sem recusado → 409 nothing_to_retry; fora de R+1 → 409 retry_window_closed" do
@@ -216,6 +228,13 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       expect(response).to have_http_status(:not_found)
     end
 
+    it "registro de outro ambiente → 404 (Q35)" do
+      other = bnafar_record!(bnafar_submission!(reference_on: today - 1, status: "finished", environment: "homologation"), status: "accepted", sent_at: 1.day.ago)
+      stepped_up!(admin)
+      post_json "/pharmacy/bnafar/records/#{other.id}/correct", fix
+      expect(response).to have_http_status(:not_found)
+    end
+
     it "saída externa aceita → 200 com os registros novos (replaces_record_id), sem payload" do
       losartana.update_columns(vmp_code: "@brasil1000")
       lot = bnafar_complete!(stocked_lot!(central, item: losartana, quantity: "20"), ampp_code: "@brasil20038375080")
@@ -249,7 +268,7 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
     let!(:incomplete) { stocked_lot!(central, item: losartana, quantity: "10") }
     let!(:cnes_less) { stocked_lot!(unit, item: losartana, quantity: "5") }
 
-    it "code=lot_incomplete filtra; counts traz todos os códigos do filtro de local" do
+    it "code=lot_incomplete filtra; totals.by_code traz todos os códigos do filtro de local" do
       on
       sign_in_as(keeper)
 
@@ -260,7 +279,8 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       row = json_body["items"].find { |entry| entry["stock_lot_id"] == incomplete.id }
       expect(row).to include("stock_location_id" => central.id, "location_name" => central.name, "item_label" => losartana.label)
       expect(row.keys).to match_array(%w[code stock_location_id location_name item_key item_label stock_lot_id fields])
-      expect(json_body["counts"]).to include("lot_incomplete" => 2, "location_without_cnes" => 1)
+      expect(json_body["totals"]["by_code"]).to include("lot_incomplete" => 2, "location_without_cnes" => 1)
+      expect(json_body["next_before"]).to be_nil
     end
 
     it "location_id restringe ao local" do
@@ -269,7 +289,7 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
 
       get "/pharmacy/bnafar/pendencies", params: { location_id: unit.id }
       expect(json_body["items"].map { |row| row["stock_location_id"] }.uniq).to eq([ unit.id ])
-      expect(json_body["counts"]["location_without_cnes"]).to eq(1)
+      expect(json_body["totals"]["by_code"]["location_without_cnes"]).to eq(1)
       get "/pharmacy/bnafar/pendencies", params: { location_id: "x" }
       expect(json_body).to include("path" => "location_id")
       get "/pharmacy/bnafar/pendencies", params: { code: "nope" }
@@ -282,9 +302,47 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       get "/pharmacy/bnafar/pendencies", params: { cpf: "1" }
       expect(response).to have_http_status(:unprocessable_entity)
       expect(json_body).to include("path" => "cpf")
-      sign_in_as(pharmacist)
+      sign_in_as(assistant)
       get "/pharmacy/bnafar/pendencies"
       expect(response).to have_http_status(:forbidden)
+      [ pharmacist, room_lead ].each do |user|
+        sign_in_as(user)
+        get "/pharmacy/bnafar/pendencies"
+        expect(response).to have_http_status(:ok)
+      end
+    end
+
+    it "paginada: limit/before, cursor estável, 101 → 422 e totals sem depender da página (Q33)" do
+      on
+      extra = Array.new(3) { stocked_lot!(central, item: losartana, quantity: "3") }
+      sign_in_as(admin)
+
+      get "/pharmacy/bnafar/pendencies"
+      all = json_body["items"]
+      totals = json_body["totals"]
+      expect(all.size).to be > 5
+      expect(totals["by_location"]).to include(central.id => be_positive, unit.id => be_positive)
+      expect(totals["by_code"].values.sum).to eq(all.size)
+      expect(extra.size).to eq(3)
+
+      seen = []
+      cursor = nil
+      loop do
+        get "/pharmacy/bnafar/pendencies", params: { limit: 4, before: cursor }.compact
+        expect(response).to have_http_status(:ok)
+        expect(json_body["items"].size).to be <= 4
+        expect(json_body["totals"]).to eq(totals)
+        seen.concat(json_body["items"])
+        cursor = json_body["next_before"]
+        break unless cursor
+      end
+      expect(seen).to eq(all)
+      expect(seen.uniq.size).to eq(all.size)
+
+      get "/pharmacy/bnafar/pendencies", params: { limit: 101 }
+      expect(response).to have_http_status(:unprocessable_entity)
+      get "/pharmacy/bnafar/pendencies", params: { before: "xx" }
+      expect(json_body).to include("path" => "before")
     end
 
     it "bnafar desligado → 200 sem domain_off (a conta é feita como se o envio estivesse ligado)" do
@@ -301,7 +359,7 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       sign_in_as(admin)
       get "/pharmacy/bnafar/pendencies"
       expect(json_body["items"].map { |row| row["code"] }).to include("domain_off")
-      expect(json_body["counts"]).to include("domain_off")
+      expect(json_body["totals"]["by_code"]).to include("domain_off")
     end
 
     it "sem estoque ligado → 403 feature_disabled" do
