@@ -335,8 +335,9 @@ RSpec.describe Bnafar::Client, type: :model do
       expect(swapped.dig("caracterizacao", "estabelecimentoDestino")).to eq("2384043")
       item = swapped["itens"].first
       product = mapping["products"].first
-      expect(item).to include("numero" => product["numero"], "codigoAmpp" => product["codigo_ampp"], "codigoVmp" => product["codigo_vmp"],
-                              "siglaProgramaSaude" => mapping["program"])
+      expect(item).to include("numero" => "", "terminologia" => "OBM", "codigoAmpp" => nil, "codigoVmp" => product["codigo_vmp"],
+                              "registroAnvisa" => nil, "tipoProduto" => product["tipo_produto"], "siglaProgramaSaude" => "ESP")
+      expect(item["codigoVmp"]).to eq("@brasil20774161856")
       expect(original.dig("estabelecimento", "cnes")).to eq("9999999")
       expect(original["itens"].first["numero"]).to eq("BR0270616")
     end

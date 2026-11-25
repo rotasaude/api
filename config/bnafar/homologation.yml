@@ -1,15 +1,35 @@
-# Massa de dados da homologação do SI-BNAFAR (módulo 27b, Task 8): valores da
-# coleção Postman v1.25 do Portal de Serviços do DATASUS (IBGE 520010, CNES
-# 2384043). `a_conferir: true`: os códigos de produto abaixo são provisórios e
-# se conferem contra a coleção na homologação real (gate do módulo). Só a
-# homologação usa este arquivo (Bnafar::Homologation).
+# Massa de dados da homologação do SI-BNAFAR (módulo 27b, Task 8). Fonte: coleção
+# Postman v1.25 (.superpowers/refs/postman_v125.json). `a_conferir: true`: confere
+# com a homologação real. Só a homologação usa este arquivo (Bnafar::Homologation).
 a_conferir: true
+# variable `coIbge` da coleção.
 ibge: "520010"
+# variable `cnes` (estabelecimento de origem e destino das saídas "Cadastrar Saida
+# Lote *"). Os exemplos de posição da coleção usam o CNES 2163721, mas a coleção
+# inteira parametriza `{{cnes}}`; fica o da variável.
 cnes: "2384043"
-program: "AF"
+# `siglaProgramaSaude` dos itens de "Cadastrar Posição Estoque Lote OBM VMP" e das saídas.
+program: "ESP"
+# Itens de "Cadastrar Posição Estoque Lote OBM VMP" (terminologia OBM, `numero` "",
+# `codigoVmp` + `tipoProduto`). Esses itens não trazem AMPP nem registro ANVISA
+# (null: o exemplo VMP não os tem). Os exemplos com AMPP/ANVISA ("... OBM") usam
+# outros produtos, não listados aqui.
 products:
-  - numero: "BR0270616"
+  - numero: ""
+    terminologia: "OBM"
+    codigo_vmp: "@brasil20774161856"
     codigo_ampp: null
-    codigo_vmp: "123"
-    registro_anvisa: "1234567890123"
+    registro_anvisa: null
+    tipo_produto: "E"
+  - numero: ""
+    terminologia: "OBM"
+    codigo_vmp: "@brasil20726692350"
+    codigo_ampp: null
+    registro_anvisa: null
     tipo_produto: "B"
+  - numero: ""
+    terminologia: "OBM"
+    codigo_vmp: "@brasil20038375080"
+    codigo_ampp: null
+    registro_anvisa: null
+    tipo_produto: "O"

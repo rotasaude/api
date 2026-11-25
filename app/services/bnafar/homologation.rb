@@ -31,8 +31,8 @@ module Bnafar
     end
 
     def product_fields(product)
-      { "numero" => product["numero"], "codigoAmpp" => product["codigo_ampp"], "codigoVmp" => product["codigo_vmp"],
-        "registroAnvisa" => product["registro_anvisa"], "tipoProduto" => product["tipo_produto"] }.compact
+      { "numero" => product["numero"], "terminologia" => product["terminologia"], "codigoAmpp" => product["codigo_ampp"],
+        "codigoVmp" => product["codigo_vmp"], "registroAnvisa" => product["registro_anvisa"], "tipoProduto" => product["tipo_produto"] }
     end
     private_class_method :swap, :product_fields
   end
