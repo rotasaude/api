@@ -105,4 +105,20 @@ RSpec.describe "Sessão do cidadão com os interruptores", type: :request do
     expect(features).to include("home_visits")
     expect(features).not_to include("zoonoses")
   end
+
+  # Módulo 27b (CITIZEN_HIDDEN; contrato §1): a sessão nunca traz as chaves bnafar.
+  it "GET /citizen/session nunca traz as chaves bnafar" do
+    city = home_visit_city!
+    sign_in_citizen
+    # As quatro escondidas ligadas e utilizáveis (o pré-requisito é forçado): ainda assim não saem.
+    %w[bnafar bnafar_medications bnafar_vector_supplies bnafar_vaccines].each do |key|
+      Platform::Features.set!(city: city, key: key, enabled: true, maintainer: ledi_maintainer!)
+    end
+    allow(Platform::Features).to receive(:missing).and_wrap_original do |original, *args, **kwargs|
+      args[1].to_s.start_with?("bnafar") ? [] : original.call(*args, **kwargs)
+    end
+    get "/citizen/session"
+    features = JSON.parse(response.body)["features"]
+    expect(features.grep(/bnafar/)).to eq([])
+  end
 end

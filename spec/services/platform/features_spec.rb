@@ -112,20 +112,20 @@ RSpec.describe Platform::Features do
     expect(entry.key).to eq("psychosocial_care")
     expect(entry.requires).to eq(%w[feature:clinical_record])
     expect(entry.description).to start_with("Atenção psicossocial (CAPS)")
-    expect(described_class::CITIZEN_HIDDEN).to eq(%w[psychosocial_care collective_activities vector_control zoonoses])
+    expect(described_class::CITIZEN_HIDDEN).to eq(%w[psychosocial_care collective_activities vector_control zoonoses bnafar bnafar_medications bnafar_vector_supplies bnafar_vaccines])
     expect(described_class::CITIZEN_HIDDEN).to be_frozen
   end
 
   it "módulo 32a: urgency_care exige o prontuário; waiting_room_display é independente" do
     keys = Platform::Features::CATALOG.map(&:key)
-    expect(keys.last(9).first(2)).to eq(%w[urgency_care waiting_room_display])
+    expect(keys.last(14).first(2)).to eq(%w[urgency_care waiting_room_display])
     expect(Platform::Features::CATALOG.find { |e| e.key == "urgency_care" }.requires).to eq(%w[feature:clinical_record])
     expect(Platform::Features::CATALOG.find { |e| e.key == "waiting_room_display" }.requires).to eq([])
     expect(Platform::Features::CITIZEN_HIDDEN).not_to include("urgency_care", "waiting_room_display")
   end
 
   it "módulo 32b: urgency_stock_deduction exige a urgência e a farmácia" do
-    entry = Platform::Features::CATALOG[-7]
+    entry = Platform::Features::CATALOG[-12]
     expect(entry.key).to eq("urgency_stock_deduction")
     expect(entry.requires).to eq(%w[feature:urgency_care feature:pharmacy])
     expect(entry.description).to eq("Atendimentos da UPA com prescrição de medicação atualizam o estoque")
@@ -134,7 +134,7 @@ RSpec.describe Platform::Features do
 
   it "módulo 33: ombudsman fecha o catálogo; a denúncia anônima exige a ouvidoria; as duas vão ao cidadão" do
     keys = Platform::Features::CATALOG.map(&:key)
-    expect(keys.last(6).first(2)).to eq(%w[ombudsman ombudsman_anonymous_web])
+    expect(keys.last(11).first(2)).to eq(%w[ombudsman ombudsman_anonymous_web])
     expect(described_class.find("ombudsman").requires).to eq([])
     expect(described_class.find("ombudsman").description).to eq("Ouvidoria do SUS municipal")
     expect(described_class.find("ombudsman_anonymous_web").requires).to eq(%w[feature:ombudsman])
@@ -150,7 +150,7 @@ RSpec.describe Platform::Features do
 
   it "módulo 24b: home_visits e collective_activities fecham o catálogo; só home_visits vai ao cidadão (Q24)" do
     keys = Platform::Features::CATALOG.map(&:key)
-    expect(keys.last(4).first(2)).to eq(%w[home_visits collective_activities])
+    expect(keys.last(9).first(2)).to eq(%w[home_visits collective_activities])
     expect(described_class.find("home_visits").requires).to eq(%w[feature:territory_registry])
     expect(described_class.find("collective_activities").requires).to eq(%w[feature:clinical_record])
     expect(described_class::CITIZEN_HIDDEN).not_to include("home_visits")
@@ -168,7 +168,7 @@ RSpec.describe Platform::Features do
   end
 
   it "módulo 35a: vector_control vem antes do zoonoses, exige home_visits e não vai ao cidadão" do
-    expect(Platform::Features::CATALOG[-2].key).to eq("vector_control")
+    expect(Platform::Features::CATALOG[-7].key).to eq("vector_control")
     expect(described_class.find("vector_control").requires).to eq(%w[feature:home_visits])
     expect(described_class.find("vector_control").description)
       .to eq("Boletim do agente na visita, quarteirões, ciclos, ovitrampas, LIRAa e bloqueio de transmissão") # Q12
@@ -178,8 +178,8 @@ RSpec.describe Platform::Features do
   # Módulo 35b (ADR 0054; contrato §1; Q27): o centro de zoonoses fecha o
   # catálogo, exige o cadastro territorial (sem cascata para o vector_control)
   # e não vai ao cidadão.
-  it "módulo 35b: zoonoses fecha o catálogo, exige feature:territory_registry, a descrição da Q27 e está em CITIZEN_HIDDEN" do
-    expect(Platform::Features::CATALOG.last.key).to eq("zoonoses")
+  it "módulo 35b: zoonoses fecha o catálogo do 35, exige feature:territory_registry, a descrição da Q27 e está em CITIZEN_HIDDEN" do
+    expect(Platform::Features::CATALOG[-6].key).to eq("zoonoses")
     expect(described_class.find("zoonoses").requires).to eq(%w[feature:territory_registry])
     expect(described_class.find("zoonoses").description)
       .to eq("Animal com tutor, vacinação antirrábica, demandas da ouvidoria, observação do agressor, leishmaniose canina e canil")
@@ -208,5 +208,46 @@ RSpec.describe Platform::Features do
     Platform::Features.set!(city: city, key: "clinical_record", enabled: false, maintainer: ledi_maintainer!)
     expect(Platform::Features.missing(city, "urgency_stock_deduction")).to eq(%w[urgency_care_disabled pharmacy_disabled])
     expect(Platform::Features.missing(city, "urgency_stock_deduction")).not_to include("clinical_record_disabled")
+  end
+
+  # Módulo 27b (contrato §1; Q6): cinco interruptores fecham o catálogo.
+  it "módulo 27b: os cinco bnafar fecham o catálogo, nessa ordem, com os requires do Valor 1" do
+    expect(described_class::CATALOG.last(5).map(&:key))
+      .to eq(%w[bnafar bnafar_medications bnafar_vector_supplies bnafar_vaccines bnafar_mock])
+    expect(described_class.find("bnafar").requires).to eq(%w[credential:bnafar ibge_code])
+    expect(described_class.find("bnafar").description).to eq("Envio diário da posição de estoque e das saídas ao SI-BNAFAR")
+    expect(described_class.find("bnafar_medications").requires).to eq(%w[feature:bnafar feature:pharmacy])
+    expect(described_class.find("bnafar_medications").description).to eq("BNAFAR: medicamentos da farmácia")
+    expect(described_class.find("bnafar_vector_supplies").requires).to eq(%w[feature:bnafar vector_supplies])
+    expect(described_class.find("bnafar_vector_supplies").description).to eq("BNAFAR: produtos de endemias e zoonoses")
+    expect(described_class.find("bnafar_vaccines").requires).to eq(%w[feature:bnafar feature:vaccination])
+    expect(described_class.find("bnafar_vaccines").description).to eq("BNAFAR: vacinas e rede de frio")
+    expect(described_class.find("bnafar_mock").requires).to eq(%w[feature:bnafar])
+    expect(described_class.find("bnafar_mock").description).to eq("BNAFAR simulado — envio sem validade")
+  end
+
+  it "módulo 27b: bnafar_mock some em produção; as quatro primeiras ficam escondidas do cidadão, o mock não" do
+    expect(described_class.catalog(env: "production").map(&:key)).not_to include("bnafar_mock")
+    expect(described_class.catalog(env: "production").map(&:key)).to include("bnafar")
+    expect(described_class.catalog(env: "test").map(&:key)).to include("bnafar_mock")
+    expect(described_class::CITIZEN_HIDDEN).to include("bnafar", "bnafar_medications", "bnafar_vector_supplies", "bnafar_vaccines")
+    expect(described_class::CITIZEN_HIDDEN).not_to include("bnafar_mock")
+  end
+
+  it "módulo 27b: bnafar_vector_supplies sem vector_control nem zoonoses → vector_supplies_disabled; com só zoonoses → vazio" do
+    state = { credentials: { "bnafar" => "ok" }, ibge_code: "4106902", uf: "PR", pec_origin: false, pec_hmac_key: false }
+    platform = { record_mode: "record", pec_url: nil }
+    allow(described_class).to receive(:usable?).and_call_original
+    allow(described_class).to receive(:usable?).with(city, "vector_control", anything).and_return(false)
+    allow(described_class).to receive(:usable?).with(city, "zoonoses", anything).and_return(false)
+    expect(described_class.missing_for("vector_supplies", platform, state, city: city)).to eq("vector_supplies_disabled")
+    allow(described_class).to receive(:usable?).with(city, "zoonoses", anything).and_return(true)
+    expect(described_class.missing_for("vector_supplies", platform, state, city: city)).to be_nil
+  end
+
+  it "módulo 27b: bnafar sem credencial → credential_missing:bnafar; sem IBGE → ibge_code_missing" do
+    state = { credentials: {}, ibge_code: nil, uf: "PR", pec_origin: false, pec_hmac_key: false }
+    allow(described_class).to receive(:city_state).with(city).and_return(state)
+    expect(described_class.missing(city, "bnafar")).to eq(%w[credential_missing:bnafar ibge_code_missing])
   end
 end

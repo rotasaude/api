@@ -229,14 +229,36 @@ module Platform
       # gravado fica.
       Entry.new(key: "zoonoses",
                 description: "Animal com tutor, vacinação antirrábica, demandas da ouvidoria, observação do agressor, leishmaniose canina e canil",
-                requires: %w[feature:territory_registry])
+                requires: %w[feature:territory_registry]),
+      # Módulo 27b: envio diário ao SI-BNAFAR. Sem cascata: desligar o bnafar
+      # (ou o pré-requisito) não apaga o que foi enviado; o domínio ligado fica
+      # faltando pré-requisito. Ligar vale a partir do dia seguinte (o Gate lê o
+      # changed_at). Um interruptor por domínio de estoque.
+      Entry.new(key: "bnafar",
+                description: "Envio diário da posição de estoque e das saídas ao SI-BNAFAR",
+                requires: %w[credential:bnafar ibge_code]),
+      Entry.new(key: "bnafar_medications",
+                description: "BNAFAR: medicamentos da farmácia",
+                requires: %w[feature:bnafar feature:pharmacy]),
+      Entry.new(key: "bnafar_vector_supplies",
+                description: "BNAFAR: produtos de endemias e zoonoses",
+                requires: %w[feature:bnafar vector_supplies]),
+      Entry.new(key: "bnafar_vaccines",
+                description: "BNAFAR: vacinas e rede de frio",
+                requires: %w[feature:bnafar feature:vaccination]),
+      # BNAFAR simulado, só fora de produção (Q6).
+      Entry.new(key: "bnafar_mock",
+                description: "BNAFAR simulado — envio sem validade",
+                requires: %w[feature:bnafar],
+                environments: SIMULATION_ENVS)
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
     # Contrato P19: chaves que nunca vão ao cidadão (GET /citizen/session),
     # mesmo ligadas e utilizáveis. Lista de exclusão: todo módulo futuro com
     # interruptor sensível acrescenta a sua chave aqui.
-    CITIZEN_HIDDEN = %w[psychosocial_care collective_activities vector_control zoonoses].freeze
+    CITIZEN_HIDDEN = %w[psychosocial_care collective_activities vector_control zoonoses
+                        bnafar bnafar_medications bnafar_vector_supplies bnafar_vaccines].freeze
     class UnknownFeature < StandardError; end
 
     UNREACHABLE = [ "city_unreachable" ].freeze
@@ -353,6 +375,10 @@ module Platform
       when "pec_url" then "pec_url_missing" if platform[:pec_url].blank?
       when "ibge_code" then "ibge_code_missing" if state[:ibge_code].blank?
       when "uf" then "uf_missing" if state[:uf].blank?
+      # 27b: insumo vetorial só com a vigilância de campo ou o centro de zoonoses utilizável.
+      when "vector_supplies"
+        "vector_supplies_disabled" unless usable?(city, "vector_control", state: state, env: env) ||
+                                          usable?(city, "zoonoses", state: state, env: env)
       when "vaccination_catalog_reviewed"
         "vaccination_catalog_under_review" if !SIMULATION_ENVS.include?(env.to_s) && Vaccination::Catalog.under_review?
       when /\Acredential:(\w+)\z/
