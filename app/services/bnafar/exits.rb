@@ -29,6 +29,8 @@ module Bnafar
       "animal_vaccination_reversal" => [ "animal_vaccination", :rabies_vaccination_id ]
     }.freeze
     TRANSFER = "S-T".freeze
+    INCLUDES = [ { stock_location: :health_unit }, { stock_lot: :vector_product }, :stock_adjustment, :stock_external_exit,
+                 { stock_transfer: { to_location: :health_unit } } ].freeze
 
     module_function
 
@@ -52,15 +54,24 @@ module Bnafar
       { exits: rows, reversals: found }
     end
 
+    # Reenvio e correção (Task 12): as linhas dos movimentos JÁ ligados a um
+    # registro, com o dado de hoje (lote, CNES, destino) e a quantidade que foi
+    # enviada (`quantities`: movimento → inteiro na unidade BNAFAR; a conta da
+    # compensação parcial do dia não se refaz). Movimento que não é mais saída
+    # (tipo ignorado) fica de fora. -> [Row]
+    def reload(movements:, quantities:)
+      found = StockMovement.where(id: Array(movements).map { |movement| movement.respond_to?(:id) ? movement.id : movement })
+                           .includes(*INCLUDES).order(:created_at, :id).to_a
+      found.filter_map { |movement| row(movement, movement.quantity.to_d.abs, converted: quantities[movement.id]) }
+    end
+
     def candidates(kinds, from, to)
       StockMovement.joins(:stock_location).where(stock_locations: { kind: kinds })
                    .where(stock_movements: { created_at: from...to })
                    .where("stock_movements.quantity < 0 OR stock_movements.kind IN (?)", REVERSAL_OF.keys)
                    .where.not(kind: ExitTypes::IGNORED)
                    .where.not(id: BnafarMovementLink.select(:stock_movement_id))
-                   .includes({ stock_location: :health_unit }, { stock_lot: :vector_product }, :stock_adjustment, :stock_external_exit,
-                             { stock_transfer: { to_location: :health_unit } })
-                   .order(:created_at, :id).to_a
+                   .includes(*INCLUDES).order(:created_at, :id).to_a
     end
 
     # O estorno compensa o original do mesmo dia (mexe em `net`) ou vira
@@ -83,7 +94,7 @@ module Bnafar
       link && Reversal.new(movement: reversal, original_link: link)
     end
 
-    def row(movement, quantity)
+    def row(movement, quantity, converted: nil)
       location = movement.stock_location
       lot = movement.stock_lot
       code = ExitTypes.for(movement, adjustment: movement.stock_adjustment, external_exit: movement.stock_external_exit)
@@ -91,7 +102,7 @@ module Bnafar
 
       cnes = location.bnafar_cnes
       Row.new(movement: movement, cnes: cnes, type: LocationTypes.for(location), exit_type: code,
-              destination: destination(movement, code, cnes), lot: lot, quantity: Units.to_bnafar(lot, quantity))
+              destination: destination(movement, code, cnes), lot: lot, quantity: converted || Units.to_bnafar(lot, quantity))
     end
 
     # Valor 5 (Q13): S-T → o CNES do local de destino; saída externa → o destino

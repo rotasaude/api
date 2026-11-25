@@ -803,7 +803,7 @@ RSpec.describe "home visit bindings (ADR 0052)" do
 
   # Módulo 27b, Task 11: remessas e registros do envio ao SI-BNAFAR; só ids.
   it "declares the bnafar submission and record events with no consumer" do
-    %w[bnafar_submission.queued bnafar_submission.finished bnafar_submission.lost bnafar_record.rejected bnafar_record.deleted].each do |name|
+    %w[bnafar_submission.queued bnafar_submission.finished bnafar_submission.lost bnafar_record.rejected bnafar_record.deleted bnafar_record.corrected].each do |name|
       expect(DomainEvents.registry.keys).to include(name)
       expect(DomainEvents.registry[name]).to be_empty
     end

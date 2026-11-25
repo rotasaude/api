@@ -573,6 +573,17 @@ Rails.application.routes.draw do
     post   "external_exits",            to: "external_exits#create"
     get    "external_exits",            to: "external_exits#index"
     get    "external_exits/:id",        to: "external_exits#show"
+    # Envio à BNAFAR (módulo 27b, Task 12): situação, remessas, reenvio e correção exigem o `bnafar`;
+    # pendências e domínios só o estoque do domínio (Q19, Q22).
+    scope "bnafar", module: :bnafar, as: :bnafar do
+      get  "status",                    to: "status#show"
+      get  "submissions",               to: "submissions#index"
+      get  "submissions/:id",           to: "submissions#show"
+      post "submissions/:id/retry",     to: "submissions#resend"
+      post "records/:id/correct",       to: "records#correct"
+      get  "pendencies",                to: "pendencies#index"
+      get  "domains",                   to: "domains#show"
+    end
     # Inventário, perdas e vencimentos, com step-up e aprovação por outro (Task 7).
     # Faltas de estoque da checagem da UPA e a conciliação (módulo 32b, Task 11).
     get    "urgency_shortfalls",          to: "urgency_shortfalls#index"

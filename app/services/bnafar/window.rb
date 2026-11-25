@@ -18,8 +18,14 @@ module Bnafar
 
     module_function
 
-    # Time | nil (registro nunca enviado não tem janela).
-    def correctable_until(record) = record.sent_at && (record.sent_at + Catalog::CORRECTION_DAYS.days)
+    # Time | nil (registro nunca enviado não tem janela). O registro de correção
+    # (`replaces_record_id`, PUT) herda a janela do registro ORIGINAL, o primeiro
+    # da cadeia: o prazo da BNAFAR conta do primeiro envio, e corrigir de novo
+    # não o estende (Q25).
+    def correctable_until(record)
+      record = record.replaces_record while record.replaces_record_id && record.replaces_record
+      record.sent_at && (record.sent_at + Catalog::CORRECTION_DAYS.days)
+    end
 
     def correctable?(record, now: Time.current)
       limit = correctable_until(record)

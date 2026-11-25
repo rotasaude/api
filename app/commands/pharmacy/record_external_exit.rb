@@ -54,6 +54,7 @@ module Pharmacy
       persist(location: location, header: header, rows: rows, by: by, now: now)
     end
 
+    # Público: a correção (Bnafar::CorrectExit) valida o cabeçalho pela mesma conta.
     # -> [ [ problem ], { exit_type:, destination_kind:, destination_code:, reason: } ]
     def header(attrs)
       problems = []
@@ -199,6 +200,6 @@ module Pharmacy
       Result.fail(first[:error], details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :header, :destination_code, :validate_rows, :validate_row, :parse_quantity, :short_problems, :blocked_lot_ids, :blocked_problems, :persist, :write, :problem, :failure
+    private_class_method :destination_code, :validate_rows, :validate_row, :parse_quantity, :short_problems, :blocked_lot_ids, :blocked_problems, :persist, :write, :problem, :failure
   end
 end

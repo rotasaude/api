@@ -385,6 +385,10 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "bnafar_submission.lost", to: []
   DomainEvents.bind "bnafar_record.rejected", to: []
   DomainEvents.bind "bnafar_record.deleted", to: []
+  # Correção da saída externa aceita (módulo 27b, Task 12; Q8): um registro novo
+  # por registro corrigido; só ids (bnafar_record_id, replaces_record_id,
+  # user_id), sem consumidor.
+  DomainEvents.bind "bnafar_record.corrected", to: []
   # Receita externa digitada na farmácia; só trilha, só ids
   # (external_prescription_id, user_id) — nunca prescritor, número da
   # notificação, item nem paciente —, sem consumidor.

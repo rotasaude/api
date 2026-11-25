@@ -52,6 +52,24 @@ module BnafarHelpers
     BnafarMovementLink.create!(stock_movement: movement, bnafar_record: record, kind: kind)
   end
 
+  # Task 12: remessa e registro montados direto (sem o Build), para as leituras.
+  def bnafar_submission!(reference_on: Time.zone.today - 1, subject: "position", status: "queued", environment: "production", **over)
+    finished_at = status == "finished" ? Time.current : nil
+    BnafarSubmission.create!({ reference_on: reference_on, subject: subject, environment: environment, status: status, finished_at: finished_at }.merge(over))
+  end
+
+  def bnafar_batch!(submission, operation: "post", status: "finished", protocol: rand(1..999_999), **over)
+    BnafarBatch.create!({ bnafar_submission: submission, operation: operation, status: status, protocol: protocol }.merge(over))
+  end
+
+  def bnafar_record!(submission, location: central_location!, status: "pending", batch: nil, error_codes: [], sent_at: nil, **over)
+    attrs = { bnafar_submission: submission, bnafar_batch: batch, origin_code: SecureRandom.uuid, subject: submission.subject,
+              stock_location_id: location.id, item_key: "medication:#{losartana.id}", status: status, error_codes: error_codes,
+              sent_at: sent_at, payload: "{}" }
+    attrs.merge!(accepted_at: Time.current, bnafar_code: rand(1..999_999)) if status == "accepted"
+    BnafarRecord.create!(attrs.merge(over))
+  end
+
   # Task 11: credencial BNAFAR do ambiente (usuário e senha de teste).
   def bnafar_credential!(environment: "production", status: nil)
     IntegrationCredential.create!(kind: "bnafar", environment: environment,

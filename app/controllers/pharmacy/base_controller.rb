@@ -16,6 +16,7 @@ module Pharmacy
                        location_inactive: :conflict, not_pending: :conflict, adjustment_pending: :conflict, central_exists: :conflict,
                        unit_taken: :conflict, already_linked: :conflict, cnes_in_use: :conflict,
                        duplicate_suspected: :conflict, cpf_taken: :conflict, cns_taken: :conflict, lot_bnafar_changed: :conflict, external_exit_changed: :conflict,
+                       retry_window_closed: :conflict, nothing_to_retry: :conflict, correction_window_closed: :conflict, not_correctable: :conflict,
                        already_reconciled: :conflict, same_user: :forbidden, missing_role: :forbidden,
                        controlled_requires_pharmacist: :forbidden, free_text_requires_pharmacist: :forbidden,
                        not_found: :not_found, prescription_not_found: :not_found,
