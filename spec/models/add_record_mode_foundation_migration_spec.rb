@@ -3,6 +3,7 @@ require "rails_helper"
 require Rails.root.join("db/city_migrate/20261005200001_add_record_mode_foundation.rb").to_s
 require Rails.root.join("db/city_migrate/20261030900001_add_oral_health.rb").to_s
 require Rails.root.join("db/city_migrate/20261102900001_add_vaccination_room.rb").to_s
+require Rails.root.join("db/city_migrate/20261125900001_add_bnafar_stock_data.rb").to_s
 
 # ADR 0028: down desfaz o que up cria; up seguinte restaura idêntico. Savepoint.
 RSpec.describe "Migração de cidade 20261005200001 (AddRecordModeFoundation): down e up" do
@@ -49,6 +50,23 @@ RSpec.describe "Migração de cidade 20261005200001 (AddRecordModeFoundation): d
     conn.add_check_constraint :integration_credentials, "kind::text = ANY (ARRAY[#{kinds}]::text[])", name: "ck_integration_credentials_kind"
   end
 
+  # 20261125900001 (módulo 27b) acrescenta integration_credentials.environment,
+  # troca o único por (kind, environment), os dois CHECKs do ambiente e o
+  # bnafar no CHECK do kind. Irreversível: voltam à mão, iguais aos dela.
+  def restore_bnafar_credential_environment
+    quoted = ->(list) { list.map { |value| "'#{value}'::text" }.join(", ") }
+    conn.add_column :integration_credentials, :environment, :string, null: false, default: "production"
+    conn.remove_index :integration_credentials, name: "index_integration_credentials_on_kind"
+    conn.add_index :integration_credentials, %i[kind environment], unique: true, name: "idx_integration_credentials_kind_environment"
+    conn.remove_check_constraint :integration_credentials, name: "ck_integration_credentials_kind"
+    conn.add_check_constraint :integration_credentials, "kind::text = ANY (ARRAY[#{quoted.call(AddBnafarStockData::KINDS)}])",
+                              name: "ck_integration_credentials_kind"
+    conn.add_check_constraint :integration_credentials, "environment::text = ANY (ARRAY[#{quoted.call(AddBnafarStockData::ENVIRONMENTS)}])",
+                              name: "ck_integration_credentials_environment"
+    conn.add_check_constraint :integration_credentials, "kind::text = 'bnafar'::text OR environment::text = 'production'::text",
+                              name: "ck_integration_credentials_environment_kind"
+  end
+
   def migrate(direction, later)
     ActiveRecord::Migration.suppress_messages do
       if direction == :down
@@ -58,6 +76,7 @@ RSpec.describe "Migração de cidade 20261005200001 (AddRecordModeFoundation): d
         AddRecordModeFoundation.new.exec_migration(conn, :up)
         restore_oral_health_teams
         restore_vaccination_credential_kinds
+        restore_bnafar_credential_environment
         later.each do |table, name, definition|
           conn.execute("ALTER TABLE #{conn.quote_table_name(table)} ADD CONSTRAINT #{conn.quote_column_name(name)} #{definition}")
         end
