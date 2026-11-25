@@ -61,22 +61,31 @@ module Bnafar
         end.to_h
       end
 
-      units = position_units(submission, Array(domains), skip_done: false).flatten
-      parts = part_of(submission, records)
+      reference_on = submission.reference_on
+      rows = Pendencies.clean(Snapshot.call(reference_on: reference_on, domains: Array(domains), cutoff: cut(reference_on + 1)))
       records.filter_map do |record|
-        unit = units.find { |candidate| candidate.values_at(:stock_location_id, :item_key, :part) == [ record.stock_location_id, record.item_key, parts[record.id] ] }
-        unit && [ record.origin_code, unit[:payload].call(record.origin_code) ]
+        lot_ids = carried_lots(record)
+        next if lot_ids.empty?
+
+        mine = rows.select { |row| row.item_key == record.item_key && lot_ids.include?(row.lot.id) }
+        next if mine.empty?
+
+        [ record.origin_code, Payload.position(cnes: mine.first.cnes, type: mine.first.type, reference_on: reference_on,
+                                               origin_code: record.origin_code, rows: mine) ]
       end.to_h
     end
 
-    # A parte (0, 1…) de cada registro de posição dentro do seu (local, item): a
-    # ordem de criação. O `origin_code` leva o CNES e muda se o CNES se corrige,
-    # por isso a parte se acha pela posição, não pelo código. -> { record.id => Integer }
-    def part_of(submission, records)
-      siblings = submission.records.where(subject: "position", replaces_record_id: nil, item_key: records.map(&:item_key).uniq,
-                                          stock_location_id: records.map(&:stock_location_id).uniq).order(:created_at, :id).to_a
-      by_group = siblings.group_by { |row| [ row.stock_location_id, row.item_key ] }
-      records.to_h { |record| [ record.id, by_group.fetch([ record.stock_location_id, record.item_key ]).index { |row| row.id == record.id } ] }
+    # Os lotes que o registro de posição levou (o `codigoOrigem` de cada item do
+    # payload guardado): é a chave estável do reenvio, que não depende da ordem
+    # nem do fatiamento de hoje. Lote que ganhou pendência sai; lote novo fora de
+    # qualquer registro não entra (a fotografia seguinte cobre). Payload nulo
+    # (purgado) → [] e o registro fica de fora.
+    def carried_lots(record)
+      return [] if record.payload.blank?
+
+      JSON.parse(record.payload).fetch("itens", []).filter_map { |item| item["codigoOrigem"] }
+    rescue JSON::ParserError
+      []
     end
 
     def open!(reference_on, subject, environment, now)
@@ -222,6 +231,6 @@ module Bnafar
     def origin(submission, *parts) = Digest::UUID.uuid_v5(NAMESPACE, [ submission.id, *parts ].join(":"))
 
     private_class_method :open!, :build!, :step!, :position_units, :exit_units, :take, :post!, :reverse!, :deletable?, :finish!,
-                         :exits_of, :cut, :origin, :reload_exit_units, :part_of
+                         :exits_of, :cut, :origin, :reload_exit_units, :carried_lots
   end
 end

@@ -118,4 +118,63 @@ RSpec.describe Bnafar::RetrySubmission, type: :model do
     expect(record.reload).to have_attributes(status: "accepted", bnafar_code: be_positive)
     expect(record.movement_links.pluck(:kind)).to eq([ "exit" ])
   end
+
+  describe "item com mais de 20 lotes (várias partes)" do
+    let(:central) { central_location!.tap { |location| location.update_columns(cnes: "1234567") } }
+    let(:ampp) { "@brasil20038375080" }
+
+    # A00 fica incompleto (fora da remessa de R) e ordena antes de todos.
+    let!(:late_lot) do
+      travel_to(yesterday_at) { stocked_lot!(central, item: losartana, quantity: "10", lot_number: "A00") }
+    end
+    let!(:lots) do
+      travel_to(yesterday_at) do
+        (1..25).map { |n| bnafar_complete!(stocked_lot!(central, item: losartana, quantity: "10", lot_number: format("A%02d", n)), ampp_code: ampp) }
+      end
+    end
+
+    before do
+      Bnafar::Build.call(reference_on: today - 1, environment: "production", domains: [ med ], now: Time.current)
+    end
+
+    def parts = submission.records.to_a.sort_by { |record| JSON.parse(record.payload).fetch("itens").size }.reverse
+    def lot_ids(record) = JSON.parse(record.payload).fetch("itens").map { |item| item["codigoOrigem"] }
+
+    it "completar em R+1 um lote que ordena antes não desloca as fatias: o reenvio leva os 20 lotes que o registro levou" do
+      big, small = parts
+      expect(lot_ids(big)).to match_array(lots.first(20).map(&:id))
+      carried = lot_ids(big)
+      big.update_columns(status: "rejected", error_codes: [ "MSG06" ])
+      small.update_columns(status: "accepted", accepted_at: Time.current, bnafar_code: 77, sent_at: Time.current)
+      small_payload = small.payload
+      bnafar_complete!(late_lot, ampp_code: ampp) # A00 passa a ter dados e ordenaria antes de A01
+
+      result = retry!
+      expect(result).to be_ok
+      expect(big.reload).to have_attributes(status: "pending", origin_code: big.origin_code)
+      expect(lot_ids(big)).to match_array(carried)
+      expect(lot_ids(big)).not_to include(late_lot.id)
+      expect(small.reload).to have_attributes(status: "accepted", bnafar_code: 77)
+      expect(small.payload).to eq(small_payload)
+    end
+
+    it "lote que ganhou pendência sai do registro; nada mais entra" do
+      big, = parts
+      big.update_columns(status: "rejected", error_codes: [ "MSG06" ])
+      gone = lots.first
+      allow(Bnafar::LotFields).to receive(:missing).and_wrap_original do |original, lot, **kwargs|
+        lot.id == gone.id ? [ "unit_price_cents" ] : original.call(lot, **kwargs)
+      end
+
+      expect(retry!).to be_ok
+      expect(lot_ids(big.reload)).to match_array(lots.first(20).map(&:id) - [ gone.id ])
+    end
+
+    it "payload já purgado → o registro fica de fora (nothing_to_retry)" do
+      big, = parts
+      big.update_columns(status: "rejected", error_codes: [ "MSG06" ], payload: nil)
+
+      expect(retry!.reason).to eq(:nothing_to_retry)
+    end
+  end
 end
