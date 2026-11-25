@@ -148,6 +148,15 @@ RSpec.describe CitySchema do
                              "bnafar_movement_links_append_only", *tables.map { |t| "#{t}_append_only_truncate" })
   end
 
+  # Módulo 27b (Task 14): a importação do saldo inicial e as linhas lidas têm
+  # guarda (situação, versão, arquivo) e truncate recusado.
+  it "loads the 27b opening import triggers into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+
+    expect(names).to include("opening_imports_guard", "opening_import_rows_guard", "opening_imports_append_only_truncate",
+                             "opening_import_rows_append_only_truncate")
+  end
+
   # Módulo 27b (Task 3): o lote deixa o só-acréscimo pela guarda do BNAFAR; o
   # truncate segue recusado.
   it "loads the 27b stock lot guard into a database restored from the dump" do

@@ -801,6 +801,14 @@ RSpec.describe "home visit bindings (ADR 0052)" do
     expect(DomainEvents.registry["stock_external_exit.recorded"]).to be_empty
   end
 
+  # Módulo 27b, Task 14: importação do saldo inicial aplicada e desfeita; só ids (opening_import_id, user_id).
+  it "declares opening_import.applied and opening_import.reverted with no consumer" do
+    %w[opening_import.applied opening_import.reverted].each do |name|
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+  end
+
   # Módulo 27b, Task 11: remessas e registros do envio ao SI-BNAFAR; só ids.
   it "declares the bnafar submission and record events with no consumer" do
     %w[bnafar_submission.queued bnafar_submission.finished bnafar_submission.lost bnafar_record.rejected bnafar_record.deleted bnafar_record.corrected].each do |name|

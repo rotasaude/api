@@ -3,8 +3,10 @@
 # falta para o envio à BNAFAR. Exige só o estoque do domínio do local
 # (`require_stock_feature!` + `stock_feature_for!`), nunca o `bnafar`. Quem lê:
 # papel no local ou o almoxarife do central / da rede de frio (como a posição).
-# Inclui as revertidas (`reverted: true`). `from_import` fica `false` até a
-# Task 14 ligar a planilha. Só `recorded_by.name`: nenhum outro dado de pessoa.
+# Inclui as revertidas (`reverted: true`). `from_import`: a entrada veio da
+# planilha do saldo inicial (`opening_import_rows.stock_entry_id`, Task 14,
+# R14); `recorded_by` é então quem aplicou. Só `recorded_by.name`: nenhum outro
+# dado de pessoa.
 module Pharmacy
   class OpeningsController < BaseController
     include LocationReading
@@ -37,13 +39,14 @@ module Pharmacy
 
     def present(entries, location)
       openings = StockOpening.where(stock_entry_id: entries.map(&:id)).group_by(&:stock_entry_id)
+      imported = OpeningImportRow.where(stock_entry_id: entries.map(&:id)).distinct.pluck(:stock_entry_id).to_set
       lots = entries.flat_map { |entry| opening_movements(entry).map(&:stock_lot) }
       catalog = Json.catalog_for(lots.map(&:catalog_item_id))
       entries.map do |entry|
         marks = openings.fetch(entry.id, [])
         { stock_entry_id: entry.id, created_at: entry.created_at.iso8601,
           recorded_by: { name: entry.recorded_by_user.professional&.professional_name || NO_NAME },
-          from_import: false, reverted: marks.any? && marks.all?(&:reverted_at),
+          from_import: imported.include?(entry.id), reverted: marks.any? && marks.all?(&:reverted_at),
           lots: opening_movements(entry).map { |movement| lot_row(movement, catalog) } }
       end
     end

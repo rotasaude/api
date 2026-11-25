@@ -17,6 +17,7 @@ module Pharmacy
                        unit_taken: :conflict, already_linked: :conflict, cnes_in_use: :conflict,
                        duplicate_suspected: :conflict, cpf_taken: :conflict, cns_taken: :conflict, lot_bnafar_changed: :conflict, external_exit_changed: :conflict,
                        retry_window_closed: :conflict, nothing_to_retry: :conflict, correction_window_closed: :conflict, not_correctable: :conflict,
+                       opening_import_changed: :conflict, revert_blocked: :conflict, file_too_large: :payload_too_large,
                        already_reconciled: :conflict, same_user: :forbidden, missing_role: :forbidden,
                        controlled_requires_pharmacist: :forbidden, free_text_requires_pharmacist: :forbidden,
                        not_found: :not_found, prescription_not_found: :not_found,
@@ -31,10 +32,12 @@ module Pharmacy
 
     private
 
-    # `{ error, path?, next_allowed_on?, problems? }`: só quando o resultado traz.
+    # `{ error, path?, next_allowed_on?, problems?, locations? }`: só quando o
+    # resultado traz (`locations`: os locais que bloqueiam o desfazer da
+    # importação do saldo inicial, módulo 27b, R15).
     def render_failure(result)
       payload = { error: result.reason.to_s }
-      %i[path next_allowed_on problems].each { |key| payload[key] = result.details[key] if result.details[key] }
+      %i[path next_allowed_on problems locations].each { |key| payload[key] = result.details[key] if result.details[key] }
       render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
     end
 

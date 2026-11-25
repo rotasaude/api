@@ -2,7 +2,7 @@ require "rails_helper"
 
 # Módulo 27b, Task 13 (contrato Q13, Q19): GET /pharmacy/openings. Exige só o
 # estoque do domínio (nunca o `bnafar`); lê quem tem papel no local ou o
-# almoxarife do central. A marca `from_import` entra na Task 14.
+# almoxarife do central. A marca `from_import` vem da Task 14 (`opening_import_rows.stock_entry_id`).
 RSpec.describe "Farmácia — aberturas de estoque", type: :request do
   let!(:city) { pharmacy_city! }
   let!(:central) { central_location! }
@@ -29,6 +29,23 @@ RSpec.describe "Farmácia — aberturas de estoque", type: :request do
     expect(row["lots"].sole).to eq("stock_lot_id" => lot.id, "item_label" => paracetamol.label, "lot_number" => "ABC123",
                                    "expires_on" => lot.expires_on.iso8601, "quantity" => "30.00",
                                    "bnafar" => { "missing" => %w[unit_price_cents manufacturer_cnpj anvisa_registration health_program] })
+  end
+
+  it "abertura aplicada pela planilha sai com from_import: true (Task 14, R14)" do
+    central.update!(cnes: "2384299")
+    csv = [ OpeningImports::Reader::HEADER.join(";"),
+            [ "2384299", "medicamento", paracetamol.catmat_code, "", "PLAN-1", (Time.zone.today + 200).iso8601, "12", "", "", "", "" ].join(";") ]
+          .join("\n") + "\n"
+    domains = [ Stock::Domain::MEDICATION ]
+    import = OpeningImports::Upload.call(bytes: csv, by: keeper, now: Time.current, usable_domains: domains, required_domains: []).payload.fetch(:import)
+    expect(OpeningImports::Apply.call(import: import, expected_version: import.version, by: keeper, now: Time.current)).to be_ok
+    stocked_lot!(central, item: losartana, by: keeper)
+
+    sign_in_as(keeper)
+    get_openings(location_id: central.id)
+    marks = json_body["items"].to_h { |row| [ row["lots"].sole["lot_number"], row["from_import"] ] }
+    expect(marks.fetch("PLAN-1")).to be(true)
+    expect(marks.values.count(false)).to eq(1)
   end
 
   it "abertura revertida sai com reverted: true" do

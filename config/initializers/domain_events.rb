@@ -375,6 +375,10 @@ Rails.application.config.to_prepare do
   # Saída externa do estoque gravada (módulo 27b; contrato §9); só ids
   # (stock_external_exit_id, user_id), sem consumidor.
   DomainEvents.bind "stock_external_exit.recorded", to: []
+  # Importação do saldo inicial aplicada e desfeita (módulo 27b, Task 14;
+  # contrato §9); só ids (opening_import_id, user_id), sem consumidor.
+  DomainEvents.bind "opening_import.applied", to: []
+  DomainEvents.bind "opening_import.reverted", to: []
   # Envio diário ao SI-BNAFAR (módulo 27b, Task 11; contrato §9, Q14); só
   # ids, sem consumidor: remessa montada, terminada e perdida
   # (bnafar_submission_id); registro recusado (bnafar_record_id,

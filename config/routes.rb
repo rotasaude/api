@@ -567,6 +567,15 @@ Rails.application.routes.draw do
     # Aberturas do local e apresentações do OBM: só o estoque do domínio, nunca o `bnafar` (módulo 27b, Q13, Q16, Q19).
     get    "openings",                  to: "openings#index"
     get    "obm_presentations",         to: "obm_presentations#index"
+    # Saldo inicial pela planilha conferida (módulo 27b, Task 14; Q11, Q19, Q20): só o estoque, nunca o `bnafar`;
+    # o modelo antes do `:id`.
+    get    "opening_imports/template.csv", to: "opening_imports#template", format: false
+    get    "opening_imports",           to: "opening_imports#index"
+    post   "opening_imports",           to: "opening_imports#create"
+    get    "opening_imports/:id",       to: "opening_imports#show"
+    post   "opening_imports/:id/apply", to: "opening_imports#apply"
+    post   "opening_imports/:id/revert", to: "opening_imports#revert"
+    post   "opening_imports/:id/discard", to: "opening_imports#discard"
     # Transferência do central para a unidade, em dois passos (Task 6).
     post   "transfers",                 to: "transfers#create"
     get    "transfers",                 to: "transfers#index"

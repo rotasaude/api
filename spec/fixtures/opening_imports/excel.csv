@@ -1,0 +1,6 @@
+﻿cnes;tipo_produto;codigo_produto;ampp;lote;validade;quantidade;valor_unitario;cnpj_fabricante;registro_anvisa;programa
+"2384299";medicamento;268856;;LOS-1;2027-06-30;100;"1.234,56";11222333000181;1234567890123;"HIPERTEN"
+2384299;medicamento;268856;;"LOS;2";2027-06-30;50;"0,25";;;
+7654321;"vacina";15;;VAC-9;2027-01-31;3;12,00;11222333000181;;IMUN
+;;;;;;;;;;
+

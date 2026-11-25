@@ -5412,3 +5412,101 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 27b — importação (contrato §5; Q11, Q20; R23): a importação do saldo
+-- inicial e as linhas lidas nunca somem (DELETE e TRUNCATE recusados).
+--   - opening_imports: nasce `uploaded` na versão 1; anda uploaded → validated →
+--     applied | discarded e applied → reverted, cada passo com version + 1 e
+--     só as colunas do passo (as contagens e o relatório na conferência e na
+--     aplicação; quem aplicou e quando na aplicação; `reverted_at` no
+--     desfazer). O arquivo cifrado só vira NULL, no applied e no discarded, e
+--     nunca volta; sob a marca da re-cifra (rota.reencrypting) é regravado sem
+--     mexer em mais nada;
+--   - opening_import_rows: as colunas lidas e o que foi resolvido não mudam; a
+--     linha válida ganha a entrada (de NULL a valor, uma vez) ou vira erro, e
+--     a de erro fica como está.
+CREATE OR REPLACE FUNCTION rota_opening_import_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'opening_imports: DELETE refused';
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status IS DISTINCT FROM 'uploaded' OR NEW.version IS DISTINCT FROM 1 THEN
+      RAISE EXCEPTION 'opening_imports: an import is born uploaded, at version 1';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'file_data') = (to_jsonb(OLD) - 'file_data')
+     AND OLD.file_data IS NOT NULL AND NEW.file_data IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.file_data IS DISTINCT FROM OLD.file_data
+     AND (OLD.file_data IS NULL OR NEW.file_data IS NOT NULL OR NEW.status NOT IN ('applied', 'discarded')) THEN
+    RAISE EXCEPTION 'opening_imports: file_data only becomes NULL (on applied or discarded) and never comes back';
+  END IF;
+  IF NEW.version IS DISTINCT FROM OLD.version + 1 THEN
+    RAISE EXCEPTION 'opening_imports: UPDATE refused (version must rise by 1)';
+  END IF;
+  moving := CASE
+    WHEN OLD.status = 'uploaded' AND NEW.status = 'validated' THEN ARRAY['rows_total', 'rows_valid', 'report']
+    WHEN OLD.status = 'validated' AND NEW.status = 'applied' THEN ARRAY['file_data', 'rows_valid', 'report', 'applied_at', 'applied_by_user_id']
+    WHEN OLD.status = 'validated' AND NEW.status = 'discarded' THEN ARRAY['file_data']
+    WHEN OLD.status = 'applied' AND NEW.status = 'reverted' THEN ARRAY['reverted_at']
+  END;
+  IF moving IS NULL THEN
+    RAISE EXCEPTION 'opening_imports: status % -> % refused', OLD.status, NEW.status;
+  END IF;
+  moving := moving || ARRAY['status', 'version', 'updated_at'];
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'opening_imports: only the columns of the % -> % step change', OLD.status, NEW.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_opening_import_row_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['status', 'error_codes', 'stock_entry_id'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'opening_import_rows: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'opening_import_rows: only status, error_codes and stock_entry_id change';
+  END IF;
+  IF OLD.stock_entry_id IS NOT NULL AND NEW.stock_entry_id IS DISTINCT FROM OLD.stock_entry_id THEN
+    RAISE EXCEPTION 'opening_import_rows: the entry is recorded once';
+  END IF;
+  IF OLD.status = 'error' AND (NEW.status IS DISTINCT FROM 'error' OR NEW.error_codes IS DISTINCT FROM OLD.error_codes) THEN
+    RAISE EXCEPTION 'opening_import_rows: an error row stays as it is';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.opening_imports') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS opening_imports_guard ON opening_imports';
+    EXECUTE 'CREATE TRIGGER opening_imports_guard BEFORE INSERT OR UPDATE OR DELETE ON opening_imports
+      FOR EACH ROW EXECUTE FUNCTION rota_opening_import_guard()';
+  END IF;
+  IF to_regclass('public.opening_import_rows') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS opening_import_rows_guard ON opening_import_rows';
+    EXECUTE 'CREATE TRIGGER opening_import_rows_guard BEFORE UPDATE OR DELETE ON opening_import_rows
+      FOR EACH ROW EXECUTE FUNCTION rota_opening_import_row_guard()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['opening_imports', 'opening_import_rows'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END IF;
+  END LOOP;
+END
+$do$;

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_900003) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_25_900004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -3223,6 +3223,62 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900003) do
     t.index ["code"], name: "idx_ombudsman_subjects_code", unique: true, where: "(code IS NOT NULL)"
   end
 
+  create_table "opening_import_rows", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "ampp"
+    t.uuid "catalog_item_id"
+    t.text "cnes"
+    t.text "cnpj_fabricante"
+    t.text "codigo_produto"
+    t.datetime "created_at", null: false
+    t.text "error_codes", default: [], null: false, array: true
+    t.string "immunobiological_code", limit: 10
+    t.string "item_kind"
+    t.integer "line", null: false
+    t.text "lote"
+    t.string "manufacturer_key", limit: 40
+    t.uuid "opening_import_id", null: false
+    t.text "programa"
+    t.text "quantidade"
+    t.text "registro_anvisa"
+    t.boolean "send_fields_missing", default: false, null: false
+    t.string "status", null: false
+    t.uuid "stock_entry_id"
+    t.uuid "stock_location_id"
+    t.text "tipo_produto"
+    t.text "validade"
+    t.text "valor_unitario"
+    t.uuid "vector_product_id"
+    t.index ["opening_import_id", "line"], name: "idx_opening_import_rows_line", unique: true
+    t.index ["stock_entry_id"], name: "idx_opening_import_rows_entry", where: "(stock_entry_id IS NOT NULL)"
+    t.check_constraint "(item_kind IS NULL OR item_kind::text = ANY (ARRAY['medication'::text, 'immunobiological'::text, 'vector_control'::text])) AND num_nonnulls(catalog_item_id, immunobiological_code, vector_product_id) <= 1 AND (status::text = 'error'::text OR (stock_location_id IS NOT NULL AND item_kind IS NOT NULL AND (catalog_item_id IS NOT NULL) = (item_kind::text = 'medication'::text) AND (immunobiological_code IS NOT NULL) = (item_kind::text = 'immunobiological'::text) AND (vector_product_id IS NOT NULL) = (item_kind::text = 'vector_control'::text) AND (manufacturer_key IS NOT NULL) = (item_kind::text = 'immunobiological'::text)))", name: "ck_opening_import_rows_item"
+    t.check_constraint "array_position(error_codes, NULL::text) IS NULL AND array_to_string(error_codes, ','::text) ~ '^([a-z_]{2,40}(,[a-z_]{2,40})*)?$'::text", name: "ck_opening_import_rows_error_codes"
+    t.check_constraint "line >= 2", name: "ck_opening_import_rows_line"
+    t.check_constraint "status::text = ANY (ARRAY['valid'::text, 'error'::text]) AND (status::text = 'error'::text) = (cardinality(error_codes) > 0) AND (stock_entry_id IS NULL OR status::text = 'valid'::text)", name: "ck_opening_import_rows_status"
+  end
+
+  create_table "opening_imports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "applied_at"
+    t.uuid "applied_by_user_id"
+    t.datetime "created_at", null: false
+    t.text "file_data"
+    t.string "file_sha256", limit: 64, null: false
+    t.jsonb "report", default: {}, null: false
+    t.datetime "reverted_at"
+    t.integer "rows_total", default: 0, null: false
+    t.integer "rows_valid", default: 0, null: false
+    t.string "status", default: "uploaded", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "uploaded_by_user_id", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["created_at", "id"], name: "idx_opening_imports_created"
+    t.check_constraint "(applied_at IS NOT NULL) = (status::text = ANY (ARRAY['applied'::text, 'reverted'::text])) AND (applied_by_user_id IS NOT NULL) = (applied_at IS NOT NULL) AND (reverted_at IS NOT NULL) = (status::text = 'reverted'::text)", name: "ck_opening_imports_dates"
+    t.check_constraint "(file_data IS NOT NULL) = (status::text = ANY (ARRAY['uploaded'::text, 'validated'::text]))", name: "ck_opening_imports_file"
+    t.check_constraint "file_sha256::text ~ '^[0-9a-f]{64}$'::text", name: "ck_opening_imports_sha256"
+    t.check_constraint "rows_total >= 0 AND rows_total <= 20000 AND rows_valid >= 0 AND rows_valid <= rows_total", name: "ck_opening_imports_rows"
+    t.check_constraint "status::text = ANY (ARRAY['uploaded'::text, 'validated'::text, 'applied'::text, 'discarded'::text, 'reverted'::text])", name: "ck_opening_imports_status"
+    t.check_constraint "version >= 1", name: "ck_opening_imports_version"
+  end
+
   create_table "otp_challenges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.integer "attempts", default: 0, null: false
     t.string "code_digest", null: false
@@ -6258,6 +6314,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900003) do
   add_foreign_key "ombudsman_satisfaction_responses", "ombudsman_manifestations"
   add_foreign_key "ombudsman_settings", "users", column: "updated_by_user_id"
   add_foreign_key "ombudsman_subjects", "ombudsman_subjects", column: "parent_id"
+  add_foreign_key "opening_import_rows", "opening_imports"
+  add_foreign_key "opening_import_rows", "stock_entries"
+  add_foreign_key "opening_import_rows", "stock_locations"
+  add_foreign_key "opening_import_rows", "vector_products"
+  add_foreign_key "opening_imports", "users", column: "applied_by_user_id"
+  add_foreign_key "opening_imports", "users", column: "uploaded_by_user_id"
   add_foreign_key "ovitrap_readings", "ovitraps"
   add_foreign_key "ovitrap_readings", "users", column: "counted_by_user_id"
   add_foreign_key "ovitraps", "city_blocks"
