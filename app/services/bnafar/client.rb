@@ -7,6 +7,10 @@
 # ambiente, até `expires_in` menos TOKEN_MARGIN; um 401 com token guardado o
 # descarta e repete UMA vez com token novo.
 #
+# `observer` (opcional; a evidência da homologação, Task 11) recebe cada
+# chamada: verbo, URL (sem token: ele vai no header), corpo enviado, status e
+# corpo recebido. No jwtauth, nem o corpo enviado nem o recebido (é o token).
+#
 # SIGILO: usuário, senha e token só vivem aqui. Nunca em log, erro, resposta
 # (`Response`), inspect, URL ou cURL; mensagem de exceção de rede não sai (só a
 # classe). Texto do SI-BNAFAR nunca é guardado: só códigos que casam MSG_CODE.
@@ -71,6 +75,7 @@ module Bnafar
     end
 
     attr_reader :settings
+    attr_writer :observer
 
     def initialize(settings, identity, key:)
       @settings = settings
@@ -207,11 +212,14 @@ module Bnafar
     end
 
     # Página `{ pageNumber, pageSize, content[...], totalPages }`. Só os códigos
-    # MSG; `mensagem` e `valorRejeitado` nunca são lidos.
+    # MSG; `mensagem` e `valorRejeitado` nunca são lidos. `rejected_items`: os
+    # itens distintos recusados do registro (a `posicaoEnvio` da inconsistência;
+    # a do registro inteiro vem sem ela).
     def inconsistency_page(body)
       items = Array(body["content"]).grep(Hash).map do |entry|
-        { origin_code: entry["codigoOrigem"]&.to_s, position: entry["posicaoEnvio"],
-          codes: msg_codes(Array(entry["inconsistencias"]).grep(Hash).map { |i| i["codigo"] }) }
+        issues = Array(entry["inconsistencias"]).grep(Hash)
+        { origin_code: entry["codigoOrigem"]&.to_s, position: entry["posicaoEnvio"], codes: msg_codes(issues.map { |i| i["codigo"] }),
+          rejected_items: issues.filter_map { |i| i["posicaoEnvio"] }.uniq.size }
       end
       build(:accepted, items: items, error_codes: items.flat_map { |i| i[:codes] }.uniq, pages: integer_or_nil(body["totalPages"]))
     end
@@ -237,10 +245,27 @@ module Bnafar
     def perform(uri, request)
       options = { use_ssl: uri.scheme == "https", open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT, write_timeout: OPEN_TIMEOUT,
                   max_retries: 0 }
-      Net::HTTP.start(uri.host, uri.port, **options) { |http| http.request(request) }
+      response = Net::HTTP.start(uri.host, uri.port, **options) { |http| http.request(request) }
+      observe(uri, request, response.code.to_i, response.body)
+      response
     rescue *NETWORK_ERRORS => e
+      observe(uri, request, nil, nil)
       # A mensagem da exceção traz a URL: só a classe sai.
       raise Errors::Unavailable, "SI-BNAFAR inalcançável (#{e.class.name})"
+    end
+
+    def observe(uri, request, status, body)
+      return unless @observer
+
+      auth = uri.to_s == @settings.auth_url
+      sent = auth || request.body.nil? ? nil : parse_any(request.body)
+      @observer.call(method: request.method, url: uri.to_s, body: sent, status: status, response: auth ? nil : body, auth: auth)
+    end
+
+    def parse_any(text)
+      JSON.parse(text)
+    rescue JSON::ParserError
+      nil
     end
 
     def cached_token

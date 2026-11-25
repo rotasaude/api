@@ -146,10 +146,23 @@ RSpec.describe Bnafar::Client, type: :model do
       page = client.inconsistencies(ibge: ibge, protocol: protocol, page: 0)
       expect(page.status).to eq(:accepted)
       expect(page.error_codes).to eq(%w[MSG09 MSG47])
-      expect(page.items).to eq([ { origin_code: "10", position: 0, codes: %w[MSG09 MSG47] } ])
+      expect(page.items).to eq([ { origin_code: "10", position: 0, codes: %w[MSG09 MSG47], rejected_items: 1 } ])
       expect(page.pages).to eq(1)
       expect(page.inspect).not_to include("RECUSA")
       expect(page.items.to_s).not_to include("RECUSA")
+    end
+
+    it "observer (Task 11): cada chamada com verbo, URL, corpo e status; no jwtauth, sem corpo nenhum" do
+      calls = []
+      client.observer = ->(**call) { calls << call }
+      client.post_batch(subject: "exit", ibge: ibge, records: [ record ])
+      auth, batch = calls
+      expect(auth).to include(method: "POST", status: 200, body: nil, response: nil, auth: true)
+      expect(auth[:url]).to end_with("/jwtauth/auth")
+      expect(batch).to include(method: "POST", status: 200, body: [ record ], auth: false)
+      expect(batch[:url]).to end_with("/produto/ibge/#{ibge}/saida-lote")
+      expect(JSON.parse(batch[:response])).to include("protocolo" => be_a(Integer))
+      expect(calls.to_s).not_to include(password, username)
     end
 
     it "422 com MSG12: error_codes == [MSG12], nunca a mensagem" do

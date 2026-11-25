@@ -5,7 +5,7 @@ require_relative "../../lib/fake_bnafar/app"
 # Módulo 27b: o SI-BNAFAR simulado (FakeBnafar::App) servido por WebMock#to_rack
 # em http://fake-bnafar.test:8095. Nenhuma spec bate em URL real. Os demais
 # helpers do módulo entram nas tasks seguintes (Task 10: lote completo,
-# perda pelo razão e saída já ligada).
+# perda pelo razão e saída já ligada; Task 11: credencial e envio ligado).
 FAKE_BNAFAR_BASE = "http://fake-bnafar.test:8095".freeze
 
 module BnafarHelpers
@@ -40,13 +40,44 @@ module BnafarHelpers
 
   # Registro aceito de uma saída já enviada e o link do movimento a ele.
   # -> BnafarMovementLink
-  def bnafar_link!(movement, kind: "exit", reference_on: movement.created_at.to_date)
-    submission = BnafarSubmission.find_or_create_by!(reference_on: reference_on, subject: "exit", environment: "production")
+  def bnafar_link!(movement, kind: "exit", reference_on: movement.created_at.to_date, bnafar_code: rand(1..999_999))
+    submission = BnafarSubmission.find_or_create_by!(reference_on: reference_on, subject: "exit", environment: "production") do |created|
+      created.status = "finished" # a remessa já enviada (R10: o delete não a reabre)
+      created.finished_at = Time.current
+    end
     record = BnafarRecord.create!(bnafar_submission: submission, origin_code: SecureRandom.uuid, subject: "exit",
                                   stock_location_id: movement.stock_location_id, item_key: "test:#{movement.stock_lot_id}",
                                   payload: "{}")
-    record.update_columns(status: "accepted", accepted_at: Time.current, sent_at: Time.current, bnafar_code: rand(1..999_999))
+    record.update_columns(status: "accepted", accepted_at: Time.current, sent_at: Time.current, bnafar_code: bnafar_code)
     BnafarMovementLink.create!(stock_movement: movement, bnafar_record: record, kind: kind)
+  end
+
+  # Task 11: credencial BNAFAR do ambiente (usuário e senha de teste).
+  def bnafar_credential!(environment: "production", status: nil)
+    IntegrationCredential.create!(kind: "bnafar", environment: environment,
+                                  secret: { "username" => "usuario-bnafar", "password" => "senha-bnafar" },
+                                  set_by_user: pharmacy_admin!, set_at: Time.current, last_check_status: status)
+  end
+
+  # Task 11: o envio utilizável (credencial de produção, IBGE, `bnafar` e os
+  # domínios), ligado desde `since` (Gate.domains_through); com `mock`, o
+  # simulado no FAKE_BNAFAR_BASE (use com fake_bnafar!).
+  def bnafar_on!(city, since: Time.current, domains: %w[bnafar_medications], mock: false)
+    profile = city_profile!
+    profile.update!(ibge_code: "4106902") if profile.ibge_code.blank?
+    bnafar_credential!
+    BnafarSetting.ensure_defaults!
+    maintainer = ledi_maintainer!
+    keys = [ Bnafar::Gate::KEY, *domains ]
+    keys << Bnafar::Mock::KEY if mock
+    keys.each { |key| Platform::Features.set!(city: city, key: key, enabled: true, maintainer: maintainer) }
+    CityFeature.where(city_id: city.id, key: keys).update_all(changed_at: since)
+    CityCatalog.reset_cache!
+    return unless mock
+
+    Bnafar::Client.reset_cache!
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("FAKE_BNAFAR_URL").and_return(FAKE_BNAFAR_BASE)
   end
 end
 

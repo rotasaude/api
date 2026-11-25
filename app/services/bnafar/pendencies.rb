@@ -29,6 +29,17 @@ module Bnafar
       rows.flat_map { |row| for_row(row, items) }.uniq
     end
 
+    # As linhas sem pendência nenhuma (o que o Build monta), com uma leitura só
+    # do catálogo. A conta é por linha: a fração de um movimento não segura
+    # outro movimento do mesmo lote.
+    def clean(rows)
+      rows = Array(rows)
+      return [] if rows.empty?
+
+      items = Items.new(rows.map(&:lot))
+      rows.select { |row| for_row(row, items).empty? }
+    end
+
     # Pendências de agora (Q22; contrato §6 `GET /pharmacy/bnafar/pendencies`):
     # o saldo de agora mais as saídas de ontem e de hoje.
     #   - `domains_all`: os domínios de estoque UTILIZÁVEIS da cidade

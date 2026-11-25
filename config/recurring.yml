@@ -206,6 +206,21 @@ default: &default
     queue: housekeeping
     schedule: "every day at 3:20am America/Sao_Paulo"
 
+  # Módulo 27b: age à 1h do fuso da cidade; o resto da hora é retomada.
+  # Fecha a janela (remessa de R perdida às 00:00 de R+2) e purga o payload de
+  # 30 dias em toda rodada, com o bnafar ligado ou não (R19).
+  bnafar_daily:
+    class: Bnafar::DailyJob
+    queue: housekeeping
+    schedule: "every hour at minute 7"
+
+  # Módulo 27b: envia os lotes montados e consulta os protocolos; só com o
+  # bnafar utilizável (R31).
+  bnafar_deliver:
+    class: Bnafar::DeliverJob
+    queue: default
+    schedule: "every 5 minutes"
+
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"
     queue: housekeeping

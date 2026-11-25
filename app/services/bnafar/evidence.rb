@@ -27,6 +27,15 @@ module Bnafar
       render([ "curl -X POST '#{quote(url)}'", "  -u '<USUARIO>:<SENHA>'" ], status, nil)
     end
 
+    # Corpo da resposta como entra na evidência (Task 11: `{ curl, status, body }`
+    # por chamada): sem token, sem CPF/CNS, uma linha, 200 caracteres. "" fora
+    # da homologação.
+    def response(text, environment: Environment.current)
+      return "" unless environment == "homologation"
+
+      Rnds::Errors.sanitize(scrub(text))
+    end
+
     def render(lines, status, response)
       text = lines.join(" \\\n")
       text += "\n# HTTP #{status.to_i}" if status

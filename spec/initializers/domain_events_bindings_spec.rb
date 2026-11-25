@@ -800,4 +800,12 @@ RSpec.describe "home visit bindings (ADR 0052)" do
     expect(DomainEvents.registry.keys).to include("stock_external_exit.recorded")
     expect(DomainEvents.registry["stock_external_exit.recorded"]).to be_empty
   end
+
+  # Módulo 27b, Task 11: remessas e registros do envio ao SI-BNAFAR; só ids.
+  it "declares the bnafar submission and record events with no consumer" do
+    %w[bnafar_submission.queued bnafar_submission.finished bnafar_submission.lost bnafar_record.rejected bnafar_record.deleted].each do |name|
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+  end
 end

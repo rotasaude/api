@@ -375,6 +375,16 @@ Rails.application.config.to_prepare do
   # Saída externa do estoque gravada (módulo 27b; contrato §9); só ids
   # (stock_external_exit_id, user_id), sem consumidor.
   DomainEvents.bind "stock_external_exit.recorded", to: []
+  # Envio diário ao SI-BNAFAR (módulo 27b, Task 11; contrato §9, Q14); só
+  # ids, sem consumidor: remessa montada, terminada e perdida
+  # (bnafar_submission_id); registro recusado (bnafar_record_id,
+  # bnafar_submission_id) e excluído na BNAFAR (bnafar_record_id,
+  # bnafar_batch_id).
+  DomainEvents.bind "bnafar_submission.queued", to: []
+  DomainEvents.bind "bnafar_submission.finished", to: []
+  DomainEvents.bind "bnafar_submission.lost", to: []
+  DomainEvents.bind "bnafar_record.rejected", to: []
+  DomainEvents.bind "bnafar_record.deleted", to: []
   # Receita externa digitada na farmácia; só trilha, só ids
   # (external_prescription_id, user_id) — nunca prescritor, número da
   # notificação, item nem paciente —, sem consumidor.
