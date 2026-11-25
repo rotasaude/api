@@ -1,0 +1,58 @@
+# Domínios do SI-BNAFAR (manual v1.25 §15) e os mapeamentos do Rota Saúde para eles (módulo 27b).
+# `review: true` = a conferir na homologação.
+version: 1
+dm01:
+  A: "Almoxarifado central"
+  R: "Almoxarifado regional/Regional de Saúde"
+  F: "Farmácia/Unidade de Saúde"
+dm12:
+  S-AE: "SAÍDA POR AJUSTE DE ESTOQUE"
+  S-AEA: "SAÍDA POR AMOSTRA, EXPOSIÇÃO E ANALISE"
+  S-AJ: "SAÍDA POR AÇÃO JUDICIAL"
+  S-AS: "SAÍDA POR APREENSÃO SANITÁRIA"
+  S-CA: "SAÍDA PARA CONSUMO ADMINISTRATIVO"
+  S-D: "SAÍDA POR DOAÇÃO"
+  S-DD: "SAÍDA POR DISTRIBUIÇÃO"
+  S-DEP: "DEVOLUÇÃO DE ENTRADA DE PRODUTO"
+  S-DEPART: "SAÍDA PARA DEPARTAMENTO"
+  S-DF: "SAÍDA POR DEVOLUÇÃO A FORNECEDOR"
+  S-E: "SAÍDA PARA EMPRESTIMO"
+  S-EE: "SAÍDA PARA DEVOLUÇÃO DE EMPRÉSTIMO"
+  S-EES: "SAÍDA ENTRE ESTABELECIMENTO DE SAÚDE"
+  S-ES: "SAÍDA PARA ESTABELECIMENTO DE SAÚDE"
+  S-PA: "SAÍDA PARA USUÁRIO SUS SEM CNS"
+  S-PE: "SAÍDA POR PERDA"
+  S-SAC: "SAÍDA POR ATENDIMENTO DE REQUISIÇÃO"
+  S-T: "SAÍDA POR TRANSFERÊNCIA"
+  S-TR: "SAÍDA POR TRANSFERÊNCIA/REMANEJAMENTO"
+  S-TROCA: "SAÍDA POR TROCA"
+  S-VV: "SAÍDA POR VALIDADE VENCIDA"
+dm13:
+  B: "Componente Básico da Assistência Farmacêutica"
+  E: "Componente Especializado da Assistência Farmacêutica"
+  S: "Componente Estratégico da Assistência Farmacêutica"
+  O: "Outros"
+# DM01 por tipo de local do estoque.
+location_types:
+  central: A
+  cold_chain_central: A
+  unit: F
+  vaccine_room: F
+  vector_control: F
+# DM12 por tipo de movimento (saída). Uso direto -> S-CA a conferir (S-PA fica fora: exige CNS).
+exit_types:
+  transfer_out: S-T
+  loss: S-PE
+  expiry: S-VV
+  adjustment: S-AE
+  administration: S-CA
+  vial_opening: S-CA
+  immunization: S-CA
+  vector_application: S-CA
+  animal_vaccination: S-CA
+  collar_placement: S-CA
+# loss_code da StockAdjustment que troca o tipo da perda.
+loss_code_exit_types:
+  expired: S-VV
+# Tipos de uso direto (S-CA), com review.
+direct_use_review: true

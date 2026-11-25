@@ -1,0 +1,84 @@
+# DM14 - Programa de saúde (SI-BNAFAR manual v1.25 §15), inteira. Siglas com espaço e barra preservadas.
+# product_type (DM13) por sigla: amostra fixada pelo plano 27b (AFB/AF/HIPERTEN/DIABETES=B; ESP/ALZHE/GLAUC=E;
+# TB/HANS/IMUN/ZOO/END/DENGUE/LEISH=S; JUD/HOSP/UPA=O); o resto é inferência, a conferir na homologação.
+version: 1
+programs:
+  - { code: "AÇÃOPUB", label: "AÇÃO CIVIL PÚBLICA", product_type: "O", review: true }
+  - { code: "AF", label: "ASSISTÊNCIA FARMACÊUTICA", product_type: "B", review: true }
+  - { code: "AFAL", label: "ANEMIA FALCIFORME", product_type: "E", review: true }
+  - { code: "AFB", label: "ASSISTÊNCIA FARMACÊUTICA BÁSICA", product_type: "B", review: true }
+  - { code: "AFSESAI", label: "ASSISTÊNCIA FARMACÊUTICA SESAI", product_type: "O", review: true }
+  - { code: "ALZHE", label: "ALZHEIMER", product_type: "E", review: true }
+  - { code: "ANTMICRO", label: "ANTIMICROBIANOS", product_type: "B", review: true }
+  - { code: "ASSISOC", label: "ASSISTÊNCIA SOCIAL", product_type: "O", review: true }
+  - { code: "ATENSEC", label: "ATENÇÃO SECUNDÁRIA", product_type: "O", review: true }
+  - { code: "BRUC", label: "BRUCELOSE", product_type: "S", review: true }
+  - { code: "CALPUB", label: "CALAMIDADE PÚBLICA", product_type: "O", review: true }
+  - { code: "CHAGAS", label: "CHAGAS", product_type: "S", review: true }
+  - { code: "COAGULO", label: "COAGULOPATIAS", product_type: "E", review: true }
+  - { code: "COL", label: "CÓLERA", product_type: "S", review: true }
+  - { code: "COQUE", label: "COQUELUCHE", product_type: "S", review: true }
+  - { code: "COVID-19", label: "COVID-19", product_type: "S", review: true }
+  - { code: "DEH", label: "DOENÇA ENXERTO HOSPEDEIRO", product_type: "E", review: true }
+  - { code: "DENGUE", label: "DENGUE", product_type: "S", review: true }
+  - { code: "DIABETES", label: "DIABETES", product_type: "B", review: true }
+  - { code: "DP", label: "DOENÇA DE PARKINSON", product_type: "E", review: true }
+  - { code: "DPOC", label: "DPOC", product_type: "E", review: true }
+  - { code: "DST", label: "DST/AIDS", product_type: "S", review: true }
+  - { code: "END", label: "ENDEMIAS FOCAIS", product_type: "S", review: true }
+  - { code: "ESP", label: "ESPECIALIZADO", product_type: "E", review: true }
+  - { code: "ESQUIS", label: "ESQUISTOSSOMOSE", product_type: "S", review: true }
+  - { code: "FM", label: "FEBRE MACULOSA", product_type: "S", review: true }
+  - { code: "FILAR", label: "FILARIOSE", product_type: "S", review: true }
+  - { code: "FITO", label: "FITOTERAPIA", product_type: "B", review: true }
+  - { code: "GEOHEL", label: "GEOHELMINTÍASES", product_type: "S", review: true }
+  - { code: "GLAUC", label: "GLAUCOMA", product_type: "E", review: true }
+  - { code: "HANS", label: "HANSENÍASE", product_type: "S", review: true }
+  - { code: "HEP", label: "HEPATITES", product_type: "S", review: true }
+  - { code: "HIDRASU", label: "HIDRADENITE SUPURATIVA", product_type: "E", review: true }
+  - { code: "HIPERTEN", label: "HIPERTENSÃO", product_type: "B", review: true }
+  - { code: "HOSP", label: "HOSPITALAR", product_type: "O", review: true }
+  - { code: "IMUN", label: "IMUNIZAÇÃO", product_type: "S", review: true }
+  - { code: "INFEC", label: "INFECÇÕES OPORTUNISTAS", product_type: "S", review: true }
+  - { code: "INFECDST", label: "INFECÇÕES OPORTUNISTAS DST/AIDS", product_type: "S", review: true }
+  - { code: "INFLU", label: "INFLUENZA", product_type: "S", review: true }
+  - { code: "INSULDEP I", label: "INSULINO-DEPENDENTE - DM I", product_type: "B", review: true }
+  - { code: "INSULDEPII", label: "INSULINO-DEPENDENTE - DM II", product_type: "B", review: true }
+  - { code: "INSUM", label: "INSUMOS", product_type: "O", review: true }
+  - { code: "JUD", label: "JUDICIALIZAÇÃO", product_type: "O", review: true }
+  - { code: "LEISH", label: "LEISHMANIOSE", product_type: "S", review: true }
+  - { code: "LES", label: "LÚPUS ERITEMATOSO SISTÊMICO", product_type: "E", review: true }
+  - { code: "MAL", label: "MALÁRIA", product_type: "S", review: true }
+  - { code: "MANIP", label: "MANIPULADOS", product_type: "B", review: true }
+  - { code: "MENIN", label: "MENINGITE", product_type: "S", review: true }
+  - { code: "MICOEN", label: "MICOSES ENDÊMICAS", product_type: "S", review: true }
+  - { code: "MICSIS", label: "MICOSES SISTÊMICAS", product_type: "S", review: true }
+  - { code: "MIEL", label: "MIELOMA MÚLTIPLO", product_type: "E", review: true }
+  - { code: "MULTRES", label: "MULTIDROGA RESISTENTE", product_type: "S", review: true }
+  - { code: "NUTRI", label: "ALIMENTAÇÃO E NUTRIÇÃO", product_type: "B", review: true }
+  - { code: "ODONTO", label: "ODONTOLOGIA", product_type: "B", review: true }
+  - { code: "ONCO", label: "ONCOLOGIA", product_type: "E", review: true }
+  - { code: "OPM", label: "ORTESES E PROTESES", product_type: "O", review: true }
+  - { code: "OSTOM", label: "OSTOMIA", product_type: "B", review: true }
+  - { code: "PESTE", label: "PESTE", product_type: "S", review: true }
+  - { code: "PRODSAUDE", label: "PRODUTOS PARA SAÚDE", product_type: "B", review: true }
+  - { code: "REMEDCASA", label: "REMÉDIO EM CASA", product_type: "B", review: true }
+  - { code: "S/DOR", label: "SEM DOR", product_type: "B", review: true }
+  - { code: "SAUDECRIAN", label: "SAÚDE DA CRIANÇA", product_type: "B", review: true }
+  - { code: "SAUDEPRISI", label: "SAÚDE PRISIONAL", product_type: "O", review: true }
+  - { code: "SAUDMENTAL", label: "SAÚDE MENTAL", product_type: "B", review: true }
+  - { code: "SAUDMULHER", label: "SAÚDE DA MULHER", product_type: "B", review: true }
+  - { code: "S.P.IDOSA", label: "SAÚDE DA PESSOA IDOSA", product_type: "B", review: true }
+  - { code: "SIF", label: "SÍFILIS", product_type: "S", review: true }
+  - { code: "SM CVD-19", label: "SAÚDE MENTAL COVID-19", product_type: "B", review: true }
+  - { code: "SMD", label: "SÍNDROME MIELODISPLÁSICA (SMD)", product_type: "E", review: true }
+  - { code: "SRO", label: "SARAMPO", product_type: "S", review: true }
+  - { code: "TB", label: "TUBERCULOSE", product_type: "S", review: true }
+  - { code: "TBG", label: "TABAGISMO", product_type: "B", review: true }
+  - { code: "TOXI", label: "PROGRAMA DE TOXICOLOGIA", product_type: "O", review: true }
+  - { code: "TOXO", label: "TOXOPLASMOSE", product_type: "S", review: true }
+  - { code: "TRACO", label: "TRACOMA", product_type: "S", review: true }
+  - { code: "TEA", label: "TRANSTORNO DO ESPECTRO AUTISTA", product_type: "E", review: true }
+  - { code: "UPA", label: "UPA", product_type: "O", review: true }
+  - { code: "URG/EMERG", label: "URGÊNCIA E EMERGÊNCIA", product_type: "O", review: true }
+  - { code: "ZOO", label: "ZOONOSES", product_type: "S", review: true }
