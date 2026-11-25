@@ -132,6 +132,50 @@ RSpec.describe OpeningImports::Validator, type: :service do
     expect(codes_of(row(ampp: "@brasil20038375080"))).to eq([ [] ])
   end
 
+  it "ampp_not_in_vmp: o AMPP existe no catálogo OBM, mas é de outro VMP (Q36)" do
+    ObmPresentation.create!(ampp_code: "@brasil20038375080", vmp_code: "@brasil1000", anvisa_registration: "1234567890123",
+                            description: "Losartana 50 mg", imported_at: Time.current)
+    losartana.update_columns(vmp_code: "@brasil9999") # rubocop:disable Rails/SkipsModelValidations
+    expect(codes_of(row(ampp: "@brasil20038375080"))).to eq([ [ "ampp_not_in_vmp" ] ])
+    expect(codes_of(row(ampp: "@nada"))).to eq([ [ "ampp_unknown" ] ])
+  end
+
+  describe "lot_mismatch (Q37, regra da Q7)" do
+    let(:later) { (Time.zone.today + 300).iso8601 }
+
+    it "(a) o mesmo lote em linhas de locais diferentes com validade, CNPJ ou ANVISA divergentes → todas as linhas do conflito" do
+      expect(codes_of(row(lote: "X-1"), row(line: 3, cnes: "7654321", lote: "X-1", validade: later), row(line: 4, lote: "X-2")))
+        .to eq([ [ "lot_mismatch" ], [ "lot_mismatch" ], [] ])
+      other_cnpj = Cnpj.with_check_digits("998887770001")
+      expect(codes_of(row(lote: "X-3"), row(line: 3, cnes: "7654321", lote: "X-3", cnpj_fabricante: other_cnpj)))
+        .to all(eq([ "lot_mismatch" ]))
+      expect(codes_of(row(lote: "X-4"), row(line: 3, cnes: "7654321", lote: "X-4", registro_anvisa: "9876543210123")))
+        .to all(eq([ "lot_mismatch" ]))
+    end
+
+    it "(a) só o preço diferente, ou um campo vazio numa das linhas, não é conflito" do
+      expect(codes_of(row(lote: "Y-1"), row(line: 3, cnes: "7654321", lote: "Y-1", valor_unitario: "9,99"))).to eq([ [], [] ])
+      expect(codes_of(row(lote: "Y-2"), row(line: 3, cnes: "7654321", lote: "Y-2", registro_anvisa: nil, programa: nil))).to eq([ [], [] ])
+    end
+
+    it "(a) vacina: a manufacturer_key diferente é conflito" do
+      serum_cnpj = Cnpj.with_check_digits("998887770001")
+      both = product.with(manufacturers: product.manufacturers.map do |m|
+        m.with(cnpj: { "fiocruz" => fiocruz_cnpj, "serum" => serum_cnpj }[m.key])
+      end)
+      allow(Vaccination::Immunobiologicals).to receive(:find).with("15").and_return(both)
+      expect(codes_of(vaccine_row, vaccine_row(line: 3, cnes: "7654321", cnpj_fabricante: serum_cnpj))).to all(eq([ "lot_mismatch" ]))
+    end
+
+    it "(b) linha divergente de um lote já gravado na cidade; o preço pode trocar" do
+      lot = stocked_lot!(central, item: losartana, lot_number: "S-1", expires_on: Time.zone.today + 200)
+      bnafar_complete!(lot)
+      expect(codes_of(row(cnes: "7654321", lote: "S-1", validade: later))).to eq([ [ "lot_mismatch" ] ])
+      expect(codes_of(row(cnes: "7654321", lote: "S-1", registro_anvisa: "9876543210123"))).to eq([ [ "lot_mismatch" ] ])
+      expect(codes_of(row(cnes: "7654321", lote: "S-1", programa: "AFB", valor_unitario: "3,00"))).to eq([ [] ])
+    end
+  end
+
   it "program_unknown" do
     expect(codes_of(row(programa: "NAOEXISTE"))).to eq([ [ "program_unknown" ] ])
   end
@@ -175,9 +219,14 @@ RSpec.describe OpeningImports::Validator, type: :service do
       expect(validate(bare).sole).to have_attributes(status: "valid", send_fields_missing: true)
     end
 
-    it "domínio no envio: os campos faltando são erro da linha" do
-      expect(codes_of(bare, required: [ med ])).to eq([ %w[invalid_price invalid_cnpj invalid_anvisa program_unknown] ])
+    it "domínio no envio: os campos faltando são erro da linha, salvo o CNPJ vazio (Q38)" do
+      expect(codes_of(bare, required: [ med ])).to eq([ %w[invalid_price invalid_anvisa program_unknown] ])
       expect(codes_of(row, required: [ med ])).to eq([ [] ])
+    end
+
+    it "CNPJ vazio no domínio do envio: a linha é válida e conta no aviso (Q38)" do
+      expect(validate(row(cnpj_fabricante: nil), required: [ med ]).sole).to have_attributes(status: "valid", send_fields_missing: true)
+      expect(codes_of(row(cnpj_fabricante: "123"), required: [ med ])).to eq([ [ "invalid_cnpj" ] ])
     end
   end
 end

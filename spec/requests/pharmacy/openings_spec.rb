@@ -38,7 +38,8 @@ RSpec.describe "Farmácia — aberturas de estoque", type: :request do
           .join("\n") + "\n"
     domains = [ Stock::Domain::MEDICATION ]
     import = OpeningImports::Upload.call(bytes: csv, by: keeper, now: Time.current, usable_domains: domains, required_domains: []).payload.fetch(:import)
-    expect(OpeningImports::Apply.call(import: import, expected_version: import.version, by: keeper, now: Time.current)).to be_ok
+    expect(OpeningImports::Apply.call(import: import, expected_version: import.version, by: keeper, usable_domains: domains, now: Time.current))
+      .to be_ok
     stocked_lot!(central, item: losartana, by: keeper)
 
     sign_in_as(keeper)

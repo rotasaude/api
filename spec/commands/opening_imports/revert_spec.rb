@@ -25,7 +25,7 @@ RSpec.describe OpeningImports::Revert, type: :model do
 
   def applied!
     import = OpeningImports::Upload.call(bytes: csv, by: admin, now: Time.current, usable_domains: domains, required_domains: []).payload.fetch(:import)
-    result = OpeningImports::Apply.call(import: import, expected_version: import.version, by: admin, now: Time.current)
+    result = OpeningImports::Apply.call(import: import, expected_version: import.version, by: admin, usable_domains: domains, now: Time.current)
     raise "apply: #{result.reason}" if result.failure?
 
     import.reload
@@ -87,6 +87,18 @@ RSpec.describe OpeningImports::Revert, type: :model do
     bnafar_record!(bnafar_submission!(status: "queued"), location: farmacia, sent_at: nil)
 
     expect(revert!(import).details[:locations]).to eq([ farmacia.id ])
+  end
+
+  it "aplicação retomada: registro BNAFAR criado entre a queda e a retomada bloqueia (R22, applied_at na primeira entrada)" do
+    import = OpeningImports::Upload.call(bytes: csv, by: admin, now: Time.current, usable_domains: domains, required_domains: []).payload.fetch(:import)
+    allow(OpeningImports::Apply).to receive(:finish).and_raise("caiu no fim")
+    expect { OpeningImports::Apply.call(import: import, expected_version: 2, by: admin, usable_domains: domains, now: Time.current) }
+      .to raise_error(RuntimeError)
+    bnafar_record!(bnafar_submission!(status: "queued"), location: central, sent_at: nil)
+    allow(OpeningImports::Apply).to receive(:finish).and_call_original
+    expect(OpeningImports::Apply.call(import: import, expected_version: 2, by: admin, usable_domains: domains, now: Time.current)).to be_ok
+
+    expect(revert!(import.reload).details).to eq(path: "id", locations: [ central.id ])
   end
 
   it "versão diferente, ou importação que não está aplicada → opening_import_changed" do

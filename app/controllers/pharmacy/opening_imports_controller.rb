@@ -16,9 +16,11 @@
 # envio ligado, Q26) são lidos AQUI, fora da transação da cidade.
 #
 # O arquivo chega em base64 num corpo JSON (o 415 `json_required` é da
-# Authentication); o tamanho do corpo é conferido ANTES de ler o JSON
-# (MAX_BODY_BYTES ≈ 5 MB decodificados em base64 + envelope) → 413
-# `file_too_large`. Nenhuma resposta traz o arquivo, o hash dele nem o
+# Authentication). O tamanho do corpo (MAX_BODY_BYTES ≈ 5 MB decodificados
+# em base64 + envelope; `Content-Length` primeiro, depois o corpo lido) dá 413
+# `file_too_large`, mas NÃO antes da leitura: o Rails já leu e interpretou o
+# corpo para os parâmetros filtrados do log antes da ação. O teto que protege
+# a memória é o do proxy/Puma (infra), não este. Nenhuma resposta traz o arquivo, o hash dele nem o
 # `file_data`. As linhas paginam pela ordem da planilha (`before` é o cursor
 # opaco de continuação, `next_before` na resposta).
 module Pharmacy
@@ -56,7 +58,7 @@ module Pharmacy
     end
 
     def create
-      return file_too_large if request.raw_post.bytesize > MAX_BODY_BYTES
+      return file_too_large if request.content_length.to_i > MAX_BODY_BYTES || request.raw_post.bytesize > MAX_BODY_BYTES
 
       raw = body_param("file_base64")
       return render_refusal("file_base64", "invalid_file") unless raw.is_a?(String) && raw.present?
@@ -81,7 +83,7 @@ module Pharmacy
       require_step_up!
       return if performed?
 
-      act(OpeningImports::Apply, now: Time.current)
+      act(OpeningImports::Apply, usable_domains: usable_domains, now: Time.current)
     end
 
     def revert

@@ -30,7 +30,9 @@ RSpec.describe OpeningImports::Apply, type: :model do
     result.payload.fetch(:import)
   end
 
-  def apply!(import, version: import.version, by: applier) = described_class.call(import: import, expected_version: version, by: by, now: Time.current)
+  def apply!(import, version: import.version, by: applier, usable: domains)
+    described_class.call(import: import, expected_version: version, by: by, usable_domains: usable, now: Time.current)
+  end
 
   it "250 linhas em dois locais → três entradas opening de quem aplicou, saldo certo, file_data NULL" do
     lines = [ losartana, amoxicilina, paracetamol ].flat_map { |item| (1..50).map { |n| line(cnes: "2384299", item: item, lot: "C#{item.catmat_code}-#{n}") } }
@@ -100,6 +102,27 @@ RSpec.describe OpeningImports::Apply, type: :model do
     expect(apply!(import.reload, version: 2).reason).to eq(:opening_import_changed)
     expect(apply!(import).reason).to eq(:opening_import_changed)
     expect(StockEntry.where(kind: "opening").count).to eq(1)
+  end
+
+  it "domínio desligado entre a conferência e a aplicação → linhas domain_disabled, nada gravado no local" do
+    import = upload!([ line(cnes: "2384299", item: losartana, lot: "D-1"), line(cnes: "7654321", item: amoxicilina, lot: "D-2") ])
+
+    expect(apply!(import, usable: [ Stock::Domain::IMMUNOBIOLOGICAL ])).to be_ok
+    rows = OpeningImportRow.where(opening_import_id: import.id).order(:line)
+    expect(rows.map { |row| [ row.status, row.error_codes ] }).to eq([ [ "error", [ "domain_disabled" ] ], [ "error", [ "domain_disabled" ] ] ])
+    expect(StockEntry.count).to eq(0)
+    expect(import.reload).to have_attributes(status: "applied", rows_valid: 0)
+  end
+
+  it "applied_at é a primeira entrada da importação, também na aplicação retomada (R22)" do
+    import = upload!([ line(cnes: "2384299", item: losartana, lot: "T-1") ])
+    allow(described_class).to receive(:finish).and_raise("caiu no fim")
+    expect { apply!(import) }.to raise_error(RuntimeError, "caiu no fim")
+    first = StockEntry.find_by!(kind: "opening").created_at
+
+    allow(described_class).to receive(:finish).and_call_original
+    expect(apply!(import)).to be_ok
+    expect(import.reload.applied_at).to eq(first)
   end
 
   it "o upload grava a importação validada, com o arquivo cifrado e o relatório" do

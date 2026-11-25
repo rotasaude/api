@@ -22,6 +22,14 @@
 #     válida sem algum campo do envio só leva o aviso `send_fields_missing`;
 #   - vacina (Q21): o `cnpj_fabricante` só resolve a `manufacturer_key` do
 #     YAML (`manufacturer_not_in_catalog`); o CNPJ nunca vai ao lote;
+#   - `ampp_not_in_vmp` (Q36): o AMPP existe no OBM, mas é de outro VMP;
+#     `ampp_unknown` só para o AMPP fora do catálogo;
+#   - `cnpj_fabricante` vazio passa mesmo com o envio ligado (Q38) e conta no
+#     aviso `send_fields_missing`;
+#   - `lot_mismatch` (Q37, regra da Q7): o mesmo lote (item + número), em
+#     qualquer local, com validade, `manufacturer_key` ou campo BNAFAR
+#     preenchido (menos o preço) divergente entre as linhas (todas viram erro)
+#     ou do lote já gravado;
 #   - `duplicate_line` (o mesmo lote do mesmo item no mesmo local outra vez),
 #     `opening_exists` (abertura ativa do item no local, R9) e
 #     `too_many_lots` (mais de 100 lotes de um item num local: a entrada não
@@ -30,8 +38,8 @@
 module OpeningImports
   module Validator
     CODES = %w[cnes_unknown invalid_product_type product_unknown item_not_allowed_here domain_disabled invalid_lot_number invalid_date
-               expired_lot invalid_quantity invalid_price invalid_cnpj invalid_anvisa program_unknown ampp_unknown anvisa_mismatch
-               manufacturer_not_in_catalog duplicate_line opening_exists too_many_lots].freeze
+               expired_lot invalid_quantity invalid_price invalid_cnpj invalid_anvisa program_unknown ampp_unknown ampp_not_in_vmp anvisa_mismatch
+               manufacturer_not_in_catalog lot_mismatch duplicate_line opening_exists too_many_lots].freeze
     PRODUCT_TYPES = { "medicamento" => Stock::Domain::MEDICATION, "vacina" => Stock::Domain::IMMUNOBIOLOGICAL,
                       "vetorial" => Stock::Domain::VECTOR_CONTROL }.freeze
     ISO_DATE = /\A\d{4}-\d{2}-\d{2}\z/
@@ -53,6 +61,7 @@ module OpeningImports
       facts = Facts.new(rows)
       drafts = rows.map { |row| draft(row, today, facts, usable_domains.to_set, required_domains.to_set) }
       flag_duplicates(drafts)
+      flag_lot_conflicts(drafts, facts)
       flag_openings(drafts, facts)
       flag_too_many_lots(drafts)
       drafts.map { |draft| finish(draft) }
@@ -60,7 +69,7 @@ module OpeningImports
 
     # Código de recusa de um campo do LotFields (`error` vindo dele).
     def field_code(field, error)
-      return "anvisa_mismatch" if error.to_s == "anvisa_mismatch"
+      return error.to_s if %w[anvisa_mismatch ampp_not_in_vmp].include?(error.to_s)
 
       FIELD_CODES.fetch(field.to_s.split(".").last, error.to_s)
     end
@@ -112,6 +121,19 @@ module OpeningImports
       end
 
       def medication(code) = code.to_s.match?(INTEGER) ? @catalog[code.to_i] : nil
+
+      # Lotes já gravados para as chaves [chave de item, número] -> { chave => StockLot }.
+      def stored_lots(keys)
+        return {} if keys.empty?
+
+        numbers = keys.map(&:last).uniq
+        by_kind = keys.map(&:first).uniq.group_by { |key| key.split(":", 2).first }.transform_values { |list| list.map { |key| key.split(":", 2).last } }
+        found = []
+        found += StockLot.where(catalog_item_id: by_kind[Stock::Domain::MEDICATION], lot_number: numbers).to_a if by_kind[Stock::Domain::MEDICATION]
+        found += StockLot.where(immunobiological_code: by_kind[Stock::Domain::IMMUNOBIOLOGICAL], lot_number: numbers).to_a if by_kind[Stock::Domain::IMMUNOBIOLOGICAL]
+        found += StockLot.where(vector_product_id: by_kind[Stock::Domain::VECTOR_CONTROL], lot_number: numbers).to_a if by_kind[Stock::Domain::VECTOR_CONTROL]
+        found.index_by { |lot| [ item_key(lot.catalog_item_id, lot.immunobiological_code, lot.vector_product_id), lot.lot_number ] }.slice(*keys)
+      end
       def vector(code) = code && @vector[code.downcase]
 
       # Pares (local, chave de item) com abertura ativa (R9).
@@ -216,6 +238,9 @@ module OpeningImports
       vmp = resolved[:product]&.obm_vmp || resolved[:catalog_item]&.vmp_code
       fields, problems = ::Bnafar::LotFields.parse(raw, prefix: "", stock_domain: domain || Stock::Domain::MEDICATION, required: required,
                                                         vmp_code: vmp)
+      # Q38: o CNPJ vazio passa mesmo com o envio ligado (o lote nasce sem
+      # fabricante, `lot_incomplete`; o internacional entra pelo complemento).
+      problems = problems.reject { |found| found[:path] == "manufacturer_cnpj" && found[:error] == "required" }
       codes.concat(problems.map { |found| field_code(found[:path], found[:error]) })
       [ fields, codes.uniq ]
     end
@@ -251,6 +276,48 @@ module OpeningImports
       end
     end
 
+    # Q37 (regra da Q7): o mesmo lote (item + número) em qualquer local não
+    # diverge entre as linhas nem do lote já gravado na cidade, salvo o preço.
+    # (a) linhas divergentes entre si → todas as do lote; (b) linha divergente
+    # do gravado → ela.
+    def flag_lot_conflicts(drafts, facts)
+      lotted = drafts.select { |draft| draft[:resolved].any? && draft[:row][:lote].is_a?(String) }
+      groups = lotted.group_by { |draft| [ item_key_of(draft), draft[:row][:lote] ] }
+      stored = facts.stored_lots(groups.keys)
+      groups.each do |key, group|
+        signatures = group.map { |draft| lot_signature(draft) }
+        clash = signatures.combination(2).any? { |one, other| ::Bnafar::LotFields.conflict?(one, other) }
+        group.each { |draft| draft[:codes] << "lot_mismatch" } if clash
+        lot = stored[key]
+        next unless lot
+
+        group.each { |draft| draft[:codes] << "lot_mismatch" if diverges?(lot, draft) }
+      end
+    end
+
+    # O que precisa bater no lote: validade, a `manufacturer_key` (vacina) e os campos BNAFAR preenchidos, menos o preço.
+    def lot_signature(draft)
+      signature = draft[:fields].except(:unit_price_cents)
+      expires = parse_date(draft[:row][:validade])
+      signature[:expires_on] = expires if expires
+      signature[:manufacturer_key] = draft[:manufacturer].key if draft[:manufacturer]
+      signature
+    end
+
+    def diverges?(lot, draft)
+      expires = parse_date(draft[:row][:validade])
+      return true if expires && expires != lot.expires_on
+      return true if draft[:manufacturer] && draft[:manufacturer].key != lot.manufacturer_key
+
+      ::Bnafar::LotFields.diff(lot, draft[:fields].except(:unit_price_cents)).last.any?
+    end
+
+    def parse_date(text)
+      text.is_a?(String) && text.match?(ISO_DATE) ? Date.iso8601(text) : nil
+    rescue Date::Error
+      nil
+    end
+
     def flag_openings(drafts, facts)
       candidates = keyed(drafts)
       opened = facts.opened(candidates.map { |draft| draft[:location].id }.uniq)
@@ -277,7 +344,7 @@ module OpeningImports
                     catalog_item_id: resolved[:catalog_item]&.id, immunobiological_code: resolved[:product]&.code,
                     vector_product_id: resolved[:vector_product]&.id, manufacturer_key: draft[:manufacturer]&.key,
                     quantity: draft[:quantity], value_cents: (price && count ? price * count : nil),
-                    send_fields_missing: codes.empty? && !draft[:required] && send_fields_missing?(draft))
+                    send_fields_missing: codes.empty? && send_fields_missing?(draft))
     end
 
     # A linha não traz algum campo do envio (o lote vai aparecer como `lot_incomplete`, Q22).
@@ -292,6 +359,6 @@ module OpeningImports
     end
 
     private_class_method :draft, :resolve_item, :date_codes, :quantity_of, :lot_fields, :bnafar_raw, :manufacturer_of, :item_key_of, :keyed,
-                         :flag_duplicates, :flag_openings, :flag_too_many_lots, :finish, :send_fields_missing?
+                         :flag_duplicates, :flag_lot_conflicts, :lot_signature, :diverges?, :parse_date, :flag_openings, :flag_too_many_lots, :finish, :send_fields_missing?
   end
 end

@@ -19,9 +19,15 @@
 # segunda termina em `opening_import_changed`. A aplicação interrompida no
 # meio fica `validated` e retoma de onde parou.
 #
-# No fim: `applied`, `file_data` NULL, `applied_at` (o `now` do início: o
-# desfazer conta o movimento criado depois dele), relatório refeito, version
-# + 1 e o evento `opening_import.applied` só com ids.
+# `usable_domains` (lido FORA da transação pelo chamador): o local cujo
+# domínio ficou inutilizável depois da conferência tem as linhas marcadas
+# `domain_disabled` e não recebe estoque.
+#
+# No fim: `applied`, `file_data` NULL, `applied_at` = a primeira entrada da
+# importação (ou o `now`, sem entrada): na aplicação retomada depois de uma
+# queda, o desfazer ainda conta o que foi criado entre a primeira tentativa e
+# a retomada (R22); relatório refeito, version + 1 e o evento
+# `opening_import.applied` só com ids.
 module OpeningImports
   module Apply
     # Recusa do RecordEntry (erro) → código da linha (o resto fica com o código
@@ -34,7 +40,7 @@ module OpeningImports
     module_function
 
     # -> Result.ok(import:) | fail(:expected_version_required | :opening_import_changed)
-    def call(import:, expected_version:, by:, now: Time.current)
+    def call(import:, expected_version:, by:, usable_domains:, now: Time.current)
       return Changes.version_required unless expected_version.is_a?(Integer)
 
       current = OpeningImport.select(:id, :status, :version).find(import.id)
@@ -42,7 +48,8 @@ module OpeningImports
 
       catalog = catalog_for(current)
       location_ids = pending(current).distinct.order(:stock_location_id).pluck(:stock_location_id)
-      location_ids.each { |location_id| apply_location(current, expected_version, location_id, by, catalog, now) }
+      usable = usable_domains.to_set
+      location_ids.each { |location_id| apply_location(current, expected_version, location_id, by, catalog, now, usable) }
       finish(current, expected_version, by, now)
     rescue Changed
       Changes.changed
@@ -56,11 +63,16 @@ module OpeningImports
       ids.empty? ? {} : MedicationCatalogItem.where(id: ids).index_by(&:id)
     end
 
-    def apply_location(import, version, location_id, by, catalog, now)
+    def apply_location(import, version, location_id, by, catalog, now, usable)
       OpeningImport.transaction do
         lock!(import, version, slim: true)
         location = StockLocation.find(location_id)
         rows = pending(import).where(stock_location_id: location_id).order(:line).to_a
+        # O domínio desligado depois da conferência não recebe estoque (R24).
+        unless usable.include?(Stock::Domain.for(location))
+          next OpeningImportRow.where(id: rows.map(&:id)).update_all(status: "error", error_codes: [ "domain_disabled" ]) # rubocop:disable Rails/SkipsModelValidations
+        end
+
         chunks(rows).each { |chunk| record(location, chunk, by, catalog, now) }
       end
     end
@@ -128,7 +140,11 @@ module OpeningImports
       OpeningImport.transaction do
         locked = lock!(import, version)
         valid = OpeningImportRow.where(opening_import_id: locked.id, status: "valid").count
-        locked.update!(status: "applied", file_data: nil, applied_at: now, applied_by_user: by, rows_valid: valid,
+        # A primeira entrada da importação (a aplicação retomada depois de uma
+        # queda começou antes deste `now`): o desfazer conta o que veio depois dela (R22).
+        first = StockEntry.where(id: OpeningImportRow.where(opening_import_id: locked.id).where.not(stock_entry_id: nil).select(:stock_entry_id))
+                          .minimum(:created_at)
+        locked.update!(status: "applied", file_data: nil, applied_at: [ first, now ].compact.min, applied_by_user: by, rows_valid: valid,
                        report: Report.snapshot(locked), version: locked.version + 1)
         DomainEvents.publish("opening_import.applied", opening_import_id: locked.id, user_id: by.id)
         Result.ok(import: locked)
