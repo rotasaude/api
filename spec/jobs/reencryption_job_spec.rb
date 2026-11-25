@@ -70,7 +70,7 @@ RSpec.describe ReencryptionJob do
                                          HouseholdVersion Family IndividualRegistration IndividualRegistrationVersion
                                          DiseaseNotification DiseaseNotificationEvent
                                          RegulationRequest RegulationRequestEvent RegulationAuthorization
-                                         StockMovement StockTransferItem StockAdjustment ExternalPrescription
+                                         StockMovement StockTransferItem StockAdjustment StockExternalExit ExternalPrescription
                                          ExternalPrescriptionItem Dispensation
                                          DentalTreatmentPlan DentalTreatmentPlanItem DentalProsthesisStage
                                          Immunization RndsOutboxEntry VialOpening StockLotBlock

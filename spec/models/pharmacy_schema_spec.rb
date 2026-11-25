@@ -240,6 +240,8 @@ RSpec.describe "Esquema da farmácia (ADR 0045)" do
     catalog = Pharmacy::Catalog
     vector = %w[vector_application vector_application_reversal]
     zoonoses = %w[animal_vaccination animal_vaccination_reversal collar_placement] # módulo 35b
+    bnafar = %w[external_exit opening_reversal] # módulo 27b (900002)
+    zoonoses += bnafar
     vector += zoonoses
     vaccine = %w[vial_opening immunization immunization_reversal administration] + vector
     expect([ AddVaccinationRoom::MOVEMENT_KINDS, AddVaccinationRoom::POSITIVE_KINDS, AddVaccinationRoom::NEGATIVE_KINDS ])

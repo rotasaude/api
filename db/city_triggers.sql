@@ -5152,3 +5152,74 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 27b — saída externa (Q8, Q10, Q11): a saída nunca some. Só o tipo, o
+-- destino e o motivo mudam, juntos ou não, e sempre com version + 1 (a correção
+-- vale para a saída inteira); o resto (local, autor, dia) nunca muda. Sob a
+-- marca da re-cifra (rota.reencrypting) o motivo é regravado sem mexer em mais
+-- nada. Os itens só crescem. O desfazer da abertura marca `reverted_at` uma vez,
+-- de NULL a valor; a abertura nunca some. TRUNCATE recusado nas três tabelas.
+CREATE OR REPLACE FUNCTION rota_stock_external_exit_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['exit_type', 'destination_kind', 'destination_code', 'reason', 'version'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'stock_external_exits: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'reason') = (to_jsonb(OLD) - 'reason') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'stock_external_exits: only exit_type, destination and reason change';
+  END IF;
+  IF NEW.version IS DISTINCT FROM OLD.version + 1 THEN
+    RAISE EXCEPTION 'stock_external_exits: UPDATE refused (version must rise by 1)';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_stock_opening_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION '% is append-only: DELETE refused', TG_TABLE_NAME;
+  END IF;
+  IF (to_jsonb(NEW) - 'reverted_at') IS DISTINCT FROM (to_jsonb(OLD) - 'reverted_at') THEN
+    RAISE EXCEPTION '% is append-only: UPDATE refused (only reverted_at changes)', TG_TABLE_NAME;
+  END IF;
+  IF OLD.reverted_at IS NOT NULL OR NEW.reverted_at IS NULL THEN
+    RAISE EXCEPTION '% is append-only: UPDATE refused (an opening is reverted once)', TG_TABLE_NAME;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.stock_external_exits') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_external_exits_guard ON stock_external_exits';
+    EXECUTE 'CREATE TRIGGER stock_external_exits_guard BEFORE UPDATE OR DELETE ON stock_external_exits
+      FOR EACH ROW EXECUTE FUNCTION rota_stock_external_exit_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_external_exits_append_only_truncate ON stock_external_exits';
+    EXECUTE 'CREATE TRIGGER stock_external_exits_append_only_truncate BEFORE TRUNCATE ON stock_external_exits
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  IF to_regclass('public.stock_external_exit_items') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_external_exit_items_append_only ON stock_external_exit_items';
+    EXECUTE 'CREATE TRIGGER stock_external_exit_items_append_only BEFORE UPDATE OR DELETE ON stock_external_exit_items
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_external_exit_items_append_only_truncate ON stock_external_exit_items';
+    EXECUTE 'CREATE TRIGGER stock_external_exit_items_append_only_truncate BEFORE TRUNCATE ON stock_external_exit_items
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  IF to_regclass('public.stock_openings') IS NOT NULL
+     AND EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'stock_openings' AND column_name = 'reverted_at') THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_openings_append_only ON stock_openings';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_openings_guard ON stock_openings';
+    EXECUTE 'CREATE TRIGGER stock_openings_guard BEFORE UPDATE OR DELETE ON stock_openings
+      FOR EACH ROW EXECUTE FUNCTION rota_stock_opening_guard()';
+  END IF;
+END
+$do$;

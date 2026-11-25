@@ -153,7 +153,9 @@ Rails.application.config.filter_parameters += [
   /\A(file_base64|fileBase64)\z/,
   # Módulo 27b: o usuário da credencial do SI-BNAFAR (PUT /integrations/credentials/bnafar)
   # nunca em log; a senha já cai em `:passw`. Só a chave inteira.
-  /\Ausername\z/
+  /\Ausername\z/,
+  # Módulo 27b: o destino da saída externa do estoque (CNES ou CNPJ de quem recebe).
+  /\Adestination_code\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

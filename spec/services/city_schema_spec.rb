@@ -122,9 +122,20 @@ RSpec.describe CitySchema do
                              "external_prescriptions_reencryption_only", "external_prescription_items_reencryption_only",
                              "stock_transfers_guard", "stock_transfer_items_guard", "stock_adjustments_guard", "stock_location_staff_guard",
                              "dispensation_items_lot_item",
-                             *%w[stock_entries stock_openings dispensation_items].map { |t| "#{t}_append_only" },
+                             *%w[stock_entries dispensation_items].map { |t| "#{t}_append_only" },
                              *%w[stock_locations stock_minimums pharmacy_settings].map { |t| "#{t}_no_delete" },
                              *tables.map { |t| "#{t}_append_only_truncate" })
+  end
+
+  # Módulo 27b (Task 9): a abertura troca o só-acréscimo pela guarda do desfazer; a saída
+  # externa tem guarda, itens só de acréscimo e truncate recusado.
+  it "loads the 27b external exit and opening guards into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+
+    expect(names).to include("stock_openings_guard", "stock_openings_append_only_truncate", "stock_external_exits_guard",
+                             "stock_external_exits_append_only_truncate", "stock_external_exit_items_append_only",
+                             "stock_external_exit_items_append_only_truncate")
+    expect(names).not_to include("stock_openings_append_only")
   end
 
   # Módulo 27b (Task 3): o lote deixa o só-acréscimo pela guarda do BNAFAR; o

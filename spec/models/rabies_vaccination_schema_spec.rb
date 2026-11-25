@@ -66,8 +66,9 @@ RSpec.describe "Esquema da vacinação do módulo 35b", type: :model do
 
   it "a migração espelha Pharmacy::Catalog e Zoonoses::Catalog; irreversível" do
     catalog = Pharmacy::Catalog
+    bnafar = %w[external_exit opening_reversal] # módulo 27b (900002)
     expect([ AddRabiesVaccinations::MOVEMENT_KINDS, AddRabiesVaccinations::POSITIVE_KINDS, AddRabiesVaccinations::NEGATIVE_KINDS ])
-      .to eq([ catalog::MOVEMENT_KINDS, catalog::POSITIVE_KINDS, catalog::NEGATIVE_KINDS ])
+      .to eq([ catalog::MOVEMENT_KINDS - bnafar, catalog::POSITIVE_KINDS, catalog::NEGATIVE_KINDS - bnafar ])
     expect(AddRabiesVaccinations::MOVEMENT_KINDS).to include("animal_vaccination", "animal_vaccination_reversal", "collar_placement")
     expect(AddRabiesVaccinations::POSITIVE_KINDS).to include("animal_vaccination_reversal")
     expect(AddRabiesVaccinations::NEGATIVE_KINDS).to include("animal_vaccination", "collar_placement")

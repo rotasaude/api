@@ -18,14 +18,17 @@ module Pharmacy
     # e `vector_application_reversal` (+), o estorno na retirada da visita.
     # Módulo 35b (ADR 0054): `animal_vaccination` (−), a baixa da dose antirrábica,
     # `animal_vaccination_reversal` (+), o estorno na anulação, e `collar_placement` (−).
+    # Módulo 27b: `external_exit` (−), a saída externa (documento: StockExternalExit), e
+    # `opening_reversal` (−, Q10), o desfazer da abertura (documento: a entrada de abertura).
     MOVEMENT_KINDS = %w[opening receipt donation transfer_out transfer_in dispensing loss expiry adjustment return
                         vial_opening immunization immunization_reversal administration
                         vector_application vector_application_reversal
-                        animal_vaccination animal_vaccination_reversal collar_placement].freeze
+                        animal_vaccination animal_vaccination_reversal collar_placement
+                        external_exit opening_reversal].freeze
     POSITIVE_KINDS = %w[opening receipt donation transfer_in return immunization_reversal vector_application_reversal
                         animal_vaccination_reversal].freeze
     NEGATIVE_KINDS = %w[transfer_out dispensing loss expiry vial_opening immunization administration vector_application
-                        animal_vaccination collar_placement].freeze
+                        animal_vaccination collar_placement external_exit opening_reversal].freeze
 
     ENTRY_KINDS = %w[invoice donation opening].freeze
     ENTRY_MOVEMENT = { "invoice" => "receipt", "donation" => "donation", "opening" => "opening" }.freeze

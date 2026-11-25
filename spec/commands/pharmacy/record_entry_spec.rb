@@ -283,6 +283,17 @@ RSpec.describe Pharmacy::RecordEntry do
       expect(StockOpening.where(stock_location_id: central.id).count).to eq(2)
     end
 
+    it "reabrir depois de revertida passa (Task 9, Q10): só a abertura ativa conta" do
+      entry!([ line ], kind: "opening", doc: nil)
+      StockOpening.sole.update_columns(reverted_at: Time.current)
+      expect(StockOpening.active.count).to eq(0)
+
+      result = entry!([ line(lot_number: "REABRE") ], kind: "opening", doc: nil)
+      expect(result).to be_ok
+      expect(StockOpening.active.count).to eq(1)
+      expect(entry!([ line(lot_number: "TERCEIRA") ], kind: "opening", doc: nil).reason).to eq(:opening_exists)
+    end
+
     it "segunda abertura do item no local → opening_exists em items[0].catalog_item_id e nada gravado (nem o lote novo)" do
       entry!([ line ], kind: "opening", doc: nil)
       before = written

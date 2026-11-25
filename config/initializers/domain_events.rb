@@ -372,6 +372,9 @@ Rails.application.config.to_prepare do
   # Complemento dos dados BNAFAR de um lote (módulo 27b); só ids (stock_lot_id,
   # user_id), sem consumidor.
   DomainEvents.bind "stock_lot.bnafar_completed", to: []
+  # Saída externa do estoque gravada (módulo 27b; contrato §9); só ids
+  # (stock_external_exit_id, user_id), sem consumidor.
+  DomainEvents.bind "stock_external_exit.recorded", to: []
   # Receita externa digitada na farmácia; só trilha, só ids
   # (external_prescription_id, user_id) — nunca prescritor, número da
   # notificação, item nem paciente —, sem consumidor.

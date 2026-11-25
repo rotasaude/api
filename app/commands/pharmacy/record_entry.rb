@@ -551,7 +551,7 @@ module Pharmacy
 
     # Itens da abertura que já têm abertura no local, uma recusa por linha.
     def opening_problems(location, rows)
-      openings = StockOpening.where(stock_location_id: location.id)
+      openings = StockOpening.active.where(stock_location_id: location.id)
       opened = openings.where(catalog_item_id: rows.filter_map { |row| row.item&.id }.uniq).pluck(:catalog_item_id).to_set
       opened += openings.where(immunobiological_code: rows.filter_map { |row| row.product&.code }.uniq)
                         .pluck(:immunobiological_code).map { |code| "#{IMMUNOBIOLOGICAL_KEY}#{code}" }

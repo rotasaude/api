@@ -77,7 +77,7 @@ RSpec.describe "Esquema da inspeção do módulo 35a", type: :model do
 
   it "a migração espelha Pharmacy::Catalog e VectorControl::Catalog; irreversível" do
     catalog = Pharmacy::Catalog
-    zoonoses = %w[animal_vaccination animal_vaccination_reversal collar_placement] # módulo 35b (900002)
+    zoonoses = %w[animal_vaccination animal_vaccination_reversal collar_placement external_exit opening_reversal] # módulos 35b e 27b
     expect([ AddVectorInspections::MOVEMENT_KINDS, AddVectorInspections::POSITIVE_KINDS, AddVectorInspections::NEGATIVE_KINDS ])
       .to eq([ catalog::MOVEMENT_KINDS - zoonoses, catalog::POSITIVE_KINDS - zoonoses, catalog::NEGATIVE_KINDS - zoonoses ])
     expect((catalog::MOVEMENT_KINDS - zoonoses).last(2)).to eq(%w[vector_application vector_application_reversal])

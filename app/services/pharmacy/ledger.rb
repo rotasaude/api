@@ -37,13 +37,14 @@ module Pharmacy
 
     # Módulo 29 (Desvio 7): o frasco aberto e a dose (unidose e a devolução dela).
     # Módulo 32b: a checagem de medicação da UPA. Módulo 35a: a medida do boletim.
-    # Módulo 35b: a dose antirrábica e a coleira.
+    # Módulo 35b: a dose antirrábica e a coleira. Módulo 27b: a saída externa.
     DOCUMENTS = { StockEntry => :stock_entry, StockTransfer => :stock_transfer,
                   DispensationItem => :dispensation_item, StockAdjustment => :stock_adjustment,
                   VialOpening => :vial_opening, Immunization => :immunization,
                   UrgencyAdministration => :urgency_administration,
                   VectorInspectionMeasure => :vector_inspection_measure,
-                  RabiesVaccination => :rabies_vaccination, Collar => :collar }.freeze
+                  RabiesVaccination => :rabies_vaccination, Collar => :collar,
+                  StockExternalExit => :stock_external_exit }.freeze
 
     module_function
 

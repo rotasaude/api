@@ -569,6 +569,10 @@ Rails.application.routes.draw do
     get    "transfers",                 to: "transfers#index"
     get    "transfers/:id",             to: "transfers#show"
     post   "transfers/:id/receive",     to: "transfers#receive"
+    # Saída externa (doação, devolução, remanejamento, empréstimo): só o estoque do domínio, nunca o `bnafar` (módulo 27b, Q16).
+    post   "external_exits",            to: "external_exits#create"
+    get    "external_exits",            to: "external_exits#index"
+    get    "external_exits/:id",        to: "external_exits#show"
     # Inventário, perdas e vencimentos, com step-up e aprovação por outro (Task 7).
     # Faltas de estoque da checagem da UPA e a conciliação (módulo 32b, Task 11).
     get    "urgency_shortfalls",          to: "urgency_shortfalls#index"

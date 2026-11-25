@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_25_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -4483,6 +4483,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900001) do
     t.check_constraint "kind::text = ANY (ARRAY['invoice'::text, 'donation'::text, 'opening'::text])", name: "ck_stock_entries_kind"
   end
 
+  create_table "stock_external_exit_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "quantity", null: false
+    t.uuid "stock_external_exit_id", null: false
+    t.uuid "stock_lot_id", null: false
+    t.index ["stock_external_exit_id", "stock_lot_id"], name: "idx_stock_external_exit_items_once", unique: true
+    t.index ["stock_lot_id"], name: "index_stock_external_exit_items_on_stock_lot_id"
+    t.check_constraint "quantity > 0 AND quantity <= 99999", name: "ck_stock_external_exit_items_quantity"
+  end
+
+  create_table "stock_external_exits", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "destination_code", limit: 14, null: false
+    t.string "destination_kind", null: false
+    t.string "exit_type", null: false
+    t.text "reason", null: false
+    t.datetime "recorded_at", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.uuid "stock_location_id", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["stock_location_id", "created_at", "id"], name: "idx_stock_external_exits_location"
+    t.check_constraint "destination_kind::text = 'cnes'::text AND destination_code::text ~ '^[0-9]{7}$'::text OR destination_kind::text = 'cnpj'::text AND destination_code::text ~ '^[0-9A-Z]{12}[0-9]{2}$'::text", name: "ck_stock_external_exits_destination"
+    t.check_constraint "exit_type::text = ANY (ARRAY['S-DF'::text, 'S-TR'::text, 'S-D'::text, 'S-E'::text])", name: "ck_stock_external_exits_type"
+    t.check_constraint "version >= 1", name: "ck_stock_external_exits_version"
+  end
+
   create_table "stock_location_staff", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "granted_at", null: false
     t.uuid "granted_by_user_id", null: false
@@ -4599,6 +4625,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900001) do
     t.uuid "recorded_by_user_id", null: false
     t.uuid "stock_adjustment_id"
     t.uuid "stock_entry_id"
+    t.uuid "stock_external_exit_id"
     t.uuid "stock_location_id", null: false
     t.uuid "stock_lot_id", null: false
     t.uuid "stock_transfer_id"
@@ -4609,6 +4636,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900001) do
     t.index ["collar_id"], name: "idx_stock_movements_collar", where: "(collar_id IS NOT NULL)"
     t.index ["dispensation_item_id"], name: "idx_stock_movements_dispensation_item"
     t.index ["immunization_id"], name: "idx_stock_movements_immunization"
+    t.index ["stock_external_exit_id"], name: "idx_stock_movements_external_exit", where: "(stock_external_exit_id IS NOT NULL)"
     t.index ["stock_location_id", "stock_lot_id"], name: "idx_stock_movements_balance"
     t.index ["rabies_vaccination_id"], name: "idx_stock_movements_rabies_vaccination", where: "(rabies_vaccination_id IS NOT NULL)"
     t.index ["stock_lot_id", "recorded_at", "id"], name: "idx_stock_movements_lot_time"
@@ -4618,21 +4646,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900001) do
     t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code, vector_product_id) = 1", name: "ck_stock_movements_item"
     t.check_constraint "(package_units IS NULL) = (packages IS NULL) AND (package_units IS NULL OR package_units >= 1 AND package_units <= 10000 AND packages >= 1 AND packages <= 10000)", name: "ck_stock_movements_package"
     t.check_constraint "kind::text <> ALL (ARRAY['loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text]) OR reason IS NOT NULL", name: "ck_stock_movements_reason"
-    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text, 'vial_opening'::text, 'immunization'::text, 'immunization_reversal'::text, 'administration'::text, 'vector_application'::text, 'vector_application_reversal'::text, 'animal_vaccination'::text, 'animal_vaccination_reversal'::text, 'collar_placement'::text])", name: "ck_stock_movements_kind"
-    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id, vial_opening_id, immunization_id, urgency_administration_id, vector_inspection_measure_id, rabies_vaccination_id, collar_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL) AND (vial_opening_id IS NOT NULL) = (kind::text = 'vial_opening'::text) AND (immunization_id IS NOT NULL) = (kind::text = ANY (ARRAY['immunization'::text, 'immunization_reversal'::text])) AND (urgency_administration_id IS NOT NULL) = (kind::text = 'administration'::text) AND (vector_inspection_measure_id IS NOT NULL) = (kind::text = ANY (ARRAY['vector_application'::text, 'vector_application_reversal'::text])) AND (rabies_vaccination_id IS NOT NULL) = (kind::text = ANY (ARRAY['animal_vaccination'::text, 'animal_vaccination_reversal'::text])) AND (collar_id IS NOT NULL) = (kind::text = 'collar_placement'::text)", name: "ck_stock_movements_document"
-    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text, 'immunization_reversal'::text, 'vector_application_reversal'::text, 'animal_vaccination_reversal'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'vial_opening'::text, 'immunization'::text, 'administration'::text, 'vector_application'::text, 'animal_vaccination'::text, 'collar_placement'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
+    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text, 'vial_opening'::text, 'immunization'::text, 'immunization_reversal'::text, 'administration'::text, 'vector_application'::text, 'vector_application_reversal'::text, 'animal_vaccination'::text, 'animal_vaccination_reversal'::text, 'collar_placement'::text, 'external_exit'::text, 'opening_reversal'::text])", name: "ck_stock_movements_kind"
+    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id, vial_opening_id, immunization_id, urgency_administration_id, vector_inspection_measure_id, rabies_vaccination_id, collar_id, stock_external_exit_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'opening_reversal'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL) AND (vial_opening_id IS NOT NULL) = (kind::text = 'vial_opening'::text) AND (immunization_id IS NOT NULL) = (kind::text = ANY (ARRAY['immunization'::text, 'immunization_reversal'::text])) AND (urgency_administration_id IS NOT NULL) = (kind::text = 'administration'::text) AND (vector_inspection_measure_id IS NOT NULL) = (kind::text = ANY (ARRAY['vector_application'::text, 'vector_application_reversal'::text])) AND (rabies_vaccination_id IS NOT NULL) = (kind::text = ANY (ARRAY['animal_vaccination'::text, 'animal_vaccination_reversal'::text])) AND (collar_id IS NOT NULL) = (kind::text = 'collar_placement'::text) AND (stock_external_exit_id IS NOT NULL) = (kind::text = 'external_exit'::text)", name: "ck_stock_movements_document"
+    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text, 'immunization_reversal'::text, 'vector_application_reversal'::text, 'animal_vaccination_reversal'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'vial_opening'::text, 'immunization'::text, 'administration'::text, 'vector_application'::text, 'animal_vaccination'::text, 'collar_placement'::text, 'external_exit'::text, 'opening_reversal'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
   end
 
   create_table "stock_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "catalog_item_id"
     t.datetime "created_at", null: false
     t.string "immunobiological_code", limit: 10
+    t.datetime "reverted_at"
     t.uuid "stock_entry_id", null: false
     t.uuid "stock_location_id", null: false
     t.uuid "vector_product_id"
-    t.index ["stock_location_id", "catalog_item_id"], name: "idx_stock_openings_once", unique: true
-    t.index ["stock_location_id", "immunobiological_code"], name: "idx_stock_openings_immunobiological_once", unique: true, where: "(immunobiological_code IS NOT NULL)"
-    t.index ["stock_location_id", "vector_product_id"], name: "idx_stock_openings_vector_product_once", unique: true, where: "(vector_product_id IS NOT NULL)"
+    t.index ["stock_location_id", "catalog_item_id"], name: "idx_stock_openings_once", unique: true, where: "(reverted_at IS NULL)"
+    t.index ["stock_location_id", "immunobiological_code"], name: "idx_stock_openings_immunobiological_once", unique: true, where: "(reverted_at IS NULL)"
+    t.index ["stock_location_id", "vector_product_id"], name: "idx_stock_openings_vector_product_once", unique: true, where: "(reverted_at IS NULL)"
     t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code, vector_product_id) = 1", name: "ck_stock_openings_item"
   end
 
@@ -6288,6 +6317,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900001) do
   add_foreign_key "stock_adjustments", "users", column: "requested_by_user_id"
   add_foreign_key "stock_entries", "stock_locations"
   add_foreign_key "stock_entries", "users", column: "recorded_by_user_id"
+  add_foreign_key "stock_external_exit_items", "stock_external_exits"
+  add_foreign_key "stock_external_exit_items", "stock_lots"
+  add_foreign_key "stock_external_exits", "stock_locations"
+  add_foreign_key "stock_external_exits", "users", column: "recorded_by_user_id"
   add_foreign_key "stock_location_staff", "stock_locations"
   add_foreign_key "stock_location_staff", "users"
   add_foreign_key "stock_location_staff", "users", column: "granted_by_user_id"
@@ -6310,6 +6343,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900001) do
   add_foreign_key "stock_movements", "rabies_vaccinations"
   add_foreign_key "stock_movements", "stock_adjustments"
   add_foreign_key "stock_movements", "stock_entries"
+  add_foreign_key "stock_movements", "stock_external_exits"
   add_foreign_key "stock_movements", "stock_locations"
   add_foreign_key "stock_movements", "stock_lots"
   add_foreign_key "stock_movements", "stock_transfers"

@@ -122,6 +122,20 @@ module Pharmacy
         sent_at: transfer.sent_at.iso8601, received_at: transfer.received_at&.iso8601, items: items }
     end
 
+    # Saída externa (módulo 27b, contrato §4): `{ id, location, exit_type, destination_kind,
+    # destination_code, version, recorded_at, items: [ { lot, quantity } ] }`, sem envelope. O
+    # motivo (texto livre, cifrado) só vai com `reason: true` (o detalhe e a gravação), nunca na
+    # lista. `row` carrega o local (com a unidade) e os itens (com o lote). Itens em ordem
+    # estável: número do lote, id.
+    def external_exit(row, catalog:, reason: false)
+      items = row.items.sort_by { |item| [ item.stock_lot.lot_number, item.stock_lot_id ] }.map do |item|
+        { lot: lot(item.stock_lot, catalog: catalog), quantity: item.quantity }
+      end
+      body = { id: row.id, location: location(row.stock_location), exit_type: row.exit_type, destination_kind: row.destination_kind,
+               destination_code: row.destination_code, version: row.version, recorded_at: row.recorded_at.iso8601, items: items }
+      reason ? body.merge(reason: row.reason) : body
+    end
+
     # Ajuste (contrato §6/H2/H12): `{ id, location, lot, kind, status, quantity,
     # counted_quantity|null, balance_at_request, reason, requested_by: { user_id,
     # name }, decided_by: { user_id, name }|null, decision_reason|null, created_at }`,

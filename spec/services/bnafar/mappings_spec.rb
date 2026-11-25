@@ -21,7 +21,7 @@ RSpec.describe "Mapeamentos do BNAFAR", type: :model do
   describe "DM12" do
     it "cada NEGATIVE_KINDS tem tipo ou :ignored" do
       Pharmacy::Catalog::NEGATIVE_KINDS.each do |kind|
-        result = Bnafar::ExitTypes.for(movement.new(kind, -1))
+        result = Bnafar::ExitTypes.for(movement.new(kind, -1), external_exit: kind == "external_exit" ? "S-D" : nil)
         expect(result).to(satisfy("tipo, :ignored ou :reversal para #{kind}") { |r| r == :ignored || r.is_a?(String) }, kind)
       end
     end
@@ -50,6 +50,12 @@ RSpec.describe "Mapeamentos do BNAFAR", type: :model do
     it "movimento positivo é :not_exit e negativo sem mapa é nil" do
       expect(Bnafar::ExitTypes.for(movement.new("receipt", 5))).to eq(:not_exit)
       expect(Bnafar::ExitTypes.for(movement.new("mystery_kind", -1))).to be_nil
+    end
+
+    it "external_exit -> o tipo da saída e opening_reversal -> :ignored (Task 9)" do
+      expect(Pharmacy::Catalog::NEGATIVE_KINDS).to include("external_exit", "opening_reversal")
+      expect(Bnafar::ExitTypes.for(movement.new("external_exit", -3), external_exit: external.new("S-TR"))).to eq("S-TR")
+      expect(Bnafar::ExitTypes.for(movement.new("opening_reversal", -3))).to eq(:ignored)
     end
 
     it "uso direto -> S-CA (e nunca S-PA)" do

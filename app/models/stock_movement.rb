@@ -9,6 +9,8 @@
 # por documento; o produto é cópia do lote (trigger).
 # Módulo 35b (ADR 0054): a dose antirrábica (baixa e estorno) e a coleira têm
 # a dose ou a coleira por documento.
+# Módulo 27b: a saída externa tem a saída por documento; o desfazer da abertura
+# (`opening_reversal`) tem a entrada de abertura.
 class StockMovement < ApplicationRecord
   encrypts :reason
 
@@ -24,6 +26,7 @@ class StockMovement < ApplicationRecord
   belongs_to :vector_inspection_measure, optional: true, inverse_of: :movements
   belongs_to :rabies_vaccination, optional: true, inverse_of: :movements
   belongs_to :collar, optional: true, inverse_of: :movements
+  belongs_to :stock_external_exit, optional: true, inverse_of: :movements
   belongs_to :recorded_by_user, class_name: "User"
 
   def inspect = "#<StockMovement id=#{id} kind=#{kind}>"
