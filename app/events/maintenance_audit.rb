@@ -35,6 +35,7 @@ module MaintenanceAudit
     maintenance.medication_catalog.imported
     maintenance.anvisa_lists.imported
     maintenance.obm_catalog.imported
+    maintenance.bnafar.environment_changed
     maintenance.lab_template.changed
     maintenance.care_line_template.changed
     maintenance.notifiable_disease_list.published
@@ -88,6 +89,7 @@ module MaintenanceAudit
     when "maintenance.medication_catalog.imported" then Platform.audit("maintenance.medication_catalog.imported", **payload)
     when "maintenance.anvisa_lists.imported" then Platform.audit("maintenance.anvisa_lists.imported", **payload)
     when "maintenance.obm_catalog.imported" then Platform.audit("maintenance.obm_catalog.imported", **payload)
+    when "maintenance.bnafar.environment_changed" then Platform.audit("maintenance.bnafar.environment_changed", **payload)
     when "maintenance.lab_template.changed" then Platform.audit("maintenance.lab_template.changed", **payload)
     when "maintenance.care_line_template.changed" then Platform.audit("maintenance.care_line_template.changed", **payload)
     when "maintenance.notifiable_disease_list.published" then Platform.audit("maintenance.notifiable_disease_list.published", **payload)

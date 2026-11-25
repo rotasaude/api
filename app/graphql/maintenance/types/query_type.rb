@@ -61,6 +61,12 @@ module Maintenance
         argument :city_slug, String, required: true
       end
 
+      # Módulo 27b: ambiente e situação do envio à BNAFAR da cidade.
+      field :city_bnafar_status, Types::CityBnafarStatusType, null: true,
+            description: "Ambiente e situação do envio à BNAFAR da cidade" do
+        argument :city_slug, String, required: true
+      end
+
       ProviderRow = Data.define(:key, :configured, :last_check_at, :last_check_ok)
 
       def lab_exam_templates = LabExamTemplate.includes(:analytes).order(:name)
@@ -115,6 +121,16 @@ module Maintenance
           raise GraphQL::ExecutionError.new("cidade fora do escopo do token",
                                             extensions: { "code" => Analyzers::Refusal::CITY_OUT_OF_SCOPE,
                                                           Analyzers::Refusal::FIELDS => [ "cityPecConfig" ] })
+        end
+
+        City.find_by(slug: city_slug)
+      end
+
+      def city_bnafar_status(city_slug:)
+        unless context.fetch(:credential).allows_city?(city_slug)
+          raise GraphQL::ExecutionError.new("cidade fora do escopo do token",
+                                            extensions: { "code" => Analyzers::Refusal::CITY_OUT_OF_SCOPE,
+                                                          Analyzers::Refusal::FIELDS => [ "cityBnafarStatus" ] })
         end
 
         City.find_by(slug: city_slug)

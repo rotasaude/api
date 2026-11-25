@@ -19,6 +19,7 @@ module Maintenance
       # Q12: a API de manutenção inteira só é desenhada em development, test e
       # staging (config/routes.rb); em produção a carga OBM é a rake.
       field :import_obm_catalog, mutation: Mutations::ImportObmCatalog
+      field :set_bnafar_environment, mutation: Mutations::SetBnafarEnvironment
       field :set_city_pec_origin, mutation: Mutations::SetCityPecOrigin
       field :rotate_city_pec_hmac_key, mutation: Mutations::RotateCityPecHmacKey
       field :upsert_lab_exam_template, mutation: Mutations::UpsertLabExamTemplate

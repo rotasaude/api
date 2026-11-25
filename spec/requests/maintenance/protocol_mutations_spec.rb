@@ -864,7 +864,9 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
           "setCityPecOrigin" => [ PecExternal::Configure, :set_origin ],
           "rotateCityPecHmacKey" => [ PecExternal::Configure, :rotate_key ],
           # ADR 0053 (24c): pedido de geração do mapa de campo, escrita de plataforma.
-          "buildFieldMap" => [ FieldMaps::Request, :build! ]
+          "buildFieldMap" => [ FieldMaps::Request, :build! ],
+          # Módulo 27b (Q9): ambiente do envio à BNAFAR.
+          "setBnafarEnvironment" => [ Bnafar::SetEnvironment, :call ]
         }
       end
 
@@ -886,6 +888,12 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
           gql!(<<~GQL, citySlug: city.slug, pecOrigin: "https://pec.cidade.gov.br")
             mutation($citySlug: String!, $pecOrigin: String) {
               setCityPecOrigin(citySlug: $citySlug, pecOrigin: $pecOrigin) { ok errors { path message } }
+            }
+          GQL
+        when "setBnafarEnvironment"
+          gql!(<<~GQL, citySlug: city.slug, environment: "homologation")
+            mutation($citySlug: String!, $environment: String!) {
+              setBnafarEnvironment(citySlug: $citySlug, environment: $environment) { ok errors { path message } }
             }
           GQL
         when "rotateCityPecHmacKey"

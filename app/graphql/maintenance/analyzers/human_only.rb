@@ -12,6 +12,7 @@ module Maintenance
         saveProtocolDraft submitProtocolForReview publishProtocol
         activateProtocol retireProtocol revertProtocolActivation
         setCityFeature cityPecConfig setCityPecOrigin rotateCityPecHmacKey
+        setBnafarEnvironment
         signatureProviders signerStatus sncrStatus
         medicationCatalog importMedicationCatalog importAnvisaLists importObmCatalog
         labExamTemplates upsertLabExamTemplate upsertLabAnalyteTemplate
@@ -28,7 +29,7 @@ module Maintenance
       # cegaria um token para o próprio catálogo que ele tem permissão de ler.
       # `city` entra pelo mesmo motivo: o escopo é aplicado dentro do resolver
       # de QueryType#city (Credential#allows_city?), não aqui.
-      TOKEN_ALLOWED = %w[me cities city].freeze
+      TOKEN_ALLOWED = %w[me cities city cityBnafarStatus].freeze
 
       def initialize(subject)
         super

@@ -76,6 +76,10 @@ module Maintenance
         # ADR 0035: qual campo da configuração do PEC mudou — nunca o valor.
         pec_field: lambda do |value|
           "pec_field inválido" unless %w[pec_origin hmac_key].include?(value)
+        end,
+        # Módulo 27b (Q9): o ambiente do envio à BNAFAR — só do catálogo, nunca texto do cliente.
+        environment: lambda do |value|
+          "ambiente inválido" unless value.is_a?(String) && Bnafar::Catalog::ENVIRONMENTS.include?(value)
         end
       }.freeze
 

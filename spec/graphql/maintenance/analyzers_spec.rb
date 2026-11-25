@@ -172,7 +172,7 @@ RSpec.describe "Maintenance analyzers" do
     city_argument = ->(field) { (field.arguments.keys & %w[slug citySlug]).any? }
 
     query_scoped = Maintenance::Schema.query.fields.select { |_name, field| city_argument.call(field) }
-    expect(query_scoped.keys).to contain_exactly("city", "cityPecConfig")
+    expect(query_scoped.keys).to contain_exactly("city", "cityPecConfig", "cityBnafarStatus")
     query_scoped.each_key do |name|
       source = File.read(Rails.root.join("app/graphql/maintenance/types/query_type.rb"))
       expect(source).to match(/def #{name.underscore}\b.*?allows_city\?/m),
@@ -326,7 +326,7 @@ RSpec.describe "Maintenance analyzers" do
   describe "step-up on the acts that approve or put a version in use" do
     def step_up_required = %w[publishProtocol activateProtocol retireProtocol revertProtocolActivation rotateCityPecHmacKey]
     # buildFieldMap (24c, Q22): pede a geração do mapa de campo; nada é apagado nem posto em uso.
-    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview setCityFeature setCityPecOrigin buildFieldMap]
+    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview setCityFeature setCityPecOrigin buildFieldMap setBnafarEnvironment]
 
     include MaintenanceCityMutationSpecHelpers
 

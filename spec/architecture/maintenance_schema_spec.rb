@@ -15,7 +15,7 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus cityPecConfig labExamTemplates careLineTemplates notifiableDiseases fieldMaps fieldMapBase],
+    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus cityPecConfig cityBnafarStatus labExamTemplates careLineTemplates notifiableDiseases fieldMaps fieldMapBase],
     "SignatureProvider" => %w[key configured lastCheckAt lastCheckOk],
     "MedicationCatalog" => %w[currentRelease reviewItems obmUnmatched],
     "MedicationCatalogRelease" => %w[id importedAt itemsCount hiddenCount],
@@ -35,7 +35,7 @@ RSpec.describe "Maintenance GraphQL schema" do
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
                      saveProtocolDraft submitProtocolForReview publishProtocol
                      activateProtocol retireProtocol revertProtocolActivation setCityFeature
-                     importMedicationCatalog importAnvisaLists importObmCatalog setCityPecOrigin rotateCityPecHmacKey
+                     importMedicationCatalog importAnvisaLists importObmCatalog setBnafarEnvironment setCityPecOrigin rotateCityPecHmacKey
                      upsertLabExamTemplate upsertLabAnalyteTemplate upsertCareLineTemplate publishNotifiableDiseaseList
                      buildFieldMap refreshFieldMapBase],
     "LabExamTemplate" => %w[id sigtapCode name sector material container suggestedMethod preparation active analytes],
@@ -49,6 +49,9 @@ RSpec.describe "Maintenance GraphQL schema" do
     "NotifiableDisease" => %w[code name deadline cid10 ciap2 repeatAfterDays sinanForm notes sources],
     "PublishNotifiableDiseaseListPayload" => %w[ok errors version],
     "CityPecConfig" => %w[pecOrigin hmacKeyConfigured hmacKeyUpdatedAt],
+    "CityBnafarStatus" => %w[environment environmentEditable enabledDomains alert startedOn],
+    "BnafarAlert" => %w[late lost rejected lastFinishedOn],
+    "SetBnafarEnvironmentPayload" => %w[ok errors],
     "SetCityPecOriginPayload" => %w[ok errors],
     "RotateCityPecHmacKeyPayload" => %w[ok errors],
     "InviteMaintainerPayload" => %w[ok errors],
@@ -456,7 +459,8 @@ RSpec.describe "Maintenance GraphQL schema" do
         # resolver de raiz só aplica o escopo e escolhe a cidade; quem a abre é
         # CityPecConfigType, o segundo dono de CityReader.call.
         "CityReader.call" => %w[app/graphql/maintenance/types/city_type.rb
-                                app/graphql/maintenance/types/city_pec_config_type.rb],
+                                app/graphql/maintenance/types/city_pec_config_type.rb
+                                app/graphql/maintenance/types/city_bnafar_status_type.rb],
         "CityWriter.call" => %w[app/graphql/maintenance/mutations/city_mutation.rb]
       }
     end
@@ -590,7 +594,8 @@ RSpec.describe "Maintenance GraphQL schema" do
           "cities" => "{ slug }", "signatureProviders" => "{ key }", "signerStatus" => "{ reachable }", "sncrStatus" => "{ configured }",
           "medicationCatalog" => "{ currentRelease { id } }", "labExamTemplates" => "{ id }", "careLineTemplates" => "{ key }", "notifiableDiseases" => "{ version }",
           "fieldMaps" => "{ citySlug }", "fieldMapBase" => "{ version }",
-          "cityPecConfig" => "(citySlug: \"sem-cidade\") { hmacKeyConfigured }" }
+          "cityPecConfig" => "(citySlug: \"sem-cidade\") { hmacKeyConfigured }",
+          "cityBnafarStatus" => "(citySlug: \"sem-cidade\") { environment }" }
       end
 
       def root_query_field_names
