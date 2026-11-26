@@ -15,6 +15,7 @@ module Rnds
     TOKEN_TTL = 25 * 60
     TOKEN_PATH = "/api/token".freeze
     BUNDLE_PATH = "/api/fhir/r4/Bundle".freeze
+    IDENTIFIER_PATH = "/api/identifier".freeze
     CNS_FORMAT = /\A\d{15}\z/
     ID_FORMAT = /\A[\w.-]{1,100}\z/
     # Alertas TLS de certificado de cliente recusado (heurística pela mensagem do
@@ -33,6 +34,15 @@ module Rnds
     # `responsible_cns` só existe na `rnds_regulation` (nil na `rnds`).
     Identity = Data.define(:pfx, :password, :version, :responsible_cns) do
       def inspect = "#<Rnds::Client::Identity [FILTERED]>"
+      alias_method :to_s, :inspect
+      def pretty_print(pp) = pp.text(inspect)
+    end
+
+    # Cadeia de documentos de um identificador (GET /identifier, 26c). O `cns` da
+    # resposta é descartado. `status`: :ok | :unauthorized | :transient.
+    Document = Data.define(:id, :status, :replaces, :date)
+    IdentifierChain = Data.define(:status, :documents) do
+      def inspect = "#<Rnds::Client::IdentifierChain #{status} #{documents.size}>"
       alias_method :to_s, :inspect
       def pretty_print(pp) = pp.text(inspect)
     end
@@ -97,23 +107,37 @@ module Rnds
     end
 
     # -> Response(status: :accepted | :rejected | :unauthorized | :transient, rnds_id:, error:)
+    # Na regulação (26c) o chamador passa `responsible_cns` como `practitioner_cns`.
     def post_bundle(bundle, practitioner_cns:)
       raise ArgumentError, "CNS do profissional inválido" unless practitioner_cns.to_s.match?(CNS_FORMAT)
 
-      token = cached_token
-      from_cache = !token.nil?
-      response = deliver(bundle, practitioner_cns, token || token!)
-      if response.status == :unauthorized && from_cache
-        # Token guardado pode ter sido revogado antes dos 25 min: uma repetição com token novo
-        # antes de culpar o certificado.
-        response = deliver(bundle, practitioner_cns, token!)
+      authorized(Response.new(status: :unauthorized, rnds_id: nil, error: nil), Response.new(status: :transient, rnds_id: nil, error: nil)) do |token|
+        deliver(bundle, practitioner_cns, token)
       end
-      response
-    rescue Errors::Unauthorized
-      forget_token
-      Response.new(status: :unauthorized, rnds_id: nil, error: nil)
-    rescue Errors::Unavailable
-      Response.new(status: :transient, rnds_id: nil, error: nil)
+    end
+
+    # GET {ehr_url}/api/identifier?system=&value=&docType= (só a regulação: o CNS vai
+    # no Authorization). -> IdentifierChain; 200 sem documento é `:ok` e vazio.
+    def identifier_chain(system:, value:, doc_type:)
+      cns = require_responsible_cns!
+      authorized(IdentifierChain.new(status: :unauthorized, documents: []), IdentifierChain.new(status: :transient, documents: [])) do |token|
+        uri = URI("#{@settings.ehr_url}#{IDENTIFIER_PATH}")
+        uri.query = URI.encode_www_form(system: system, value: value, docType: doc_type)
+        request = Net::HTTP::Get.new(uri, "Accept" => "application/fhir+json", "X-Authorization-Server" => "Bearer #{token}", "Authorization" => cns)
+        interpret_chain(perform(uri, request))
+      end
+    end
+
+    # DELETE {ehr_url}/api/fhir/r4/Bundle/{id}: 204 -> :accepted; 422 (EHR-ERR825) -> :rejected.
+    def delete_bundle(rnds_id)
+      raise ArgumentError, "id do documento inválido" unless rnds_id.to_s.match?(ID_FORMAT)
+
+      cns = require_responsible_cns!
+      authorized(Response.new(status: :unauthorized, rnds_id: nil, error: nil), Response.new(status: :transient, rnds_id: nil, error: nil)) do |token|
+        uri = URI("#{@settings.ehr_url}#{BUNDLE_PATH}/#{rnds_id}")
+        request = Net::HTTP::Delete.new(uri, "Accept" => "application/fhir+json", "X-Authorization-Server" => "Bearer #{token}", "Authorization" => cns)
+        interpret_delete(perform(uri, request), rnds_id)
+      end
     end
 
     def inspect = "#<Rnds::Client #{simulated? ? 'simulated' : 'real'}>"
@@ -121,6 +145,66 @@ module Rnds
     def pretty_print(pp) = pp.text(inspect)
 
     private
+
+    # Token em cache (ou novo) e UMA repetição com token novo se o guardado voltar 401/403,
+    # antes de culpar o certificado. `block` devolve algo com `status`.
+    def authorized(on_unauthorized, on_transient)
+      token = cached_token
+      from_cache = !token.nil?
+      result = yield(token || token!)
+      result = yield(token!) if result.status == :unauthorized && from_cache
+      result
+    rescue Errors::Unauthorized
+      forget_token
+      on_unauthorized
+    rescue Errors::Unavailable
+      on_transient
+    end
+
+    def require_responsible_cns!
+      cns = responsible_cns.to_s
+      raise ArgumentError, "CNS do responsável não disponível nesta credencial" unless cns.match?(CNS_FORMAT)
+
+      cns
+    end
+
+    def interpret_chain(response)
+      case response.code.to_i
+      when 200
+        IdentifierChain.new(status: :ok, documents: documents_from(response.body))
+      when 401, 403
+        forget_token
+        IdentifierChain.new(status: :unauthorized, documents: [])
+      else
+        IdentifierChain.new(status: :transient, documents: [])
+      end
+    end
+
+    def interpret_delete(response, rnds_id)
+      case response.code.to_i
+      when 200, 204 then Response.new(status: :accepted, rnds_id: rnds_id, error: nil)
+      when 400, 422 then Response.new(status: :rejected, rnds_id: nil, error: diagnostics(response.body))
+      when 401, 403
+        forget_token
+        Response.new(status: :unauthorized, rnds_id: nil, error: nil)
+      else Response.new(status: :transient, rnds_id: nil, error: nil)
+      end
+    end
+
+    # Só id, status, relatesTo e date; o `cns` e o resto não saem daqui.
+    def documents_from(body)
+      list = JSON.parse(body.to_s.dup.force_encoding("UTF-8").scrub.presence || "[]")
+      return [] unless list.is_a?(Array)
+
+      list.filter_map do |item|
+        next unless item.is_a?(Hash) && item["id"].to_s.match?(ID_FORMAT)
+
+        replaces = item["relatesTo"].is_a?(Hash) ? item["relatesTo"]["id"] : item["relatesTo"]
+        Document.new(id: item["id"], status: item["status"].to_s, replaces: replaces.to_s.match?(ID_FORMAT) ? replaces.to_s : nil, date: item["date"].to_s.presence)
+      end
+    rescue JSON::ParserError
+      []
+    end
 
     def deliver(bundle, practitioner_cns, token)
       uri = URI("#{@settings.ehr_url}#{BUNDLE_PATH}")

@@ -6,6 +6,11 @@ module Rnds
     MAX = 200
     DIGITS = /\d{11,}/
     FORMATTED_CPF = /\d{3}\.\d{3}\.\d{3}-\d{2}/
+    # Código de recusa da RNDS (EHR-ERR825, EDS-MSG009...): CODE confere um código
+    # inteiro; SCAN o acha dentro do diagnóstico (o IG não fixa o texto, só o código).
+    CODE = /\A(EHR-ERR|EDS-MSG)\d{3}\z/
+    SCAN = /(?:EHR-ERR|EDS-MSG)\d{3}(?!\d)/
+    NO_CODE = "rejected".freeze
 
     class Error < StandardError; end
     class NotConfigured < Error; end # URL da plataforma ou credencial da cidade ausentes
@@ -18,6 +23,12 @@ module Rnds
     # CPF/CNS (11+ dígitos ou CPF formatado) e com no máximo 200 caracteres.
     def sanitize(text)
       text.to_s.dup.force_encoding("UTF-8").scrub.gsub(FORMATTED_CPF, "***").gsub(DIGITS, "***").squish.first(MAX)
+    end
+
+    # Só os códigos do diagnóstico (já limpo); nunca o texto. Sem código: ["rejected"].
+    def codes(text)
+      found = sanitize(text).scan(SCAN).uniq
+      found.presence || [ NO_CODE ]
     end
   end
 end

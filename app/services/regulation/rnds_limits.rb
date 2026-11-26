@@ -15,8 +15,7 @@ module Regulation
     MODALITY = "09".freeze
     CBO_GROUPS = %w[03 04].freeze
     SPECIALTY_SIGTAP_MAX = 500
-    # A Task 4 cria Rnds::Errors::CODE e aponta esta constante para ela (M13).
-    ERROR_CODE = /\A(EHR-ERR|EDS-MSG)\d{3}\z/
+    ERROR_CODE = Rnds::Errors::CODE
     REPLACED_CODE = "EDS-MSG009".freeze
     NOT_FINAL_CODE = "EHR-ERR825".freeze
   end

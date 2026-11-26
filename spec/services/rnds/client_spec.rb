@@ -130,6 +130,82 @@ RSpec.describe Rnds::Client do
     end
   end
 
+  describe "regulação (26c): identifier_chain e delete_bundle" do
+    let(:profile) { Regulation::RiraProfile.current }
+    let(:system_url) { "#{profile.identifiers[:requester_prefix]}12345" }
+    let(:responsible) { described_class::Identity.new(pfx: "x", password: "x", version: 1.0, responsible_cns: cns) }
+    let(:regulation) { described_class.new(client.settings, responsible, key: [ city.id, "rnds_regulation", 1.0, true ]) }
+
+    def rira(value: "mira-1", relates_to: nil)
+      composition = { "resourceType" => "Composition", "meta" => { "profile" => [ profile.profiles[:composition] ] } }
+      composition["relatesTo"] = [ { "code" => "replaces", "targetReference" => { "reference" => "Composition/#{relates_to}" } } ] if relates_to
+      { "resourceType" => "Bundle", "type" => "document", "identifier" => { "system" => system_url, "value" => value }, "entry" => [ { "resource" => composition } ] }
+    end
+
+    it "identifier_chain lista os documentos sem o cns" do
+      first = regulation.post_bundle(rira, practitioner_cns: cns).rnds_id
+      second = regulation.post_bundle(rira(relates_to: first), practitioner_cns: cns).rnds_id
+      chain = regulation.identifier_chain(system: system_url, value: "mira-1", doc_type: "RIRA")
+      expect(chain.status).to eq(:ok)
+      expect(chain.documents.map { |d| [ d.id, d.status, d.replaces ] }).to contain_exactly([ first, "entered-in-error", nil ], [ second, "final", first ])
+      expect(chain.documents.first.date).to be_present
+      expect(chain.inspect + chain.documents.inspect).not_to include(cns)
+      expect(fake.log.last).to eq([ "GET", "/api/identifier", { "authorization" => cns, "x-authorization-server" => "Bearer #{fake.issued_tokens.last}" } ])
+    end
+
+    it "identifier_chain sem documento é ok e vazio; 401 vira unauthorized; 5xx vira transient" do
+      expect(regulation.identifier_chain(system: system_url, value: "nada", doc_type: "RIRA")).to have_attributes(status: :ok, documents: [])
+      fake.failures.push(503)
+      expect(regulation.identifier_chain(system: system_url, value: "nada", doc_type: "RIRA").status).to eq(:transient)
+      fake.failures.push(401, 401)
+      expect(regulation.identifier_chain(system: system_url, value: "nada", doc_type: "RIRA").status).to eq(:unauthorized)
+    end
+
+    it "sem responsible_cns (credencial rnds) não consulta nem apaga" do
+      expect { client.identifier_chain(system: system_url, value: "x", doc_type: "RIRA") }.to raise_error(ArgumentError)
+      expect { client.delete_bundle("abc") }.to raise_error(ArgumentError)
+      expect(fake.log).to be_empty
+    end
+
+    it "delete_bundle 204 -> accepted; de novo -> rejected com o EHR-ERR825; id malformado não vai à rede" do
+      id = regulation.post_bundle(rira, practitioner_cns: cns).rnds_id
+      expect(regulation.delete_bundle(id)).to have_attributes(status: :accepted, rnds_id: id, error: nil)
+      refused = regulation.delete_bundle(id)
+      expect(refused.status).to eq(:rejected)
+      expect(Rnds::Errors.codes(refused.error)).to eq([ "EHR-ERR825" ])
+      log_size = fake.log.size
+      expect { regulation.delete_bundle("../token") }.to raise_error(ArgumentError)
+      expect(fake.log.size).to eq(log_size)
+    end
+
+    it "a substituição repetida volta rejected com o EDS-MSG009" do
+      first = regulation.post_bundle(rira, practitioner_cns: cns).rnds_id
+      regulation.post_bundle(rira(relates_to: first), practitioner_cns: cns)
+      again = regulation.post_bundle(rira(relates_to: first), practitioner_cns: cns)
+      expect(again.status).to eq(:rejected)
+      expect(Rnds::Errors.codes(again.error)).to eq([ "EDS-MSG009" ])
+    end
+  end
+
+  describe "Rnds::Errors.codes" do
+    it "acha EDS-MSG009 e EHR-ERR825 e nunca devolve o texto" do
+      text = "(EDS-MSG009) O documento 3f2a já foi substituído. CPF 12345678901; (EHR-ERR825) fora do estado final"
+      expect(Rnds::Errors.codes(text)).to eq(%w[EDS-MSG009 EHR-ERR825])
+    end
+
+    it "sem código (ou nil) -> rejected; repetido conta uma vez" do
+      expect(Rnds::Errors.codes("A RNDS recusou o envio")).to eq([ "rejected" ])
+      expect(Rnds::Errors.codes(nil)).to eq([ "rejected" ])
+      expect(Rnds::Errors.codes("EHR-ERR999 e EHR-ERR999")).to eq([ "EHR-ERR999" ])
+    end
+
+    it "o ERROR_CODE da regulação é o mesmo padrão" do
+      expect(Regulation::RndsLimits::ERROR_CODE).to equal(Rnds::Errors::CODE)
+      expect(Rnds::Errors::CODE).to match("EDS-MSG009")
+      expect(Rnds::Errors::CODE).not_to match("EHR-ERR9999")
+    end
+  end
+
   it "sem URL da plataforma ou sem credencial: NotConfigured" do
     allow(ENV).to receive(:[]).with("FAKE_RNDS_URL").and_return(nil)
     expect { described_class.for(city) }.to raise_error(Rnds::Errors::NotConfigured)
