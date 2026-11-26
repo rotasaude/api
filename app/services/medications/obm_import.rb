@@ -47,7 +47,7 @@ module Medications
       counts = PlatformRecord.transaction(requires_new: true) { apply!(rows, by, now) }
       Result.ok(**counts)
     rescue Invalid => e
-      Result.fail(:invalid_file, message: e.message, details: { path: "file", rejected_lines: e.rejected.first(REJECTED_LIMIT) })
+      Result.fail(:invalid_file, message: e.message, details: { path: "file", rejected_lines: e.rejected })
     rescue CSV::MalformedCSVError
       Result.fail(:invalid_file, message: "csv malformado",
                                  details: { path: "file", rejected_lines: [ rejection(1, nil, "malformed_csv") ] })
@@ -65,28 +65,41 @@ module Medications
       config = YAML.safe_load_file(COLUMNS)
       table = CSV.parse(text, headers: true, col_sep: separator(text), skip_blanks: true)
       index = column_index(table.headers, config)
-      results = table.each_with_index.map { |row, i| line(row, index, i + 2) }
-      raise Invalid.new("arquivo sem linhas", rejected: [ rejection(1, nil, "no_rows") ]) if results.empty?
+      lines = []
+      rejected = []
+      seen = Set.new
+      table.each_with_index do |row, i|
+        number = i + 2
+        outcome = line(row, index, number)
+        outcome = { problem: rejection(number, "ampp", "duplicate") } if outcome[:row] && !seen.add?(outcome[:row][:ampp_code])
+        if outcome[:problem]
+          rejected << outcome[:problem]
+          break if rejected.size >= REJECTED_LIMIT # o arquivo já é recusado; o resto não muda nada
 
-      problems = results.flat_map { |result| result[:problems] }
-      lines = results.filter_map { |result| result[:row] }
-      problems += duplicates(lines) if problems.empty?
-      raise Invalid.new(problems.first[:message], rejected: problems.map { |problem| problem.except(:message) }) if problems.any?
+          next
+        end
+        lines << outcome[:row]
+      end
+      raise Invalid.new(message_for(rejected.first), rejected: rejected) if rejected.any?
+      raise Invalid.new("arquivo sem linhas", rejected: [ rejection(1, nil, "no_rows") ]) if lines.empty?
 
       lines
     end
 
-    # Todas as repetições, na linha da segunda ocorrência em diante.
-    def duplicates(lines)
-      seen = Set.new
-      lines.filter_map do |l|
-        rejection(l[:line], "ampp", "duplicate", message: "AMPP repetida na linha #{l[:line]}") unless seen.add?(l[:ampp_code])
-      end
+    MESSAGES = {
+      "ampp" => "ampp inválida", "vmp" => "vmp inválido", "catmat" => "catmat inválido",
+      "descricao" => "descricao ausente ou acima de #{DESCRIPTION_MAX}",
+      "registro_anvisa" => "registro_anvisa inválido", "cnpj_fabricante" => "cnpj_fabricante inválido"
+    }.freeze
+
+    # Só a primeira recusa vira texto; a lista leva posição e código.
+    def message_for(rejection)
+      return "AMPP repetida na linha #{rejection[:line]}" if rejection[:code] == "duplicate"
+
+      "linha #{rejection[:line]}: #{MESSAGES.fetch(rejection[:column])}"
     end
 
-    def rejection(line, column, code, message: nil)
-      { line: line, column: column, code: code }.tap { |h| h[:message] = message if message }
-    end
+    def rejection(line, column, code) = { line: line, column: column, code: code }
 
     def separator(text) = SEPARATORS.max_by { |sep| text.lines.first.to_s.count(sep) }
 
@@ -109,33 +122,32 @@ module Medications
       index
     end
 
-    # Uma linha vira { row:, problems: }: todos os problemas dela, não só o
-    # primeiro, para o operador corrigir o arquivo de uma vez.
+    # Uma linha vira { row: } ou { problem: } (o primeiro problema da linha, na
+    # ordem das colunas); a linha recusada conta uma vez.
     def line(row, index, number)
       cell = ->(key) { index[key] && row[index[key]].to_s.strip.presence }
-      problems = []
-      problem = lambda do |column, code, text|
-        problems << rejection(number, column, code, message: "linha #{number}: #{text}")
-        nil
-      end
+      bad = ->(column, code = "invalid") { { problem: rejection(number, column, code) } }
 
       ampp = cell.("ampp")
       vmp = cell.("vmp")
-      problem.("ampp", ampp ? "invalid" : "missing", "ampp inválida") unless ampp&.match?(CODE)
-      problem.("vmp", vmp ? "invalid" : "missing", "vmp inválido") unless vmp&.match?(CODE)
+      return bad.("ampp", ampp ? "invalid" : "missing") unless ampp&.match?(CODE)
+      return bad.("vmp", vmp ? "invalid" : "missing") unless vmp&.match?(CODE)
 
       description = cell.("descricao")
-      if description.nil? then problem.("descricao", "missing", "descricao ausente ou acima de #{DESCRIPTION_MAX}")
-      elsif description.size > DESCRIPTION_MAX then problem.("descricao", "too_long", "descricao ausente ou acima de #{DESCRIPTION_MAX}")
-      end
+      return bad.("descricao", "missing") if description.nil?
+      return bad.("descricao", "too_long") if description.size > DESCRIPTION_MAX
 
-      catmat = catmat(cell.("catmat")) || (problem.("catmat", "invalid", "catmat inválido") if cell.("catmat"))
-      anvisa = digits(cell.("registro_anvisa"), 1..13) || (problem.("registro_anvisa", "invalid", "registro_anvisa inválido") if cell.("registro_anvisa"))
-      cnpj = digits(cell.("cnpj_fabricante"), 14..14) || (problem.("cnpj_fabricante", "invalid", "cnpj_fabricante inválido") if cell.("cnpj_fabricante"))
-      return { problems: problems } if problems.any?
+      catmat = catmat(cell.("catmat"))
+      return bad.("catmat") if catmat.nil? && cell.("catmat")
 
-      { problems: [], row: { line: number, ampp_code: ampp, vmp_code: vmp, catmat_code: catmat, description: description,
-                             anvisa_registration: anvisa, manufacturer_cnpj: cnpj } }
+      anvisa = digits(cell.("registro_anvisa"), 1..13)
+      return bad.("registro_anvisa") if anvisa.nil? && cell.("registro_anvisa")
+
+      cnpj = digits(cell.("cnpj_fabricante"), 14..14)
+      return bad.("cnpj_fabricante") if cnpj.nil? && cell.("cnpj_fabricante")
+
+      { row: { line: number, ampp_code: ampp, vmp_code: vmp, catmat_code: catmat, description: description,
+               anvisa_registration: anvisa, manufacturer_cnpj: cnpj } }
     end
 
     # nil = ausente ou inválido; quem chama distingue pela célula.
@@ -202,6 +214,6 @@ module Medications
     # id do mantenedor fica na auditoria do maintenance, não aqui.
     def actor(by) = by.to_s.start_with?("maintenance:") ? "maintainer" : "system"
 
-    private_class_method :parse, :separator, :normalize_header, :column_index, :line, :catmat, :digits, :duplicates, :rejection, :apply!, :link_vmp!, :actor
+    private_class_method :parse, :separator, :normalize_header, :column_index, :line, :catmat, :digits, :message_for, :rejection, :apply!, :link_vmp!, :actor
   end
 end

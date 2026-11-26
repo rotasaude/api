@@ -107,26 +107,38 @@ RSpec.describe Medications::ObmImport, type: :model do
 
   # Q47: as primeiras 20 linhas recusadas, com linha, coluna do mapa e código; nunca a célula.
   describe "linhas recusadas" do
-    it "lista todos os problemas da linha, na ordem do arquivo, sem o conteúdo da célula" do
+    it "uma entrada por linha recusada, com o primeiro problema dela, sem o conteúdo da célula" do
       result = import!(csv_of(lines[1], "ampp com espaço;@b;abc;;123;SEGREDO-NA-DESCRICAO", ";@b2;1;;;"))
 
       expect(result.reason).to eq(:invalid_file)
       expect(result.details[:rejected_lines]).to eq(
-        [ { line: 3, column: "ampp", code: "invalid" }, { line: 3, column: "catmat", code: "invalid" },
-          { line: 3, column: "cnpj_fabricante", code: "invalid" },
-          { line: 4, column: "ampp", code: "missing" }, { line: 4, column: "descricao", code: "missing" } ]
+        [ { line: 3, column: "ampp", code: "invalid" }, { line: 4, column: "ampp", code: "missing" } ]
       )
+      expect(result.message).to eq("linha 3: ampp inválida")
       expect(result.details.to_s + result.message.to_s).not_to include("SEGREDO")
       expect(result.details.to_s).not_to include("ampp com")
     end
 
-    it "limita a 20 linhas" do
-      rows = Array.new(30) { |i| "@brasil#{i};@vmp#{i};x;;;DESCRICAO #{i}" }
+    it "mais de 20 linhas ruins: exatamente as 20 primeiras, linhas distintas e em ordem" do
+      rows = Array.new(30) { |i| "@brasil#{i};@vmp#{i};x;;123;DESCRICAO #{i}" } # catmat e cnpj ruins na mesma linha
+      result = import!(csv_of(*rows))
+
+      refused = result.details[:rejected_lines]
+      expect(refused.size).to eq(20)
+      expect(refused.map { |r| r[:line] }).to eq((2..21).to_a)
+      expect(refused.first).to eq(line: 2, column: "catmat", code: "invalid")
+    end
+
+    it "para de coletar ao chegar em 20: não monta mensagem nem avalia as linhas seguintes" do
+      rows = Array.new(1_000) { |i| "@brasil#{i};@vmp#{i};x;;;DESCRICAO #{i}" }
+      allow(described_class).to receive(:message_for).and_call_original
+      allow(described_class).to receive(:rejection).and_call_original
+
       result = import!(csv_of(*rows))
 
       expect(result.details[:rejected_lines].size).to eq(20)
-      expect(result.details[:rejected_lines].first).to eq(line: 2, column: "catmat", code: "invalid")
-      expect(result.details[:rejected_lines].last[:line]).to eq(21)
+      expect(described_class).to have_received(:message_for).once
+      expect(described_class).to have_received(:rejection).exactly(20).times
     end
 
     it "AMPP repetida e descrição longa saem com o código" do
