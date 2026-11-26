@@ -121,7 +121,7 @@ RSpec.describe "Maintenance: ambiente e situação do envio à BNAFAR", type: :r
 
     status = json.dig("data", "cityBnafarStatus")
     expect(status).to include("environment" => "homologation", "environmentEditable" => true, "startedOn" => "2026-11-20")
-    expect(status["enabledDomains"]).to eq(Bnafar::Gate.domains(city))
+    expect(status["enabledDomains"]).to eq(Bnafar::Gate.domains_enabled(city)) # a fonte do GET /pharmacy/bnafar/domains (R13)
     expect(status["enabledDomains"]).to eq([ "medication" ])
     expect(status["alert"]).to include("lost" => 1, "rejected" => 0, "lastFinishedOn" => (Time.zone.today - 3).iso8601)
     expect(json["errors"]).to be_nil
@@ -143,7 +143,9 @@ RSpec.describe "Maintenance: ambiente e situação do envio à BNAFAR", type: :r
     end
 
     expect(json["errors"]).to be_nil
-    expect(json.dig("data", "cityBnafarStatus", "enabledDomains")).to eq([])
+    # R13: a mesma fonte do `enabled_domains` do GET /pharmacy/bnafar/domains (Q41).
+    expect(json.dig("data", "cityBnafarStatus", "enabledDomains")).to eq(Bnafar::Gate.domains_enabled(city))
+    expect(json.dig("data", "cityBnafarStatus", "enabledDomains")).to eq([ "medication" ])
     expect(json.dig("data", "cityBnafarStatus", "alert", "late")).to eq(1)
   end
 
@@ -183,6 +185,7 @@ RSpec.describe "Maintenance: ambiente e situação do envio à BNAFAR", type: :r
     expect(fields.call("CityBnafarStatus")).to eq(
       [ "alert: BnafarAlert!", "enabledDomains: [String!]!", "environment: String!", "environmentEditable: Boolean!", "startedOn: ISO8601Date" ]
     )
+    expect(sdl[/^type CityBnafarStatus \{\n.*?^\}/m]).to include("a mesma fonte de GET /pharmacy/bnafar/domains")
     expect(fields.call("BnafarAlert")).to eq([ "lastFinishedOn: ISO8601Date", "late: Int!", "lost: Int!", "rejected: Int!" ])
   end
 end

@@ -12,7 +12,7 @@ module Maintenance
       field :environment_editable, Boolean, null: false,
             description: "Só fora de produção o ambiente se troca"
       field :enabled_domains, [ String ], null: false,
-            description: "Os domínios com o envio utilizável (credencial aceita); o GET /pharmacy/bnafar/domains traz os ligados"
+            description: "Os domínios com o envio ligado (a mesma fonte de GET /pharmacy/bnafar/domains)"
       field :alert, Types::BnafarAlertType, null: false
       field :started_on, GraphQL::Types::ISO8601Date, null: true
 
@@ -21,8 +21,10 @@ module Maintenance
       def started_on = state[:started_on]
       def alert = state[:alert]
 
-      # Interruptores são da plataforma: lidos FORA da transação da cidade (R13).
-      def enabled_domains = ::Bnafar::Gate.domains(object)
+      # Interruptores são da plataforma: lidos FORA da transação da cidade. A
+      # mesma fonte do `enabled_domains` de GET /pharmacy/bnafar/domains (R13,
+      # Q41): o interruptor ligado, seja qual for a credencial.
+      def enabled_domains = ::Bnafar::Gate.domains_enabled(object)
 
       private
 
