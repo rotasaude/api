@@ -5,16 +5,21 @@
 # chamado dentro de `CityConnection.with`.
 module Bnafar
   module Environment
+    PRODUCTION = "production"
+
     module_function
 
+    # O ambiente BNAFAR pedido é o de produção (não confundir com Rails.env).
+    def production?(value) = value.to_s == PRODUCTION
+
     def current(env: Rails.env)
-      return "production" unless simulation_env?(env)
+      return PRODUCTION unless simulation_env?(env)
 
       connection = ApplicationRecord.connection
-      return "production" unless connection.data_source_exists?("bnafar_settings")
+      return PRODUCTION unless connection.data_source_exists?("bnafar_settings")
 
       value = connection.select_value("SELECT environment FROM bnafar_settings LIMIT 1")
-      Bnafar::Catalog::ENVIRONMENTS.include?(value) ? value : "production"
+      Bnafar::Catalog::ENVIRONMENTS.include?(value) ? value : PRODUCTION
     end
 
     # `homologation` só se grava (credencial ou ambiente) fora de produção.

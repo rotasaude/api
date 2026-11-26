@@ -14,7 +14,7 @@ module Maintenance
       def resolve(city_slug:, environment:, code: nil)
         in_city(city_slug: city_slug, event: "maintenance.bnafar.environment_changed", module_name: "bnafar",
                 rejection_path: "environment", environment: environment,
-                step_up_code: (environment.eql?("production") ? code.to_s : nil)) do |actor, _correlation_id|
+                step_up_code: (::Bnafar::Environment.production?(environment) ? code.to_s : nil)) do |actor, _correlation_id|
           ::Bnafar::SetEnvironment.call(environment: environment, by: actor)
         end
       end
