@@ -163,6 +163,25 @@ RSpec.describe FakeBnafar::App, type: :model do
     expect(inconsistencies(protocol)["content"].map { |e| [ e["codigoOrigem"], e["inconsistencias"].first["codigo"] ] }).to eq([ [ "10", "MSG73" ] ])
   end
 
+  # O SI-BNAFAR conta o dia em Brasília (UTC-3, sem horário de verão), não no
+  # fuso do processo (UTC no container): depois das 21h locais "ontem" não
+  # pode virar "anteontem" (flake de 22h-24h).
+  it "às 22:30 de Brasília (01:30 UTC), um POST com a data de ontem de Brasília é aceito (sem MSG73)" do
+    late = Time.utc(2026, 11, 26, 1, 30) # 25/11 22:30 em Brasília
+    late_app = described_class.new(clock: -> { late })
+    late_mock = Rack::MockRequest.new(late_app)
+    auth = { "HTTP_AUTHORIZATION" => basic }
+    late_token = JSON.parse(late_mock.post("/jwtauth/auth", auth).body).fetch("access_token")
+    records = [ exit_record("10", date: "2026-11-23"), exit_record("11", date: "2026-11-24"), exit_record("12", date: "2026-11-25") ]
+    opts = { "HTTP_AUTHORIZATION" => "jwt #{late_token}", "CONTENT_TYPE" => "application/json", input: JSON.generate(records) }
+    protocol = json(late_mock.request("POST", exit_path, opts)).fetch("protocolo")
+    detail_path = "/bnafar/protocolo/ibge/#{ibge}/detalhar-processamento/#{protocol}"
+    get = { "HTTP_AUTHORIZATION" => "jwt #{late_token}" }
+    2.times { late_mock.request("GET", detail_path, get) }
+    result = json(late_mock.request("GET", detail_path, get))
+    expect(result["itensProcessados"].map { |r| r["sucesso"] }).to eq([ false, true, true ])
+  end
+
   it "pagina as inconsistências" do
     protocol = send_exit(Array.new(3) { |i| exit_record(i.to_s, cnes: "0000000") })
     processed(protocol)

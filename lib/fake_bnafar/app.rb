@@ -320,7 +320,9 @@ module FakeBnafar
 
     # --- util ---
 
-    def today = now.to_date
+    # O dia do SI-BNAFAR é o de Brasília (UTC-3, sem horário de verão desde 2019),
+    # não o do fuso do processo: depois das 21h locais UTC já virou o dia seguinte.
+    def today = now.getlocal("-03:00").to_date
 
     def stamp(time = now) = time.getutc.strftime("%Y-%m-%dT%H:%M:%S.%L")
 
