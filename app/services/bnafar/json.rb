@@ -16,7 +16,7 @@
 #   - `protocol`: o do lote do registro (o `post`, ou o `put` da correção);
 #   - `retry_until`: só no recusado (de `post`) de remessa ainda não perdida;
 #   - `correct_until`: só na saída externa aceita, não excluída e não substituída
-#     por uma correção (Window, do `sent_at` do registro original).
+#     por uma correção não recusada (Window, do `sent_at` do registro original).
 module Bnafar
   module Json
     NOT_SENT = "not_sent".freeze
@@ -96,9 +96,10 @@ module Bnafar
       Window.retry_until(submission)
     end
 
-    # Ids dos registros (dentre `records`) que já foram substituídos por outro (`replaces_record_id`).
+    # Ids dos registros (dentre `records`) já substituídos por outro (`replaces_record_id`).
+    # Correção recusada não substitui: o original aceito segue como a versão vigente na BNAFAR.
     def replaced_ids(records)
-      BnafarRecord.where(replaces_record_id: records.map(&:id)).pluck(:replaces_record_id).to_set
+      BnafarRecord.where(replaces_record_id: records.map(&:id)).where.not(status: "rejected").pluck(:replaces_record_id).to_set
     end
 
     # Só o registro vigente (o que ninguém substituiu) mantém o prazo de correção.

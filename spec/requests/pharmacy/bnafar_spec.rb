@@ -347,6 +347,28 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       expect(rows.fetch(original.id)["correct_until"]).to be_nil
       expect(Time.iso8601(rows.fetch(replacement.id)["correct_until"])).to be_within(1.second).of(original.reload.sent_at + 30.days)
     end
+
+    it "correção recusada não substitui: o original volta a ter correct_until e o novo registro recusado tem nil" do
+      losartana.update_columns(vmp_code: "@brasil1000")
+      lot = bnafar_complete!(stocked_lot!(central, item: losartana, quantity: "20"), ampp_code: "@brasil20038375080")
+      attrs = { "exit_type" => "S-D", "destination_kind" => "cnpj", "destination_code" => "12ABC34501DE35",
+                "reason" => "Doação de excedente à entidade", "items" => [ { "lot_id" => lot.id, "quantity" => 3 } ] }
+      Pharmacy::RecordExternalExit.call(location: central, attrs: attrs, by: keeper)
+      Bnafar::Build.call(reference_on: today, environment: "production", domains: [ Stock::Domain::MEDICATION ], now: Time.current)
+      original = BnafarSubmission.find_by!(reference_on: today, subject: "exit").records.sole
+      original.update_columns(status: "accepted", accepted_at: Time.current, bnafar_code: 55, sent_at: 2.days.ago)
+      stepped_up!(admin)
+      post_json "/pharmacy/bnafar/records/#{original.id}/correct", fix
+      replacement = BnafarRecord.find_by!(replaces_record_id: original.id)
+      replacement.update_columns(status: "rejected", error_codes: %w[MSG09], sent_at: 1.day.ago)
+
+      rows = [ original, replacement ].map(&:bnafar_submission_id).uniq.flat_map do |submission_id|
+        get "/pharmacy/bnafar/submissions/#{submission_id}"
+        json_body["records"]
+      end.index_by { |entry| entry["id"] }
+      expect(Time.iso8601(rows.fetch(original.id)["correct_until"])).to be_within(1.second).of(original.reload.sent_at + 30.days)
+      expect(rows.fetch(replacement.id)["correct_until"]).to be_nil
+    end
   end
 
   describe "GET /pharmacy/bnafar/pendencies" do
