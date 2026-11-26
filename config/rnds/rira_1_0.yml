@@ -1,0 +1,56 @@
+# Perfil RIRA 1.0.0 da RNDS (módulo 26c), lido do pacote OFICIAL
+# br.gov.saude.rira.fhir (https://fhir.saude.gov.br/rira/package.tgz), versionado em
+# spec/fixtures/rira/. Licença do pacote: CC0-1.0 (package.json). O spec
+# spec/services/regulation/rira_profile_spec.rb confere cada URL abaixo contra o pacote.
+#
+# Desvio do plano: o SHA-256 do pacote baixado em 2026-11-26 NÃO é o do cabeçalho do
+# plano (a0a1722b...): o IG foi refeito em 2026-11-25 (package.json date 20261125095217)
+# e o package.json declara version "1.0.0" (não "1.0.0-release"). Cardinalidades do
+# cabeçalho conferidas e iguais (Composition.custodian 0..0, section.title 0..0,
+# relatesTo 0..1 com target.reference, Appointment.participant 0..1, ServiceRequest.performer 0..1).
+# M17: a Composition TEM category (1..1), BRModalidadeAssistencial.
+confirmed: true
+license: "CC0-1.0"
+
+package:
+  id: "br.gov.saude.rira.fhir"
+  version: "1.0.0"
+  sha256: "2f63d06588cce209e6c26f5ab7caae93ef09fc617efb54f1eb97d2e5d450c860"
+
+profiles:
+  composition: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRRegulacaoAssistencial"
+  appointment: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRAgendamentoRegulacaoAssistencial"
+  service_request: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRRequisicaoRegulacaoAssistencial"
+  condition: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRProblemaDiagnostico"
+
+code_systems:
+  document_type: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRTipoDocumento"
+  modality: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRModalidadeAssistencial"
+  status: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRStatusRegulacaoAssistencial"
+  sigtap: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRTabelaSUS"
+  cbo: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRCBO"
+  cid10: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRCID10"
+  ciap2: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRCIAP2"
+  participant_type: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRTipoParticipante"
+  condition_clinical: "http://terminology.hl7.org/CodeSystem/condition-clinical"
+
+identifiers:
+  individual: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRIndividuo-1.0"
+  establishment: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BREstabelecimentoSaude-1.0"
+  requester_prefix: "http://www.saude.gov.br/fhir/r4/NamingSystem/BRRNDS-"
+
+priority_system: "http://hl7.org/fhir/request-priority"
+appointment_status_system: "http://hl7.org/fhir/appointmentstatus"
+service_request_status_system: "http://hl7.org/fhir/request-status"
+participation_status_system: "http://hl7.org/fhir/participationstatus"
+
+date_fields:
+  scheduled_at: "Appointment.start"
+  requested_at: "ServiceRequest.authoredOn"
+  authorized_at: "Appointment.created"
+
+# O tipo do documento no endpoint da RNDS (docType) segue HIPÓTESE (Q6): o pacote
+# confirma só o código "RA" do BRTipoDocumento dentro da Composition.type.
+doc_type:
+  value: "RIRA"
+  hypothesis: true
