@@ -4,9 +4,12 @@ module Regulation
     MIRA_STATUSES = %w[pending booked attended cancelled absence excluded returned-to-requester].freeze
     SYNC_STATUSES = %w[idle queued sending blocked rejected failed excluded erased].freeze
     # Mais `skeleton:<caminho>` (caminho do campo do esqueleto ainda não confirmado).
+    # `missing_priority` (Q15): sem `color` nem `suggested_color`, o caráter não
+    # sai do `priority_by_color` e nada é enviado.
     BLOCK_REASONS = %w[
       missing_diagnosis requester_unit_without_cnes performer_without_cnes
       patient_without_cpf_or_cns performer_cbo_missing specialty_without_sigtap
+      missing_priority
     ].freeze
     DELIVERY_KINDS = %w[create replace delete].freeze
     PRIORITIES = %w[routine urgent].freeze

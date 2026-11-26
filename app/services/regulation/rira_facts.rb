@@ -1,0 +1,114 @@
+module Regulation
+  # Fatos do documento RIRA de um pedido de regulação (módulo 26c; Valor 8, Q6,
+  # Q12, Q15, Q18). TODA leitura de banco do documento mora aqui: o RiraBundle,
+  # o RiraSkeleton e a RndsValidation são puros sobre estes fatos. Um fato
+  # ausente fica nulo, nunca levanta (pré-voo I9): o esqueleto e a conferência
+  # é que acusam.
+  #
+  # - Paciente: CPF e CNS do paciente do pedido.
+  # - `requester_cnes`: CNES da unidade solicitante; `author_cnes` e
+  #   `requester_id`: da credencial `rnds_regulation` (nula → nulos).
+  # - SIGTAP: alvo `procedure` → o próprio código; `specialty` →
+  #   `settings.specialty_sigtap[CBO] || DEFAULT_SIGTAP`. `sigtap_valid` (Q9,
+  #   pré-voo M16): só no alvo `specialty`, o SIGTAP resolvido precisa passar no
+  #   `CareRegulation::Targets.resolve` da competência de hoje.
+  # - Executante: rede própria → CNES da unidade do horário vivo/último da
+  #   cadeia (ou da unidade do prestador); externo → CNES do prestador (da
+  #   oferta da autorização vigente, ou `care_provider_id` do pedido).
+  # - CBO do executante (Q12), nesta ordem: o CBO do alvo `specialty`; o CBO do
+  #   vínculo do turno do horário (rede própria); o `performer_cbo` da oferta;
+  #   o `default_performer_cbo` do prestador.
+  # - Caráter (Q15, pré-voo B4): `settings.priority_by_color[effective_color]`
+  #   (`color || suggested_color`); sem cor, nulo.
+  # - `scheduled_at`: rede própria → o horário vivo/último da cadeia (ou o do
+  #   pedido); externo → o do pedido. `absence_times` (Q18, pré-voo I7): os
+  #   `scheduled_at` dos horários `no_show`/`expired` da cadeia, em ordem (só
+  #   rede própria; o externo vai sem a data).
+  # - `status_times`: { situação MIRA => instante da última linha do andamento
+  #   que leva a ela } (a `pending` cai no `requested_at` sem linha).
+  #
+  # Dado sensível (CPF, CNS, CID, CIAP, identificador do solicitante): nunca
+  # sai em inspect, to_s, pretty_print nem as_json.
+  RiraFacts = Data.define(
+    :patient_cpf, :patient_cns, :requester_cnes, :author_cnes, :requester_id, :target_type, :target_code,
+    :sigtap, :sigtap_valid, :performer_cnes, :performer_cbo, :priority, :cid10, :ciap2, :requested_at,
+    :authorized_at, :scheduled_at, :absence_times, :status_times, :own_network
+  )
+
+  class RiraFacts
+    ACTIVE_APPOINTMENTS = %w[scheduled confirmed checked_in].freeze
+    MISSED_APPOINTMENTS = %w[no_show expired].freeze
+    # andamento da 26a => situação MIRA (a mesma tabela do RndsStatus; `closed`
+    # depende das faltas).
+    EVENT_STATUS = RndsStatus::RULES.values.each_with_object({ "missed" => RndsStatus::ABSENCE }) do |(mira, events), map|
+      events.each { |event| map[event] = mira }
+    end.freeze
+
+    def self.for(request:, settings:, credential:, today: Time.zone.today)
+      authorization = request.current_authorization
+      offer = authorization&.care_offer
+      provider = offer&.care_provider || request.care_provider
+      own = !request.state_regulated && (provider.nil? || provider.kind == "own")
+      appointments = own ? chain_appointments(request) : []
+      current = appointments.select { |a| ACTIVE_APPOINTMENTS.include?(a.status) }.last
+      sigtap = sigtap_for(request, settings)
+      patient = request.patient
+
+      new(
+        patient_cpf: patient&.cpf.presence, patient_cns: patient&.cns.presence,
+        requester_cnes: request.requester_unit&.cnes.presence,
+        author_cnes: credential&.requester_cnes.presence, requester_id: credential&.requester_id.presence,
+        target_type: request.target_type, target_code: request.target_code,
+        sigtap: sigtap, sigtap_valid: request.target_type != "specialty" || regulable?(sigtap, today),
+        performer_cnes: (own ? current&.health_unit&.cnes : nil).presence || provider&.cnes.presence,
+        performer_cbo: performer_cbo(request, current, offer, provider),
+        priority: request.effective_color && (settings.priority_by_color || {})[request.effective_color].presence,
+        cid10: request.cid10.presence, ciap2: request.ciap2.presence,
+        requested_at: request.requested_at, authorized_at: authorization&.created_at,
+        scheduled_at: (own && current&.scheduled_at) || request.scheduled_at,
+        absence_times: appointments.select { |a| MISSED_APPOINTMENTS.include?(a.status) }.map(&:scheduled_at).sort.freeze,
+        status_times: status_times(request).freeze, own_network: own
+      )
+    end
+
+    # Os horários de todas as cadeias do pedido (cada autorização abre uma; o
+    # Drain copia a origem), do mais antigo ao mais novo, sem empate pelo uuid.
+    def self.chain_appointments(request)
+      Appointment.joins(:request).where(appointment_requests: { origin_regulation_request_id: request.id })
+                 .includes(:health_unit, shift: :professional_link)
+                 .order(:scheduled_at, :created_at, :id).to_a
+    end
+
+    def self.sigtap_for(request, settings)
+      return request.target_code if request.target_type == "procedure"
+
+      (settings.specialty_sigtap || {})[request.target_code].presence || RndsLimits::DEFAULT_SIGTAP
+    end
+
+    def self.regulable?(sigtap, today) = CareRegulation::Targets.resolve(type: "procedure", code: sigtap, on: today).ok?
+
+    def self.performer_cbo(request, current, offer, provider)
+      return request.target_code if request.target_type == "specialty"
+
+      current&.shift&.professional_link&.cbo_code.presence || offer&.performer_cbo.presence ||
+        provider&.default_performer_cbo.presence
+    end
+
+    def self.status_times(request)
+      request.events.each_with_object({}) do |event, times|
+        status = if event.status == "closed"
+                   request.misses >= CareRegulation::Catalog::MAX_MISSES ? RndsStatus::ABSENCE : "cancelled"
+                 else
+                   EVENT_STATUS[event.status]
+                 end
+        times[status] = event.created_at if status && (times[status].nil? || event.created_at > times[status])
+      end.tap { |times| times["pending"] ||= request.requested_at if request.requested_at }
+    end
+    private_class_method :chain_appointments, :sigtap_for, :regulable?, :performer_cbo, :status_times
+
+    def inspect = "#<Regulation::RiraFacts [FILTERED]>"
+    def to_s = inspect
+    def pretty_print(pp) = pp.text(inspect)
+    def as_json(*) = { "target_type" => target_type, "own_network" => own_network }
+  end
+end
