@@ -112,6 +112,49 @@ RSpec.describe Regulation::RndsReconcile, type: :model do
     expect(Regulation::RndsSync.unanswered_delivery?(sync)).to be(false)
   end
 
+  # Fix round 1 (revisão, Important 2): só o 204 e o EHR-ERR825 (já não é
+  # final) contam como apagado.
+  def refuse_delete!(text, status: 422)
+    body = JSON.generate({ resourceType: "OperationOutcome", issue: [ { severity: "error", code: "processing", diagnostics: text } ] })
+    stub_request(:delete, %r{\Ahttp://fake-rnds\.test:8094/api/fhir/r4/Bundle/}).to_return(status: status, body: body).then.to_rack(fake)
+  end
+
+  it "DELETE recusado com EHR-ERR825 (já não é final) → conta como apagado: :deduplicated" do
+    unanswered!
+    older = post!
+    travel 1.second
+    newer = post!
+    refuse_delete!("(EHR-ERR825) O documento #{newer} não está no estado final.")
+
+    expect(call).to eq(:deduplicated)
+    expect(sync.reload).to have_attributes(last_rnds_id: older, last_error_codes: [])
+    expect(RegulationRndsDelivery.find_by!(regulation_rnds_sync_id: sync.id, kind: "delete"))
+      .to have_attributes(rnds_id: newer, http_status: 422, error_codes: [ "EHR-ERR825" ])
+  end
+
+  it "DELETE recusado com outro 4xx → não conta: :transient, códigos em last_error_codes, Rails.error sem dado; nada adotado" do
+    delivery = unanswered!
+    older = post!
+    travel 1.second
+    newer = post!
+    refuse_delete!("(EHR-ERR123) Recusado para o CPF 12345678901")
+    reported = []
+    allow(Rails.error).to receive(:report) { |error, **| reported << error.message }
+
+    expect(call).to eq(:transient)
+    expect(sync.reload).to have_attributes(last_rnds_id: nil, last_error_codes: [ "EHR-ERR123" ])
+    expect(delivery.reload).to have_attributes(accepted_at: nil, rnds_id: nil)
+    expect(Regulation::RndsSync.unanswered_delivery?(sync)).to be(true) # a reconciliação fica por terminar
+    expect(RegulationRndsDelivery.find_by!(regulation_rnds_sync_id: sync.id, kind: "delete"))
+      .to have_attributes(rnds_id: newer, http_status: 422, error_codes: [ "EHR-ERR123" ])
+    expect(reported).to eq([ "Regulation::RndsReconcile: delete refused regulation_rnds_sync_id=#{sync.id}" ])
+    expect(chain.map { |d| [ d.id, d.status ] }).to contain_exactly([ older, "final" ], [ newer, "final" ])
+
+    expect(call).to eq(:deduplicated) # a próxima tentativa: o simulado aceita
+    expect(sync.reload).to have_attributes(last_rnds_id: older, last_error_codes: [])
+    expect(chain.map { |d| [ d.id, d.status ] }).to contain_exactly([ older, "final" ], [ newer, "entered-in-error" ])
+  end
+
   it ":transient — a RNDS fora do ar: nada muda e o GET não vira remessa" do
     delivery = unanswered!
     client.token!

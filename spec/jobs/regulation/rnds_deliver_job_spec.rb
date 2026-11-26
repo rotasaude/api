@@ -350,6 +350,25 @@ RSpec.describe Regulation::RndsDeliverJob, type: :job do
       expect(chain(sync).map { |d| [ d.id, d.status ] }).to contain_exactly([ older.id, "final" ], [ newer.id, "entered-in-error" ])
     end
 
+    it "DUPLICADO com o DELETE recusado (4xx que não é EHR-ERR825) → não adota, códigos visíveis, tenta de novo com espera e termina" do
+      sync = mark!(sync!(municipal_request!), "DUPLICADO")
+      run!
+      older, newer = chain(sync).sort_by { |d| Time.iso8601(d.date) }
+      body = JSON.generate({ resourceType: "OperationOutcome", issue: [ { severity: "error", diagnostics: "(EHR-ERR123) Recusado" } ] })
+      stub_request(:delete, %r{\Ahttp://fake-rnds\.test:8094/api/fhir/r4/Bundle/}).to_return(status: 422, body: body).then.to_rack(fake)
+
+      travel 1.minute
+      run!
+      expect(sync.reload).to have_attributes(status: "queued", attempts: 2, last_rnds_id: nil, last_error_codes: [ "EHR-ERR123" ],
+                                             next_attempt_at: Time.current + 2.minutes)
+      expect(chain(sync).map(&:status)).to eq(%w[final final])
+
+      travel 2.minutes
+      expect { run! }.not_to(change { posts.size })
+      expect(sync.reload).to have_attributes(status: "idle", last_rnds_id: older.id, last_error_codes: [])
+      expect(chain(sync).map { |d| [ d.id, d.status ] }).to contain_exactly([ older.id, "final" ], [ newer.id, "entered-in-error" ])
+    end
+
     # Review Focus 3: o last_rnds_id gravado já foi substituído por uma
     # tentativa anterior sem resposta (aqui, por fora).
     it "EDS-MSG009 (o last_rnds_id apontando para um já substituído) → adota a cabeça da cadeia, não fica rejected" do

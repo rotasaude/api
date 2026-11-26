@@ -91,8 +91,13 @@ module Regulation
       [ at || NEVER, documents.index(doc) ]
     end
 
-    # O duplicado sai por DELETE, com a sua remessa. EHR-ERR825 (já não é
-    # final) serve: o duplicado não está mais vivo.
+    # O duplicado sai por DELETE, com a sua remessa. Só o 204 e a recusa com
+    # EHR-ERR825 (NOT_FINAL_CODE: já não é final) contam como apagado. Outra
+    # recusa 4xx deixa o duplicado `final` na RNDS: os códigos (só eles, §9)
+    # vão para o `last_error_codes` da linha, o Rails.error recebe só a classe
+    # e o id da linha, e a reconciliação fica por terminar (`:transient`: a
+    # remessa sem resposta segue aberta e a próxima rodada, com espera, tenta
+    # de novo). Nunca adota deixando o duplicado para trás.
     def remove!(sync, rnds_id, client, token, now)
       delivery = write(sync, token) do |locked|
         RegulationRndsDelivery.create!(regulation_rnds_sync_id: locked.id, kind: "delete", rnds_id: rnds_id, sent_at: now)
@@ -103,8 +108,13 @@ module Regulation
         delivery.update!(http_status: response.http_status || 204)
         :ok
       when :rejected
-        delivery.update!(http_status: response.http_status || 422, error_codes: response.codes.presence || Rnds::Errors.codes(response.error))
-        :ok
+        codes = response.codes.presence || Rnds::Errors.codes(response.error)
+        delivery.update!(http_status: response.http_status || 422, error_codes: codes)
+        return :ok if codes.include?(RndsLimits::NOT_FINAL_CODE)
+
+        write(sync, token) { |locked| locked.update!(last_error_codes: codes) }
+        Rails.error.report(RuntimeError.new("#{name}: delete refused regulation_rnds_sync_id=#{sync.id}"), handled: true, severity: :warning)
+        :transient
       when :unauthorized
         delivery.update!(http_status: response.http_status || 401)
         :unauthorized
