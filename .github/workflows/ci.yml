@@ -117,8 +117,9 @@ jobs:
   # passam no validador OFICIAL do HL7 contra o pacote versionado do IG
   # (spec/fixtures/rira/br.gov.saude.rira.fhir-1.0.0-release.tgz). Sem Postgres:
   # Regulation::RiraExamples monta tudo em memória; o boot de test (eager_load
-  # com CI) só carrega código e não abre conexão, e as URLs/host abaixo são
-  # inertes (mesmo desenho do production-boot) para que qualquer conexão
+  # liga com CI=true, que o GitHub Actions define) só carrega código; a ausência
+  # de conexão é o que este job exercita (não está provada de antemão), e as
+  # URLs/host abaixo são inertes (mesmo desenho do production-boot) para que qualquer conexão
   # acidental falhe de imediato. Java só aqui. Os exemplos e o relatório do
   # validador sobem como artefato (evidência da homologação, decisão 3).
   rira-validate:
@@ -173,8 +174,18 @@ jobs:
             -version 4.0.1 \
             -ig spec/fixtures/rira/br.gov.saude.rira.fhir-1.0.0-release.tgz \
             -output tmp/rira-validation.json || true
+          test -s tmp/rira-validation.json
+          expected=$(ls tmp/rira-examples/*.json | wc -l)
+          validated=$(jq '[.. | objects | select(.resourceType? == "OperationOutcome")] | length' tmp/rira-validation.json)
           errors=$(jq '[.. | objects | select(.resourceType? == "OperationOutcome") | .issue[]? | select(.severity == "error" or .severity == "fatal")] | length' tmp/rira-validation.json)
-          echo "RIRA_VALIDATION_ERRORS=${errors}"
+          echo "RIRA_EXAMPLES_WRITTEN=${expected} RIRA_DOCUMENTS_VALIDATED=${validated} RIRA_VALIDATION_ERRORS=${errors}"
+          if [ "${errors}" -gt 0 ]; then
+            jq -r '[.. | objects | select(.resourceType? == "OperationOutcome") | .issue[]? | select(.severity == "error" or .severity == "fatal")]
+                   | .[] | "\(.severity) \((.expression // .location // []) | join(",")): \(.diagnostics // .details.text // "")"' \
+              tmp/rira-validation.json | head -50
+          fi
+          test "${expected}" -gt 0
+          test "${validated}" -eq "${expected}"
           test "${errors}" -eq 0
       - uses: actions/upload-artifact@v4
         if: always()
