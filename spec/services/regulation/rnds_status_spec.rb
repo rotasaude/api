@@ -141,7 +141,17 @@ RSpec.describe Regulation::RndsStatus, type: :model do
   end
 
   describe ".steps" do
-    def absence_at(request) = request.events.select { |e| e.status == "missed" }.map { |e| e.created_at.iso8601 }
+    def absence_at(request) = request.events.select { |e| e.status == "missed" }.map { |e| e.created_at.iso8601(6) }
+
+    it "o at do passo leva os microssegundos da linha missed (N1)" do
+      travel_to(now + 0.654321.seconds, with_usec: true)
+      allow(RegulationRequestEvent).to receive(:create!).and_call_original
+      request = miss!(schedule!(reauthorize!(regulation_request!, offer: offer)))
+      row = request.events.find { |e| e.status == "missed" }
+      expect(row.created_at.usec).to eq(654_321)
+      expect(described_class.steps(request, since: nil)).to eq([ { "status" => "absence", "at" => row.created_at.iso8601(6) } ])
+      expect(Time.zone.parse(described_class.steps(request, since: nil).first["at"])).to eq(row.created_at)
+    end
 
     it "1ª falta (volta a pending) depois do último aceite -> [absence]" do
       request = schedule!(reauthorize!(regulation_request!, offer: offer))

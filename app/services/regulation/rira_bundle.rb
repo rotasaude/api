@@ -170,7 +170,8 @@ module Regulation
     def absence_slot(facts, at)
       return nil unless at
 
-      Array(facts.absences).select { |slot| slot.missed_at <= at }.max_by(&:missed_at)
+      limit = at.floor(6)
+      Array(facts.absences).select { |slot| slot.missed_at.floor(6) <= limit }.max_by(&:missed_at)
     end
 
     # [código, instante] da situação: Target, passo { status, at } ou só o código.

@@ -599,5 +599,70 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       expect(res(bundle, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq(booked[:unit].cnes)
       expect(Regulation::RiraSkeleton.problems(bundle)).to eq([])
     end
+
+    it "duas faltas contadas juntas (count: 2): a falta final leva o segundo no_show, não o primeiro (N2)" do
+      booked = own_booked!(shift: false)
+      first = no_show!(booked[:appointment])
+      appointment_request = AppointmentRequest.find(first.request_id)
+      second = schedule_regulated!(appointment_request, at: (Time.current + 2.days).change(hour: 9))
+      no_show!(second)
+      CareRegulation::AppointmentSync.call(appointment_request_id: appointment_request.id)
+      request = booked[:request].reload
+      expect(request).to have_attributes(status: "closed", misses: 2)
+      missed_rows = request.events.select { |e| e.status == "missed" }
+      expect(missed_rows.map(&:scheduled_at).uniq.size).to eq(1) # o mesmo horário do pedido nas duas linhas
+      read_facts = read(request, credential: rnds_regulation_credential!)
+      expect(read_facts.absences.map(&:starts_at)).to eq([ first.scheduled_at, second.scheduled_at ])
+      final = Regulation::RndsStatus.for(request, settings: settings)
+      expect(final.status).to eq("absence")
+      bundle = described_class.build(facts: read_facts, sync: sync_row, status: final, now: Time.current)
+      expect(res(bundle, "Appointment")).to include("start" => second.scheduled_at.iso8601,
+                                                    "end" => (second.scheduled_at + 15.minutes).iso8601)
+    end
+
+    describe "com microssegundos no relógio (N1: sem os segundos inteiros do travel_to)" do
+      before do
+        allow(RegulationRequestEvent).to receive(:create!).and_call_original # sem o tick de 1 s
+        travel_to(now + 0.123456.seconds, with_usec: true)
+      end
+
+      def with_usec!(fraction) = travel_to(Time.current + fraction.seconds, with_usec: true)
+
+      it "1ª falta na rede própria: o passo absence sai com as datas do no_show e o digest é estável" do
+        booked = own_booked!(shift: false)
+        missed = no_show!(booked[:appointment])
+        with_usec!(0.234567)
+        CareRegulation::AppointmentSync.call(appointment_request_id: missed.request_id)
+        request = booked[:request].reload
+        row = request.events.find { |e| e.status == "missed" }
+        expect(row.created_at.usec).not_to eq(0)
+        step = Regulation::RndsStatus.steps(request, since: nil, settings: settings).first
+        expect(step["at"]).to eq(row.created_at.iso8601(6))
+        read_facts = read(request, credential: rnds_regulation_credential!)
+        bundle = described_class.build(facts: read_facts, sync: sync_row, status: step, now: Time.current)
+        expect(res(bundle, "Appointment")).to include("status" => "noshow", "start" => missed.scheduled_at.iso8601)
+        expect(Regulation::RiraSkeleton.problems(bundle)).to eq([])
+        expect(Regulation::RndsValidation.call(facts: read_facts, status: step)).to eq(:ok)
+
+        persisted = JSON.parse(JSON.generate(step)) # pending_steps é jsonb
+        again = described_class.build(facts: read(request, credential: rnds_regulation_credential!), sync: sync_row,
+                                      status: persisted, now: Time.current + 1.hour)
+        expect(described_class.digest(again)).to eq(described_class.digest(bundle))
+      end
+
+      it "1ª falta num prestador contratado: o passo absence sai com as datas da linha e o CNES do prestador" do
+        provider = external_provider!
+        at = (now + 2.days).change(hour: 14)
+        request = contracted_scheduled!(provider: provider, at: at)
+        travel_to(at + 1.day + 0.345678.seconds, with_usec: true)
+        request = outcome_missed!(request)
+        step = Regulation::RndsStatus.steps(request, since: nil, settings: settings).first
+        read_facts = read(request, credential: rnds_regulation_credential!)
+        bundle = described_class.build(facts: read_facts, sync: sync_row, status: step, now: Time.current)
+        expect(res(bundle, "Appointment")).to include("start" => at.iso8601, "end" => (at + Appointment::LEGACY_SPAN).iso8601)
+        expect(res(bundle, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq(provider.cnes)
+        expect(Regulation::RndsValidation.call(facts: read_facts, status: step)).to eq(:ok)
+      end
+    end
   end
 end

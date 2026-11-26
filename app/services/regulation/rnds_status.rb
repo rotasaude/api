@@ -35,14 +35,16 @@ module Regulation
       Target.new(status: status, at: last_at(request, events) || request.requested_at)
     end
 
-    # -> [{ "status" => "absence", "at" => iso8601 }]: uma por linha `missed`
+    # -> [{ "status" => "absence", "at" => iso8601(6) }]: uma por linha `missed`
     # depois de `since` (nil = todas), menos a última se o pedido está
     # fechado (é a situação desejada), sem repetir o desejado no fim. `settings`
     # evita reler os ajustes quando o chamador já os tem.
     def steps(request, since:, settings: nil)
       rows = request.events.select { |e| e.status == "missed" && (since.nil? || e.created_at > since) }
       rows = rows.first(rows.size - 1) if request.status == "closed" && rows.any?
-      steps = rows.map { |e| { "status" => ABSENCE, "at" => e.created_at.iso8601 } }
+      # Com os microssegundos (N1): o `at` é a chave da linha `missed` na
+      # montagem (RiraBundle.absence_slot); sem eles, a linha ficaria "depois".
+      steps = rows.map { |e| { "status" => ABSENCE, "at" => e.created_at.iso8601(6) } }
       steps = steps.chunk_while { |a, b| a["status"] == b["status"] }.map(&:first)
       desired = self.for(request, settings: settings || RegulationRndsSetting.current)
       steps.pop if desired.is_a?(Target) && desired.status == steps.last&.fetch("status")

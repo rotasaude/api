@@ -26,13 +26,16 @@ module Regulation
   # - `absences` (Q18, Q22, Q24): uma `Slot(starts_at, ends_at, cnes,
   #   missed_at)` por linha `missed` do andamento, na ordem. A rede é a do
   #   horário faltado, não a da autorização vigente:
-  #   - rede própria: o horário `no_show` da cadeia com a data da linha (ou, na
-  #     linha sem data — falta de antes da Q24 —, o último `no_show` ainda não
-  #     usado até ela): datas do horário e CNES da unidade dele;
-  #   - externo: a data, o fim e o prestador gravados na linha (sem fim, a
-  #     data + LEGACY_SPAN; CNES do prestador);
-  #   - linha sem data e sem `no_show` (falta externa de antes da Q24): sem
-  #     horário (a conferência barra com `external_absence_without_schedule`).
+  #   - linha com prestador (só externo: o `ScheduleExternal` recusa `own`):
+  #     a data, o fim e o prestador gravados na linha (sem fim, a data +
+  #     LEGACY_SPAN; CNES do prestador);
+  #   - linha sem prestador: o `no_show` da cadeia mais antigo ainda não usado
+  #     até ela (cada `no_show` é uma falta; as linhas de um `record!(count: 2)`
+  #     levam a mesma data do pedido, então a data da linha não serve de chave,
+  #     N2): datas do horário e CNES da unidade dele; sem `no_show`, a data
+  #     gravada na linha (estado sem prestador, CNES nulo);
+  #   - sem nada disso (falta externa de antes da Q24): sem horário (a
+  #     conferência barra com `external_absence_without_schedule`).
   #   O `expired` não é falta (volta a `authorized` no 26a).
   # - `status_times`: { situação MIRA => instante da última linha do andamento
   #   que leva a ela } (a `pending` cai no `requested_at` sem linha).
@@ -102,10 +105,8 @@ module Regulation
       no_shows = appointments.select { |a| a.status == MISSED_APPOINTMENT }.sort_by(&:scheduled_at)
       used = []
       request.events.select { |e| e.status == "missed" }.filter_map do |row|
-        appointment = if row.scheduled_at
-                        no_shows.find { |a| a.scheduled_at == row.scheduled_at }
-                      else
-                        (no_shows - used).select { |a| a.scheduled_at <= row.created_at }.last
+        appointment = if row.care_provider_id.nil?
+                        (no_shows - used).find { |a| a.scheduled_at <= row.created_at }
                       end
         if appointment
           used << appointment
