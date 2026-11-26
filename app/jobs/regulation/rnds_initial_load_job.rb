@@ -17,19 +17,36 @@ module Regulation
 
     queue_as :default
 
-    limits_concurrency to: 1, key: "rnds_regulation_initial_load", duration: 10.minutes
+    # A duração fica bem acima do orçamento da rodada: duas rodadas nunca se sobrepõem.
+    limits_concurrency to: 1, key: "rnds_regulation_initial_load", duration: RndsLimits::BUDGET * 3
 
     def perform
       return unless RndsGate.enabled?(Current.city) # fora da transação da cidade
 
       now = Time.current
       settings = RegulationRndsSetting.current
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + RndsLimits::BUDGET.to_f
+      # Orçamento esgotado: para; a linha existente é a marca de feito, a
+      # próxima rodada (5 min) segue de onde esta parou.
       candidates(now, settings).find_each do |request|
-        RndsSync.recompute!(request, create: true, initial_load: true, now: now, settings: settings)
+        break if expired?(deadline)
+
+        load!(request, now, settings)
       end
     end
 
     private
+
+    def expired?(deadline) = Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+    # Um pedido que falha não trava os demais; o log só tem id e classe (§9).
+    def load!(request, now, settings)
+      RndsSync.recompute!(request, create: true, initial_load: true, now: now, settings: settings)
+    rescue ActiveRecord::RecordNotUnique
+      nil # outra rodada criou a linha deste pedido
+    rescue StandardError => e
+      Rails.logger.error("[Regulation::RndsInitialLoadJob] regulation_request_id=#{request.id} #{e.class.name}")
+    end
 
     def candidates(now, settings)
       terminal = CareRegulation::Catalog::TERMINAL_STATUSES

@@ -122,6 +122,51 @@ RSpec.describe Regulation::RndsInitialLoadJob, type: :job do
     described_class.perform_now
   end
 
+  context "robustez da rodada" do
+    let!(:requests) { Array.new(3) { regulation_request! }.sort_by(&:id) }
+
+    before { RegulationRndsSync.delete_all }
+
+    it "orçamento esgotado depois de N pedidos: a rodada seguinte continua de onde parou" do
+      calls = 0
+      allow_any_instance_of(described_class).to receive(:expired?) { (calls += 1) > 2 }
+
+      described_class.perform_now
+      expect(rows.count).to eq(2)
+
+      allow_any_instance_of(described_class).to receive(:expired?).and_return(false)
+      described_class.perform_now
+      expect(rows.pluck(:regulation_request_id)).to match_array(requests.map(&:id))
+    end
+
+    it "um pedido que levanta não impede os outros; o log só tem id e classe" do
+      bad = requests.first
+      allow(Regulation::RndsSync).to receive(:recompute!).and_wrap_original do |original, request, **kwargs|
+        raise ArgumentError, "CPF 12345678901 vazou" if request.id == bad.id
+
+        original.call(request, **kwargs)
+      end
+      logged = []
+      allow(Rails.logger).to receive(:error) { |msg| logged << msg }
+
+      expect { described_class.perform_now }.not_to raise_error
+      expect(rows.pluck(:regulation_request_id)).to match_array(requests.map(&:id) - [ bad.id ])
+      expect(logged).to eq([ "[Regulation::RndsInitialLoadJob] regulation_request_id=#{bad.id} ArgumentError" ])
+    end
+
+    it "criação concorrente (RecordNotUnique) não aborta a rodada" do
+      first = requests.first
+      allow(Regulation::RndsSync).to receive(:recompute!).and_wrap_original do |original, request, **kwargs|
+        raise ActiveRecord::RecordNotUnique, "duplicate" if request.id == first.id
+
+        original.call(request, **kwargs)
+      end
+
+      expect { described_class.perform_now }.not_to raise_error
+      expect(rows.count).to eq(2)
+    end
+  end
+
   it "70 linhas initial_load → a primeira execução do envio manda 60" do
     pending "depende do Regulation::RndsDeliverJob (Task 12)"
     raise NotImplementedError, "Task 12"
