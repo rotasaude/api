@@ -45,6 +45,18 @@ module VaccinationHelpers
     end
   end
 
+  # Credencial `rnds_regulation` (26c) da cidade, direto no banco. Só grava depois
+  # da migração da Task 5 (CHECK de `kind`).
+  def rnds_regulation_credential!(cnes: "1234567", password: "rnds-regulacao", requester_id: "2926", responsible_cns: valid_cns(26))
+    secret = { "pfx_base64" => Base64.strict_encode64(self_signed_pfx(password: password, not_after: 1.year.from_now)),
+               "pfx_password" => password, "requester_cnes" => cnes, "requester_id" => requester_id,
+               "responsible_cns" => responsible_cns }
+    IntegrationCredential.find_or_initialize_by(kind: "rnds_regulation").tap do |credential|
+      credential.assign_attributes(secret: secret, set_by_user: pharmacy_admin!, set_at: Time.current)
+      credential.save!
+    end
+  end
+
   # Credencial `cadsus` e interruptor `cadsus_lookup` ligados na cidade.
   def enable_cadsus!(city)
     IntegrationCredential.create!(kind: "cadsus", secret: { "username" => "rota", "password" => "x" },

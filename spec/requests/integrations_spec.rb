@@ -38,7 +38,9 @@ RSpec.describe "Integrações da cidade", type: :request do
       { "kind" => "rnds", "environment" => "production", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
         "last_check_status" => nil, "last_check_message" => nil },
       { "kind" => "bnafar", "environment" => "production", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
-        "last_check_status" => nil, "last_check_message" => nil }
+        "last_check_status" => nil, "last_check_message" => nil },
+      { "kind" => "rnds_regulation", "environment" => "production", "set" => false, "set_at" => nil, "set_by" => nil,
+        "last_check_at" => nil, "last_check_status" => nil, "last_check_message" => nil }
     ])
     expect(json["features"].first).to eq("key" => "ledi_export", "enabled" => false, "usable" => false,
                                          "missing" => %w[pec_url_missing credential_missing:ledi])
@@ -105,6 +107,75 @@ RSpec.describe "Integrações da cidade", type: :request do
     expect([ response.status, json ]).to eq([ 422, { "error" => "certificate_expired" } ])
   ensure
     Rails.logger.stop_broadcasting_to(sink) if sink
+  end
+
+  describe "rnds_regulation (26c)" do
+    let(:cns) { valid_cns(26) }
+    let(:pfx_password) { "pfx-regulacao-secreta" }
+    let(:encoded) { Base64.strict_encode64(self_signed_pfx(password: pfx_password, not_after: 1.year.from_now)) }
+    let(:body) do
+      { pfx_base64: encoded, pfx_password: pfx_password, requester_cnes: "1234567", requester_id: "2926", responsible_cns: cns }
+    end
+
+    it "PUT sem step-up: 401 mfa_required" do
+      sign_in_admin!(stepped_up: false)
+      put_credential("rnds_regulation", body)
+      expect([ response.status, json["error"] ]).to eq([ 401, "mfa_required" ])
+    end
+
+    it "requester_id com espaço: 422 invalid_requester_id; CNS inválido: 422 invalid_responsible_cns" do
+      sign_in_admin!
+      put_credential("rnds_regulation", body.merge(requester_id: "12 34"))
+      expect([ response.status, json ]).to eq([ 422, { "error" => "invalid_requester_id" } ])
+      put_credential("rnds_regulation", body.merge(responsible_cns: "123456789012345"))
+      expect([ response.status, json ]).to eq([ 422, { "error" => "invalid_responsible_cns" } ])
+      put_credential("rnds_regulation", body.except(:responsible_cns))
+      expect([ response.status, json ]).to eq([ 422, { "error" => "invalid_credential" } ])
+    end
+
+    it "GET lista a rnds_regulation, sem segredo" do
+      sign_in_admin!
+      get "/integrations"
+      expect(json["credentials"].map { |c| c["kind"] }).to include("rnds", "rnds_regulation")
+    end
+
+    it "a rnds continua com três chaves: com as duas a mais, 422" do
+      sign_in_admin!
+      put_credential("rnds", body.slice(:pfx_base64, :pfx_password, :requester_cnes))
+      expect(response).to have_http_status(:ok)
+      expect(IntegrationCredential.find_by!(kind: "rnds").secret.keys.sort).to eq(%w[pfx_base64 pfx_password requester_cnes])
+    end
+
+    it "PUT com step-up grava e responde sem segredo; audita só com city_id" do
+      pending "o CHECK ck_integration_credentials_kind aceita rnds_regulation só na migração da Task 5"
+      sign_in_admin!
+      sink = ActiveSupport::Logger.new(logs = StringIO.new)
+      Rails.logger.broadcast_to(sink)
+      put_credential("rnds_regulation", body)
+      expect(response).to have_http_status(:ok)
+      expect(json).to include("kind" => "rnds_regulation", "set" => true)
+      expect(response.body).not_to include(encoded[0, 40], pfx_password, cns, "2926")
+      expect(logs.string).not_to include(encoded[0, 40], pfx_password, cns)
+      expect(PlatformEvent.where(name: "rnds_regulation.credential_set").map(&:payload)).to eq([ { "city_id" => city.id } ])
+    ensure
+      Rails.logger.stop_broadcasting_to(sink) if sink
+    end
+
+    it "POST check com rnds_mock emite token novo no fake e grava ok" do
+      pending "o CHECK ck_integration_credentials_kind aceita rnds_regulation só na migração da Task 5"
+      fake = FakeRnds::App.new(timeout_delay: 0)
+      base = "http://fake-rnds.test:8094"
+      vaccination_city!(rnds: true)
+      rnds_regulation_credential!
+      Rnds::Client.reset_cache!
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("FAKE_RNDS_URL").and_return(base)
+      stub_request(:any, /\A#{Regexp.escape(base)}/).to_rack(fake)
+      sign_in_admin!
+      post "/integrations/credentials/rnds_regulation/check", as: :json
+      expect(json).to include("kind" => "rnds_regulation", "last_check_status" => "ok", "last_check_message" => "Token da RNDS emitido")
+      expect(fake.log.map(&:first)).to eq(%w[GET])
+    end
   end
 
   describe "check RNDS" do

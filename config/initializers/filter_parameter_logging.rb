@@ -155,7 +155,10 @@ Rails.application.config.filter_parameters += [
   # nunca em log; a senha já cai em `:passw`. Só a chave inteira.
   /\Ausername\z/,
   # Módulo 27b: o destino da saída externa do estoque (CNES ou CNPJ de quem recebe).
-  /\Adestination_code\z/
+  /\Adestination_code\z/,
+  # Módulo 26c: o identificador do solicitante da RNDS (a credencial
+  # rnds_regulation); o CNS do responsável já cai em `:cns`.
+  /\Arequester_id\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

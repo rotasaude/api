@@ -20,7 +20,7 @@ module Integrations
 
       status, message = case kind
       when "ledi" then check_ledi(city, credential)
-      when "rnds" then check_rnds(city, credential)
+      when "rnds", "rnds_regulation" then check_rnds(city, credential)
       when "bnafar" then check_bnafar(city, credential)
       when "cadsus" then check_cadsus(city)
       else raise ArgumentError, "tipo de integração sem teste de conexão"
@@ -55,7 +55,7 @@ module Integrations
       problem = Integrations::SetCredential.certificate_problem(credential.pfx_bytes, credential.pfx_password)
       return [ "error", problem == :certificate_expired ? "Certificado vencido" : "Certificado inválido" ] if problem
 
-      Rnds::Client.for(city).token!(fresh: true)
+      Rnds::Client.for(city, kind: credential.kind).token!(fresh: true)
       [ "ok", "Token da RNDS emitido" ]
     rescue Rnds::Errors::NotConfigured
       [ "error", "RNDS não configurada pela plataforma" ]

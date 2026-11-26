@@ -91,6 +91,45 @@ RSpec.describe Rnds::Client do
     expect(fake.log).to be_empty
   end
 
+  describe "por kind (26c)" do
+    it "kind desconhecido não procura credencial" do
+      expect { described_class.for(city, kind: "ledi") }.to raise_error(ArgumentError)
+    end
+
+    it "rnds_regulation sem credencial: NotConfigured; a da rnds não vale" do
+      expect { described_class.for(city, kind: "rnds_regulation") }.to raise_error(Rnds::Errors::NotConfigured)
+    end
+
+    it "a rnds não tem responsible_cns" do
+      expect(client.responsible_cns).to be_nil
+    end
+
+    context "com a credencial rnds_regulation gravada" do
+      before do
+        pending "o CHECK ck_integration_credentials_kind aceita rnds_regulation só na migração da Task 5"
+        CityConnection.with(city) { rnds_regulation_credential!(responsible_cns: cns_regulation) }
+      end
+
+      let(:cns_regulation) { valid_cns(26) }
+
+      it "usa o PFX dessa credencial e lê o responsible_cns dela" do
+        regulation = described_class.for(city, kind: "rnds_regulation")
+        expect(regulation.responsible_cns).to eq(cns_regulation)
+        expect(regulation.token!(fresh: true)).to be_present
+        expect(regulation.inspect).not_to include(cns_regulation)
+      end
+
+      it "token da rnds não serve à rnds_regulation (cache separado)" do
+        client.token!
+        expect(fake.log.map(&:first)).to eq(%w[GET])
+        described_class.for(city, kind: "rnds_regulation").token!
+        expect(fake.log.map(&:first)).to eq(%w[GET GET])
+        client.token!
+        expect(fake.log.map(&:first)).to eq(%w[GET GET])
+      end
+    end
+  end
+
   it "sem URL da plataforma ou sem credencial: NotConfigured" do
     allow(ENV).to receive(:[]).with("FAKE_RNDS_URL").and_return(nil)
     expect { described_class.for(city) }.to raise_error(Rnds::Errors::NotConfigured)

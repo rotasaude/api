@@ -8,7 +8,10 @@
 # aberto aqui, nunca a mensagem da exceção é repassada. A `bnafar` tem uma linha
 # por ambiente (Q9): `homologation` só fora de produção; os outros tipos só têm
 # `production`.
+# A `rnds_regulation` (26c) leva também requester_id e responsible_cns e audita
+# rnds_regulation.credential_set (só city_id).
 # Reasons: :unknown_kind, :invalid_credential, :invalid_requester_cnes,
+# :invalid_requester_id, :invalid_responsible_cns,
 # :invalid_certificate, :certificate_expired, :invalid_environment,
 # :environment_not_allowed.
 module Integrations
@@ -22,10 +25,11 @@ module Integrations
       return Result.fail(:environment_not_allowed) unless Bnafar::Environment.allowed?(environment)
 
       secret = secret.respond_to?(:to_h) ? secret.to_h.stringify_keys : nil
-      reason = kind == "rnds" ? validate_rnds(secret) : validate_login(secret)
+      pfx = IntegrationCredential::PFX_KINDS.include?(kind)
+      reason = pfx ? validate_rnds(secret, kind: kind) : validate_login(secret)
       return Result.fail(reason) if reason
 
-      stored = kind == "rnds" ? secret.slice(*IntegrationCredential::SECRET_KEYS["rnds"]) : login_secret(secret)
+      stored = pfx ? secret.slice(*IntegrationCredential::SECRET_KEYS[kind]) : login_secret(secret)
       credential = nil
       ApplicationRecord.transaction do
         credential = IntegrationCredential.lock.find_or_initialize_by(kind: kind, environment: environment)
@@ -36,6 +40,7 @@ module Integrations
         DomainEvents.publish("integration_credential.changed", **payload)
       end
       Platform.audit("rnds.credential_set", city_id: city.id) if kind == "rnds"
+      Platform.audit("rnds_regulation.credential_set", city_id: city.id) if kind == "rnds_regulation"
       Platform.audit("bnafar.credential_set", city_id: city.id, environment: environment) if kind == "bnafar"
       Result.ok(credential: credential)
     rescue ActiveRecord::RecordNotUnique
@@ -51,8 +56,10 @@ module Integrations
     # Forma (incl. 100 KB DECODIFICADOS) → invalid_credential; CNES →
     # invalid_requester_cnes; abre com a senha → invalid_certificate; vencido →
     # certificate_expired.
-    def validate_rnds(secret)
-      return :invalid_credential unless secret && secret.values_at("pfx_base64", "pfx_password", "requester_cnes").all?(String)
+    def validate_rnds(secret, kind: "rnds")
+      keys = %w[pfx_base64 pfx_password requester_cnes]
+      keys += %w[requester_id responsible_cns] if kind == "rnds_regulation"
+      return :invalid_credential unless secret && secret.values_at(*keys).all?(String)
 
       encoded = secret["pfx_base64"]
       return :invalid_credential if encoded.empty? || encoded.length > IntegrationCredential::PFX_BASE64_MAX
@@ -65,6 +72,10 @@ module Integrations
       end
       return :invalid_credential if der.empty? || der.bytesize > IntegrationCredential::PFX_MAX_BYTES
       return :invalid_requester_cnes unless secret["requester_cnes"].match?(IntegrationCredential::CNES_FORMAT)
+      if kind == "rnds_regulation"
+        return :invalid_requester_id unless secret["requester_id"].match?(IntegrationCredential::REQUESTER_ID_FORMAT)
+        return :invalid_responsible_cns unless Professionals::Cns.valid?(secret["responsible_cns"])
+      end
 
       certificate_problem(der, secret["pfx_password"])
     end

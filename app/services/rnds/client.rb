@@ -30,7 +30,8 @@ module Rnds
     end
 
     # PFX, senha e versão da credencial: lidos dentro da cidade, vivem só aqui.
-    Identity = Data.define(:pfx, :password, :version) do
+    # `responsible_cns` só existe na `rnds_regulation` (nil na `rnds`).
+    Identity = Data.define(:pfx, :password, :version, :responsible_cns) do
       def inspect = "#<Rnds::Client::Identity [FILTERED]>"
       alias_method :to_s, :inspect
       def pretty_print(pp) = pp.text(inspect)
@@ -46,17 +47,21 @@ module Rnds
     # simulado) é o do teste da credencial; o envio (Rnds::Delivery) passa o
     # alvo decidido pelo `Mock.on?` (usable?), para um `rnds_mock` ligado onde
     # não vale (produção) nunca mandar dose ao simulado.
-    def self.for(city, env: Rails.env, settings: Config.for_city(city, env: env))
+    # `kind`: a credencial do transporte, `rnds` (vacina) ou `rnds_regulation` (26c).
+    def self.for(city, kind: "rnds", env: Rails.env, settings: Config.for_city(city, env: env))
+      raise ArgumentError, "tipo de credencial da RNDS desconhecido" unless IntegrationCredential::PFX_KINDS.include?(kind)
+
       # interruptores: fora da transação da cidade
       raise Errors::NotConfigured, "RNDS não configurada" unless settings
 
       identity = CityConnection.with(city) do
-        credential = IntegrationCredential.find_by(kind: "rnds")
-        credential && Identity.new(pfx: credential.pfx_bytes, password: credential.pfx_password, version: credential.set_at.to_f)
+        credential = IntegrationCredential.find_by(kind: kind)
+        credential && Identity.new(pfx: credential.pfx_bytes, password: credential.pfx_password, version: credential.set_at.to_f,
+                                   responsible_cns: credential.responsible_cns)
       end
       raise Errors::NotConfigured, "credencial da RNDS não cadastrada" unless identity&.pfx
 
-      new(settings, identity, key: [ city.id, identity.version, settings.simulated ])
+      new(settings, identity, key: [ city.id, kind, identity.version, settings.simulated ])
     end
 
     attr_reader :settings
@@ -68,6 +73,9 @@ module Rnds
     end
 
     def simulated? = @settings.simulated
+
+    # CNS do responsável pelo envio (rnds_regulation); nil na `rnds`.
+    def responsible_cns = @identity.responsible_cns
 
     # Token do EHR-AUTH. `fresh: true` ignora o guardado (o teste da credencial).
     def token!(fresh: false)

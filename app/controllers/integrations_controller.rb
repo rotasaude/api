@@ -10,7 +10,8 @@ class IntegrationsController < ApplicationController
 
   ERROR_STATUS = { unknown_kind: :unprocessable_entity, invalid_credential: :unprocessable_entity,
                    invalid_certificate: :unprocessable_entity, certificate_expired: :unprocessable_entity,
-                   invalid_requester_cnes: :unprocessable_entity, invalid_environment: :unprocessable_entity,
+                   invalid_requester_cnes: :unprocessable_entity, invalid_requester_id: :unprocessable_entity,
+                   invalid_responsible_cns: :unprocessable_entity, invalid_environment: :unprocessable_entity,
                    environment_not_allowed: :unprocessable_entity,
                    credential_missing: :conflict }.freeze
 
