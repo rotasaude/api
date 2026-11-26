@@ -163,7 +163,7 @@ module FakeRnds
         else
           old[:status] = VOID if old
           store(id, system, value, body, target)
-          store(SecureRandom.uuid, system, value, body, nil) if duplicate
+          store(SecureRandom.uuid, system, value, body, nil, date: now + 1) if duplicate
           nil
         end
       end
@@ -177,8 +177,8 @@ module FakeRnds
     end
 
     # Já dentro do mutex.
-    def store(id, system, value, body, replaces)
-      @documents << { id: id, system: system, value: value, status: FINAL, replaces: replaces, date: now.iso8601 }
+    def store(id, system, value, body, replaces, date: now)
+      @documents << { id: id, system: system, value: value, status: FINAL, replaces: replaces, date: date.iso8601 }
       @accepted << { id: id, bundle: body }
       @accepted.shift while @accepted.size > KEEP
     end

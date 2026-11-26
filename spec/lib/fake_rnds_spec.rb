@@ -140,6 +140,10 @@ RSpec.describe FakeRnds::App do
       expect(docs.size).to eq(2)
       expect(docs).to all(include("status" => "final", "relatesTo" => nil))
       expect(docs.map { |d| d["id"] }.uniq.size).to eq(2)
+      older, newer = docs.sort_by { |d| Time.iso8601(d["date"]) }
+      expect(Time.iso8601(newer["date"])).to be > Time.iso8601(older["date"])
+      expect(newer["date"]).to eq((now + 1).iso8601)
+      expect(newer["id"]).to eq(docs.last["id"]) # o segundo gravado é o mais novo
     end
 
     it "DUPLICADO só age no primeiro POST: o segundo, com o relatesTo, segue a cadeia normal" do
