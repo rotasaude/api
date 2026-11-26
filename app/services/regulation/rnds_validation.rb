@@ -15,8 +15,9 @@ module Regulation
   # - `specialty_without_sigtap` (Q9, pré-voo M16): alvo `specialty` com o
   #   SIGTAP resolvido não regulável ou fora da competência;
   # - `missing_priority` (Q15): sem cor decidida nem sugerida, sem caráter;
-  # - `external_absence_without_schedule` (Q22): falta do pedido externo (o
-  #   26a apaga a data e o prestador), parada até a homologação.
+  # - `external_absence_without_schedule` (Q22): falta sem horário `no_show`
+  #   da cadeia até ela (pedido externo: o 26a apaga a data e o prestador),
+  #   parada até a homologação. A rede é a do horário faltado.
   # O esqueleto (`RiraSkeleton`, `skeleton:<caminho>`, Q23) é do chamador. Os
   # motivos são só códigos: nenhum valor do paciente sai daqui.
   module RndsValidation
@@ -29,12 +30,12 @@ module Regulation
       code, at = RiraBundle.situation(status, facts)
       performer = SCHEDULED_STATUSES.include?(code)
       absence = code == RndsStatus::ABSENCE
-      external_absence = absence && !facts.own_network
-      own_absence_cnes = absence && facts.own_network ? RiraBundle.absence_slot(facts, at)&.cnes : nil
+      slot = absence ? RiraBundle.absence_slot(facts, at) : nil
+      external_absence = absence && slot.nil?
       found = {
         "missing_diagnosis" => facts.cid10.blank? && facts.ciap2.blank?,
         "requester_unit_without_cnes" => facts.requester_cnes.blank?,
-        "performer_without_cnes" => (performer && facts.performer_cnes.blank?) || (absence && !external_absence && own_absence_cnes.blank?),
+        "performer_without_cnes" => (performer && facts.performer_cnes.blank?) || (absence && slot && slot.cnes.blank?),
         "patient_without_cpf_or_cns" => facts.patient_cpf.blank? && facts.patient_cns.blank?,
         "performer_cbo_missing" => performer && RndsLimits::CBO_GROUPS.include?(facts.sigtap.to_s[0, 2]) && facts.performer_cbo.blank?,
         "specialty_without_sigtap" => facts.target_type == "specialty" && !facts.sigtap_valid,

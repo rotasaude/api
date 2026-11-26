@@ -23,9 +23,12 @@ module Regulation
   # - `scheduled_at` e `scheduled_ends_at` (Q20): rede própria → o horário
   #   vivo/último da cadeia (fim = `effective_ends_at`; legado, +15 min) ou o
   #   do pedido; externo → o do pedido, com fim em `+ Appointment::LEGACY_SPAN`.
-  # - `absences` (Q18, Q22): os horários `no_show` da cadeia (só rede própria),
-  #   em ordem, como `Slot(starts_at, ends_at, cnes da unidade)`. O `expired`
-  #   não é falta (volta a `authorized` no 26a); o externo não tem a data.
+  # - `absences` (Q18, Q22): os horários `no_show` da cadeia, em ordem, como
+  #   `Slot(starts_at, ends_at, cnes da unidade)`. A cadeia é lida qualquer que
+  #   seja a rede da autorização vigente: a falta vale pelo horário faltado (uma
+  #   falta própria seguida de reautorização contratada segue própria). O
+  #   `expired` não é falta (volta a `authorized` no 26a); a falta externa não
+  #   tem horário na cadeia.
   # - `status_times`: { situação MIRA => instante da última linha do andamento
   #   que leva a ela } (a `pending` cai no `requested_at` sem linha).
   #
@@ -53,8 +56,8 @@ module Regulation
       offer = authorization&.care_offer
       provider = offer&.care_provider || request.care_provider
       own = !request.state_regulated && (provider.nil? || provider.kind == "own")
-      appointments = own ? chain_appointments(request) : []
-      current = appointments.select { |a| ACTIVE_APPOINTMENTS.include?(a.status) }.last
+      appointments = chain_appointments(request)
+      current = own ? appointments.select { |a| ACTIVE_APPOINTMENTS.include?(a.status) }.last : nil
       sigtap = sigtap_for(request, settings)
       patient = request.patient
       scheduled_at = (own && current&.scheduled_at) || request.scheduled_at
@@ -66,7 +69,7 @@ module Regulation
         author_cnes: credential&.requester_cnes.presence, requester_id: credential&.requester_id.presence,
         target_type: request.target_type, target_code: request.target_code,
         sigtap: sigtap, sigtap_valid: request.target_type != "specialty" || regulable?(sigtap, today),
-        performer_cnes: (own ? current&.health_unit&.cnes : nil).presence || provider&.cnes.presence,
+        performer_cnes: current&.health_unit&.cnes.presence || provider&.cnes.presence,
         performer_cbo: performer_cbo(request, current, offer, provider),
         priority: request.effective_color && (settings.priority_by_color || {})[request.effective_color].presence,
         cid10: request.cid10.presence, ciap2: request.ciap2.presence,

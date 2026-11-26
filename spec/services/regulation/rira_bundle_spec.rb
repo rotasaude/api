@@ -175,6 +175,23 @@ RSpec.describe Regulation::RiraBundle, type: :model do
         .to include("Appointment.start[mira-10]", "ServiceRequest.performer[mira-11]", "ServiceRequest.occurrenceDateTime[mira-12]")
     end
 
+    it "a falta é classificada pelo horário faltado: estado atual contratado com no_show próprio antes → falta própria" do
+      own_slot = slot(now - 6.days, cnes: "5678901")
+      bundle = build(facts(own_network: false, absences: [ own_slot ]), status: target("absence", at: now - 5.days))
+      expect(res(bundle, "Appointment")).to include("start" => own_slot.starts_at.iso8601, "end" => own_slot.ends_at.iso8601)
+      expect(res(bundle, "ServiceRequest")).to include("occurrenceDateTime" => own_slot.starts_at.iso8601)
+      expect(res(bundle, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq("5678901")
+      expect(Regulation::RiraSkeleton.problems(bundle)).to eq([])
+    end
+
+    it "sem no_show até a falta, nenhuma data de outro horário: o esqueleto barra (Minor 4)" do
+      later = slot(now + 1.day)
+      bundle = build(facts(absences: [ later ]), status: target("absence", at: now))
+      expect(res(bundle, "Appointment").keys).not_to include("start", "end")
+      expect(res(bundle, "ServiceRequest").keys).not_to include("performer", "occurrenceDateTime")
+      expect(Regulation::RiraSkeleton.problems(bundle)).to include("Appointment.start[mira-10]", "ServiceRequest.performer[mira-11]")
+    end
+
     it "CID-10 tem precedência sobre CIAP-2; sem CID, o CIAP-2" do
       both = res(build(facts(cid10: "I10", ciap2: "K86")), "Condition")
       expect(both["code"]).to eq("coding" => [ { "system" => profile.code_systems[:cid10], "code" => "I10" } ])
@@ -494,6 +511,24 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       CareRegulation::AppointmentSync.call(appointment_request_id: booked[:appointment].request_id)
       expect(booked[:request].reload).to have_attributes(status: "authorized", misses: 0)
       expect(read(booked[:request]).absences).to eq([])
+    end
+
+    it "falta na rede própria e reautorização em oferta contratada: o passo absence leva o horário próprio (Important 2)" do
+      booked = own_booked!(shift: false)
+      missed = no_show!(booked[:appointment])
+      CareRegulation::AppointmentSync.call(appointment_request_id: booked[:appointment].request_id)
+      contracted = offer!(provider: external_provider!, target_type: "procedure", target_code: "0401010074")
+      request = reauthorize!(booked[:request].reload, offer: contracted)
+      read_facts = read(request, credential: rnds_regulation_credential!)
+      expect(read_facts.own_network).to be(false)
+      expect(read_facts.absences.map(&:starts_at)).to eq([ missed.scheduled_at ])
+      step = Regulation::RndsStatus.steps(request, since: nil, settings: settings).first
+      expect(step["status"]).to eq("absence")
+      bundle = described_class.build(facts: read_facts, sync: sync_row, status: step, now: Time.current)
+      expect(res(bundle, "Appointment")).to include("start" => missed.scheduled_at.iso8601)
+      expect(res(bundle, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq(booked[:unit].cnes)
+      expect(Regulation::RiraSkeleton.problems(bundle)).to eq([])
+      expect(Regulation::RndsValidation.call(facts: read_facts, status: step)).to eq(:ok)
     end
 
     it "absence na rede própria: datas e executante do no_show da cadeia (Q18, Q20–Q22)" do

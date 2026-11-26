@@ -155,8 +155,9 @@ module Regulation
 
     # O horário do documento (datas e CNES do executante), ou nil:
     # `booked`/`attended` → o horário do pedido (Q20, Q21); `absence` → o
-    # `no_show` da cadeia até o instante da falta (o último, se nenhum antes),
-    # só na rede própria (Q18, Q22; o externo fica parado na conferência).
+    # último `no_show` da cadeia que começa até o instante da falta (Q18, Q22).
+    # A rede é a do horário faltado, não a da autorização vigente; sem horário
+    # até a falta, nil (falta externa: o esqueleto e a conferência barram).
     def slot_for(facts, code, at)
       return nil unless DATED_STATUSES.include?(code)
       return absence_slot(facts, at) if code == RndsStatus::ABSENCE
@@ -166,10 +167,9 @@ module Regulation
     end
 
     def absence_slot(facts, at)
-      return nil unless facts.own_network
+      return nil unless at
 
-      slots = Array(facts.absences)
-      at ? (slots.select { |s| s.starts_at <= at }.last || slots.last) : slots.last
+      Array(facts.absences).select { |slot| slot.starts_at <= at }.max_by(&:starts_at)
     end
 
     # [código, instante] da situação: Target, passo { status, at } ou só o código.

@@ -56,6 +56,17 @@ RSpec.describe Regulation::RndsValidation, type: :model do
     expect(check(facts, "absence")).to eq(:ok)
   end
 
+  it "a falta vale pelo horário faltado, não pela rede da autorização atual (Important 2)" do
+    own_slot = [ Regulation::RiraFacts::Slot.new(starts_at: now - 4.days, ends_at: now - 4.days + 20.minutes, cnes: "4567890") ]
+    expect(check(facts(own_network: false, absences: own_slot), "absence")).to eq(:ok)
+    expect(check(facts(own_network: true, absences: []), "absence")).to eq([ :blocked, %w[external_absence_without_schedule] ])
+  end
+
+  it "sem no_show até a falta, bloqueia; nunca usa um horário posterior (Minor 4)" do
+    later = [ Regulation::RiraFacts::Slot.new(starts_at: now + 1.day, ends_at: now + 1.day + 20.minutes, cnes: "4567890") ]
+    expect(check(facts(absences: later), "absence")).to eq([ :blocked, %w[external_absence_without_schedule] ])
+  end
+
   it "patient_without_cpf_or_cns; só o CNS passa" do
     expect(check(facts(patient_cpf: nil))).to eq([ :blocked, %w[patient_without_cpf_or_cns] ])
     expect(check(facts(patient_cpf: nil, patient_cns: valid_cns(903)))).to eq(:ok)
