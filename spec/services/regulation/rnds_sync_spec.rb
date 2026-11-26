@@ -259,6 +259,83 @@ RSpec.describe Regulation::RndsSync, type: :model do
       end
     end
 
+    # Fix round 1 da revisão da Task 10.
+    describe "revisão (I1, I2, I3)" do
+      def refuse!(sync, digest: sync.reload.desired_digest, status: "rejected")
+        RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: sync.last_rnds_id ? "replace" : "create",
+                                       mira_status: sync.desired_status, digest: digest, sent_at: Time.current, http_status: 422,
+                                       error_codes: [ "EHR-ERR999" ])
+        sync.update_columns(status: status, last_error_codes: [ "EHR-ERR999" ])
+        travel 1.second
+        sync.reload
+      end
+
+      it "I1: gravar os ajustes sem relação com o pedido não mexe no digest nem na situação das linhas excluded" do
+        rnds_settings!(send_external: true)
+        refused = municipal_request!(status: "external")
+        accept!(recompute(refused))
+        closed = municipal_request!(status: "external")
+        recompute(closed)
+        rnds_settings!(send_external: false)
+        refused_row = refuse!(recompute(refused))
+        closed_row = recompute(closed)
+        expect([ refused_row.desired_status, closed_row.status ]).to eq(%w[excluded excluded])
+        before = [ refused_row, closed_row ].map { |row| row.reload.slice(:status, :desired_digest, :enqueued_at) }
+
+        travel 1.hour
+        rnds_settings!(priority_by_color: { "red" => "urgent", "yellow" => "routine", "green" => "routine", "blue" => "urgent" },
+                       specialty_sigtap: { "225125" => "0301010072" })
+        expect { [ refused, closed ].each { |request| recompute(request) } }.not_to change { queued_events.count }
+        expect([ refused_row, closed_row ].map { |row| row.reload.slice(:status, :desired_digest, :enqueued_at) }).to eq(before)
+        expect(refused_row.status).to eq("rejected")
+      end
+
+      it "I2: remessa sem resposta depois do último aceite → queued mesmo com o desejado igual ao enviado" do
+        request = municipal_request!
+        sync = accept!(recompute(request))
+        RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "replace", mira_status: sync.desired_status,
+                                       digest: sync.desired_digest, sent_at: Time.current)
+        sync.update_columns(status: "queued", attempts: 0)
+        travel 1.second
+
+        expect(recompute(request)).to have_attributes(status: "queued", desired_digest: sync.sent_digest)
+        expect(described_class.unanswered_delivery?(sync.reload)).to be(true)
+      end
+
+      it "I2: remessa sem resposta anterior ao último aceite não conta" do
+        request = municipal_request!
+        sync = recompute(request)
+        RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "create", mira_status: sync.desired_status,
+                                       digest: sync.desired_digest, sent_at: Time.current)
+        travel 1.second
+        sync = accept!(sync)
+
+        expect(described_class.unanswered_delivery?(sync)).to be(false)
+        expect(recompute(request)).to have_attributes(status: "idle")
+      end
+
+      it "I3: mudança gravada durante sending e depois 422 do enviado → queued com o conteúdo novo" do
+        request = municipal_request!
+        sync = recompute(request)
+        sent_digest = sync.desired_digest
+        sync.update_columns(status: "sending", claimed_at: Time.current)
+        decide!(request, "return")
+        expect(recompute(request)).to have_attributes(status: "sending", desired_status: "returned-to-requester")
+
+        refuse!(sync, digest: sent_digest)
+        sync = recompute(request)
+        expect(sync).to have_attributes(status: "queued", desired_status: "returned-to-requester")
+        expect(sync.desired_digest).not_to eq(sent_digest)
+      end
+
+      it "I3: rejected sem conteúdo novo desde a recusa → segue rejected" do
+        request = municipal_request!
+        refuse!(recompute(request))
+        travel 1.minute
+        expect(recompute(request)).to have_attributes(status: "rejected")
+      end
+    end
+
     it "linha sending não perde o status (só o desejado muda)" do
       request = municipal_request!
       sync = recompute(request)

@@ -12,19 +12,21 @@ module Regulation
   # Situação da linha (fora de `sending`, que é do envio e só tem o desejado
   # atualizado), nesta ordem:
   # - `erased` (Q8): já havia documento aceito e o paciente perdeu CPF e CNS;
-  # - `excluded` (Q7, decisão 13): desejado `excluded` e (a) nada foi aceito e
-  #   nenhuma remessa ficou sem resposta (sem envio) ou (b) o `excluded` já foi
-  #   aceito (para); com documento aceito de outra situação, a substituição
-  #   `excluded` vai pela fila;
-  # - `blocked`, `rejected`, `failed` (B3): seguem até a impressão digital do
-  #   desejado mudar;
-  # - `queued` quando o desejado difere do último aceite (`sent_status`,
-  #   `sent_digest`) ou há passos; senão `idle`.
+  # - `excluded` (Q7, decisão 13): desejado `excluded`, nenhuma remessa sem
+  #   resposta depois do último aceite, e (a) nada foi aceito (sem envio) ou
+  #   (b) o `excluded` já foi aceito (para); com documento aceito de outra
+  #   situação, a substituição `excluded` vai pela fila;
+  # - `blocked` (B3): segue até a impressão digital do desejado mudar;
+  #   `rejected`/`failed` (B3, fix I3): seguem até o desejado diferir do que
+  #   foi recusado (o digest da última remessa);
+  # - `queued` quando há remessa sem resposta depois do último aceite (a
+  #   reconciliação da Task 12 decide; fix I2), passos, ou o desejado difere
+  #   do último aceite (`sent_status`, `sent_digest`); senão `idle`.
   # Entrar em `queued`: `next_attempt_at = now`, `attempts = 0` e o evento
   # `regulation_rnds.queued` (só ids). Desejado mudou → `enqueued_at = now`.
   module RndsSync
     EXCLUDED = "excluded".freeze
-    STICKY = %w[blocked rejected failed].freeze
+    REFUSED = %w[rejected failed].freeze
     SENDING = "sending".freeze
     # Só os eventos de um pedido vivo criam linha (com o interruptor ligado);
     # oferta, prestador, unidade e ajustes só recalculam as que existem (a
@@ -50,14 +52,26 @@ module Regulation
     end
 
     # A situação desejada: RndsStatus::Target | :none. O `excluded` ganha o
-    # instante (o documento precisa de `event.period.end`): o mais recente
-    # entre a gravação dos ajustes, a última linha `external` e o pedido.
+    # instante (o documento precisa de `event.period.end`), estável e só do
+    # pedido (fix I1: gravar os ajustes não o move): o mais recente entre a
+    # última linha do andamento e o `requested_at`.
     def target(request, settings:)
       found = RndsStatus.for(request, settings: settings)
       return found unless found == :excluded
 
-      external = request.events.select { |e| e.status == "external" }.map(&:created_at).max
-      RndsStatus::Target.new(status: EXCLUDED, at: [ settings.updated_at, external, request.requested_at ].compact.max)
+      RndsStatus::Target.new(status: EXCLUDED, at: [ request.events.map(&:created_at).max, request.requested_at ].compact.max)
+    end
+
+    # Há remessa que saiu depois do último aceite (ou desde sempre, sem aceite)
+    # e não teve resposta (timeout; Review Focus 1, fix I2): não se sabe se a
+    # RNDS a gravou. O sinal da reconciliação é este, não o `attempts`.
+    def unanswered_delivery?(sync)
+      return false if sync.new_record?
+
+      scope = RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id, accepted_at: nil, http_status: nil)
+      since = accepted_since(sync)
+      scope = scope.where("sent_at > ?", since) if since
+      scope.exists?
     end
 
     # -> [id do pedido] | :all
@@ -101,13 +115,15 @@ module Regulation
       steps = excluded || erased ? [] : RndsStatus.steps(request, since: accepted_since(sync), settings: settings)
       digest = RiraBundle.digest(RiraBundle.build(facts: facts, sync: sync, status: target, now: now))
       digest_changed = sync.desired_digest != digest
+      refused_digest = last_delivery_digest(sync)
       changed = [ sync.desired_status, sync.desired_digest, sync.pending_steps ] != [ target.status, digest, steps ]
       sync.assign_attributes(desired_status: target.status, desired_digest: digest, pending_steps: steps)
 
       was = sync.status
       queued = false
       unless was == SENDING
-        status = next_status(sync, was, excluded: excluded, erased: erased, digest_changed: digest_changed, steps: steps)
+        status = next_status(sync, was, excluded: excluded, erased: erased, digest_changed: digest_changed, steps: steps,
+                                         refused_digest: refused_digest)
         sync.enqueued_at = now if changed
         queued = status == "queued" && was != "queued"
         sync.assign_attributes(next_attempt_at: now, attempts: 0) if queued
@@ -125,14 +141,25 @@ module Regulation
       sync
     end
 
-    def next_status(sync, was, excluded:, erased:, digest_changed:, steps:)
+    def next_status(sync, was, excluded:, erased:, digest_changed:, steps:, refused_digest:)
       return "erased" if erased
-      return EXCLUDED if excluded && sync.last_rnds_id.nil? && !unanswered?(sync)
-      return EXCLUDED if excluded && sync.sent_status == EXCLUDED
-      return was if STICKY.include?(was) && !digest_changed
 
-      differs = steps.any? || [ sync.desired_status, sync.desired_digest ] != [ sync.sent_status, sync.sent_digest ]
+      pending = unanswered_delivery?(sync)
+      return EXCLUDED if excluded && !pending && (sync.last_rnds_id.nil? || sync.sent_status == EXCLUDED)
+      return was if was == "blocked" && !digest_changed
+      # rejected/failed: só com outro conteúdo do que foi recusado (sem
+      # remessa, o desejado anterior).
+      return was if REFUSED.include?(was) && sync.desired_digest == (refused_digest || sync.desired_digest_was)
+
+      differs = pending || steps.any? || [ sync.desired_status, sync.desired_digest ] != [ sync.sent_status, sync.sent_digest ]
       differs ? "queued" : "idle"
+    end
+
+    # O digest da última remessa de documento (a recusada ou falha).
+    def last_delivery_digest(sync)
+      return nil if sync.new_record?
+
+      RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id, kind: %w[create replace]).order(:sent_at, :id).last&.digest
     end
 
     # O `sent_at` da última remessa aceita (nil = nenhuma: todos os passos).
@@ -140,16 +167,6 @@ module Regulation
       return nil if sync.new_record?
 
       RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id).where.not(accepted_at: nil).maximum(:sent_at)
-    end
-
-    # Uma remessa saiu e não se sabe se foi aceita (timeout; Review Focus 1):
-    # sem documento aceito, o `excluded` não fecha sem envio — vai pela fila,
-    # para o envio reconciliar antes.
-    def unanswered?(sync)
-      return false if sync.new_record?
-
-      sync.attempts.positive? ||
-        RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id, accepted_at: nil, http_status: nil).exists?
     end
 
     def by_offers(offer_ids)
@@ -170,6 +187,6 @@ module Regulation
                    .distinct.pluck("appointment_requests.origin_regulation_request_id")
     end
 
-    private_class_method :apply!, :next_status, :accepted_since, :unanswered?, :by_offers, :by_providers, :by_unit
+    private_class_method :apply!, :next_status, :last_delivery_digest, :accepted_since, :by_offers, :by_providers, :by_unit
   end
 end
