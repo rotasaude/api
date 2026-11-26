@@ -141,9 +141,15 @@ RSpec.describe "Maintenance: carga OBM", type: :request do
       expect(response).to have_http_status(413)
     end
 
-    it "acima do teto absoluto → 413 antes de decodificar o corpo (JSON inválido não vira 400)" do
+    # Prova só o status: o parse do JSON pelo Rails pode já ter acontecido (e a
+    # ParseError ser engolida pela instrumentação); o teto de memória do corpo é
+    # o do proxy/Puma, não esta ação.
+    it "acima do teto absoluto → 413 seja o corpo JSON válido ou não (o inválido não vira 400)" do
       body = "{" + ("x" * Maintenance::GraphqlController::UPLOAD_BODY_BYTES)
       post "/graphql", params: body, headers: browser.merge("Content-Type" => "application/json")
+      expect(response).to have_http_status(413)
+
+      json_post!(mutation, { file: "A" * Maintenance::GraphqlController::UPLOAD_BODY_BYTES, code: "000000" })
       expect(response).to have_http_status(413)
     end
 

@@ -51,9 +51,13 @@ module Maintenance
                if: -> { Current.maintenance_credential&.token? }
 
     def execute
-      # O teto absoluto vem ANTES de qualquer leitura de `params`: o ActionDispatch
-      # só decodifica o JSON quando `params` é tocado, e um corpo acima do teto
-      # nunca deve ser decodificado.
+      # O teto absoluto limita o que a ação PROCESSA (a query executada e o
+      # base64 decodificado pelas mutações), não o que o Rails decodifica: o
+      # ParamsWrapper e a instrumentação do ActionController (que lê
+      # `request.filtered_parameters`) já fazem o parse do JSON antes de
+      # qualquer before_action. O teto de memória do corpo é o do proxy/Puma
+      # (gate de infraestrutura). Vem antes de `params[:query]` para que um
+      # corpo acima do teto responda 413 seja válido ou não.
       return head(:payload_too_large) if request.raw_post.bytesize > UPLOAD_BODY_BYTES
 
       query = params[:query].to_s
