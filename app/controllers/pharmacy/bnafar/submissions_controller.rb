@@ -51,9 +51,10 @@ module Pharmacy
         rows = scope.includes(*::Bnafar::Json::RECORD_PRELOAD).order(created_at: :desc, id: :desc).limit(limit + 1).to_a
         page = rows.first(limit)
         labels = ::Bnafar::Json.labels(page)
+        replaced = ::Bnafar::Json.replaced_ids(page)
         batches = submission.batches.order(:created_at, :id).map { |batch| { operation: batch.operation, status: batch.status, protocol: batch.protocol } }
         render json: ::Bnafar::Json.submission(submission).merge(
-          batches: batches, records: page.map { |row| ::Bnafar::Json.record(row, label_index: labels) },
+          batches: batches, records: page.map { |row| ::Bnafar::Json.record(row, label_index: labels, replaced: replaced) },
           next_before: rows.size > limit ? ::Pharmacy::Cursor.encode([ page.last.created_at.utc.iso8601(6), page.last.id ]) : nil
         )
       end

@@ -132,6 +132,32 @@ RSpec.describe OpeningImports::Validator, type: :service do
     expect(codes_of(row(ampp: "@brasil20038375080"))).to eq([ [] ])
   end
 
+  describe "ampp_missing (Q48)" do
+    before do
+      ObmPresentation.create!(ampp_code: "@brasil20038375080", vmp_code: "@brasil1000", anvisa_registration: "1234567890123",
+                              description: "Losartana 50 mg", imported_at: Time.current)
+    end
+
+    it "item com VMP e AMPP vazio → ampp_missing, não ampp_unknown" do
+      losartana.update_columns(vmp_code: "@brasil1000") # rubocop:disable Rails/SkipsModelValidations
+      expect(codes_of(row(ampp: nil), required: [ med ])).to eq([ [ "ampp_missing" ] ])
+    end
+
+    it "AMPP preenchido que não existe segue ampp_unknown" do
+      losartana.update_columns(vmp_code: "@brasil1000") # rubocop:disable Rails/SkipsModelValidations
+      expect(codes_of(row(ampp: "@nada"), required: [ med ])).to eq([ [ "ampp_unknown" ] ])
+    end
+
+    it "item sem VMP e AMPP vazio continua válido" do
+      expect(codes_of(row(ampp: nil), required: [ med ])).to eq([ [] ])
+    end
+
+    it "a lista de códigos tem 22 e termina em ampp_missing" do
+      expect(described_class::CODES.size).to eq(22)
+      expect(described_class::CODES.last).to eq("ampp_missing")
+    end
+  end
+
   it "ampp_not_in_vmp: o AMPP existe no catálogo OBM, mas é de outro VMP (Q36)" do
     ObmPresentation.create!(ampp_code: "@brasil20038375080", vmp_code: "@brasil1000", anvisa_registration: "1234567890123",
                             description: "Losartana 50 mg", imported_at: Time.current)

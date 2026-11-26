@@ -26,7 +26,8 @@ module Pharmacy
 
         rows = BnafarRecord.includes(*::Bnafar::Json::RECORD_PRELOAD).where(id: result.payload.fetch(:records).map(&:id)).order(:created_at, :id).to_a
         labels = ::Bnafar::Json.labels(rows)
-        render json: { records: rows.map { |row| ::Bnafar::Json.record(row, label_index: labels) } }
+        replaced = ::Bnafar::Json.replaced_ids(rows)
+        render json: { records: rows.map { |row| ::Bnafar::Json.record(row, label_index: labels, replaced: replaced) } }
       end
     end
   end

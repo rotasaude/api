@@ -23,7 +23,9 @@
 #   - vacina (Q21): o `cnpj_fabricante` só resolve a `manufacturer_key` do
 #     YAML (`manufacturer_not_in_catalog`); o CNPJ nunca vai ao lote;
 #   - `ampp_not_in_vmp` (Q36): o AMPP existe no OBM, mas é de outro VMP;
-#     `ampp_unknown` só para o AMPP fora do catálogo;
+#     `ampp_unknown` só para o AMPP preenchido que não existe no catálogo;
+#   - `ampp_missing` (Q48): item com VMP e AMPP vazio, com o envio ligado (o
+#     AMPP é obrigatório); sem VMP, o AMPP vazio passa;
 #   - `cnpj_fabricante` vazio passa mesmo com o envio ligado (Q38) e conta no
 #     aviso `send_fields_missing`;
 #   - `lot_mismatch` (Q37, regra da Q7): o mesmo lote (item + número), em
@@ -39,7 +41,7 @@ module OpeningImports
   module Validator
     CODES = %w[cnes_unknown invalid_product_type product_unknown item_not_allowed_here domain_disabled invalid_lot_number invalid_date
                expired_lot invalid_quantity invalid_price invalid_cnpj invalid_anvisa program_unknown ampp_unknown ampp_not_in_vmp anvisa_mismatch
-               manufacturer_not_in_catalog lot_mismatch duplicate_line opening_exists too_many_lots].freeze
+               manufacturer_not_in_catalog lot_mismatch duplicate_line opening_exists too_many_lots ampp_missing].freeze
     PRODUCT_TYPES = { "medicamento" => Stock::Domain::MEDICATION, "vacina" => Stock::Domain::IMMUNOBIOLOGICAL,
                       "vetorial" => Stock::Domain::VECTOR_CONTROL }.freeze
     ISO_DATE = /\A\d{4}-\d{2}-\d{2}\z/
@@ -70,6 +72,7 @@ module OpeningImports
     # Código de recusa de um campo do LotFields (`error` vindo dele).
     def field_code(field, error)
       return error.to_s if %w[anvisa_mismatch ampp_not_in_vmp].include?(error.to_s)
+      return "ampp_missing" if field.to_s.split(".").last == "ampp_code" && error.to_s == "required"
 
       FIELD_CODES.fetch(field.to_s.split(".").last, error.to_s)
     end

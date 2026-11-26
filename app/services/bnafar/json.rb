@@ -15,8 +15,8 @@
 #     sem código nenhum (nunca foi enviado) `"not_sent"`; nil se não está perdido;
 #   - `protocol`: o do lote do registro (o `post`, ou o `put` da correção);
 #   - `retry_until`: só no recusado (de `post`) de remessa ainda não perdida;
-#   - `correct_until`: só na saída externa aceita e não excluída (Window, do
-#     `sent_at` do registro original).
+#   - `correct_until`: só na saída externa aceita, não excluída e não substituída
+#     por uma correção (Window, do `sent_at` do registro original).
 module Bnafar
   module Json
     NOT_SENT = "not_sent".freeze
@@ -26,14 +26,15 @@ module Bnafar
     module_function
 
     # `label_index`: Json.labels(records) quando se serializam várias (uma consulta por tipo de item).
-    def record(record, label_index: nil)
+    # `replaced`: Json.replaced_ids(records) quando se serializam várias (uma consulta só).
+    def record(record, label_index: nil, replaced: nil)
       submission = record.bnafar_submission
       lost = submission.status == "lost" && record.status != "accepted"
       { id: record.id, subject: record.subject, status: record.status, lost: lost, lost_reason: lost ? lost_reason(record) : nil,
         deleted: record.deleted_at.present?, stock_location_id: record.stock_location_id, location_name: record.stock_location.name,
         item_key: record.item_key, item_label: (label_index || labels([ record ]))[record.item_key], error_codes: record.error_codes,
         rejected_items: record.rejected_items, bnafar_code: record.bnafar_code, protocol: record.bnafar_batch&.protocol,
-        retry_until: retry_until(record, submission), correct_until: correct_until(record),
+        retry_until: retry_until(record, submission), correct_until: correct_until(record, replaced || replaced_ids([ record ])),
         stock_external_exit_id: record.stock_external_exit_id, stock_external_exit_version: record.stock_external_exit&.version }
     end
 
@@ -95,8 +96,15 @@ module Bnafar
       Window.retry_until(submission)
     end
 
-    def correct_until(record)
+    # Ids dos registros (dentre `records`) que já foram substituídos por outro (`replaces_record_id`).
+    def replaced_ids(records)
+      BnafarRecord.where(replaces_record_id: records.map(&:id)).pluck(:replaces_record_id).to_set
+    end
+
+    # Só o registro vigente (o que ninguém substituiu) mantém o prazo de correção.
+    def correct_until(record, replaced)
       return nil unless record.stock_external_exit_id && record.status == "accepted" && record.deleted_at.nil?
+      return nil if replaced.include?(record.id)
 
       Window.correctable_until(record)
     end
