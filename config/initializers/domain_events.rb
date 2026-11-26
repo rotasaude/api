@@ -54,10 +54,13 @@ Rails.application.config.to_prepare do
   # 17 (CareRegulation::AppointmentSyncJob reconcilia pelo estado atual; a
   # ordem e o redespacho não importam). O nascimento do pedido também, pela
   # rede de segurança da corrida Cancelar × Drain. Só ids nos payloads.
+  # Módulo 26c (contrato §2, gatilhos): os mesmos eventos movem o pedido no
+  # envio à RNDS (Regulation::RndsSyncJob recalcula o desejado pelo estado
+  # atual).
   %w[appointment.scheduled appointment.checked_in appointment.no_show appointment.expired appointment.booked
      appointment.moved appointment.cancelled appointment_request.closed appointment_request.moved
      appointment_request.created]
-    .each { |name| DomainEvents.bind name, to: [ CareRegulation::AppointmentSyncJob ] }
+    .each { |name| DomainEvents.bind name, to: [ CareRegulation::AppointmentSyncJob, Regulation::RndsSyncJob ] }
   # Agenda dos profissionais (ADR 0029; contratos §6): trilha, só ids, sem consumidor.
   DomainEvents.bind "appointment.fit_in_created", to: []
   DomainEvents.bind "appointment.reschedule_requested", to: []
@@ -239,12 +242,18 @@ Rails.application.config.to_prepare do
   # (local_disease_id, user_id), sem consumidor.
   DomainEvents.bind "local_disease.changed", to: []
   # Módulo 26a (ADR 0044): prazos por cor e lista do enfermeiro alterados; só
-  # trilha, só ids (user_id), sem consumidor.
-  DomainEvents.bind "care_regulation.settings_changed", to: []
-  # Módulo 26c (ADR 0044): envio da regulação à RNDS; só trilha, só ids, sem
-  # consumidor aqui (a Task 10 troca pelo consumidor do envio).
+  # ids (user_id). O envio da regulação à RNDS (26c) recalcula todos os pedidos.
+  DomainEvents.bind "care_regulation.settings_changed", to: [ Regulation::RndsSyncJob ]
+  # Módulo 26c (ADR 0044): envio da regulação à RNDS; só ids. Os de envio são
+  # trilha, sem consumidor; a mudança dos ajustes recalcula todos os pedidos
+  # (Regulation::RndsSyncJob).
   %w[regulation_rnds.queued regulation_rnds.accepted regulation_rnds.blocked regulation_rnds.rejected
-     regulation_rnds.excluded regulation_rnds.settings_changed].each { |name| DomainEvents.bind name, to: [] }
+     regulation_rnds.excluded].each { |name| DomainEvents.bind name, to: [] }
+  DomainEvents.bind "regulation_rnds.settings_changed", to: [ Regulation::RndsSyncJob ]
+  # Mudança do CNES da unidade (HealthUnit#publish_cnes_change: controller ou
+  # Cnes::Apply; só health_unit_id): o envio à RNDS recalcula os pedidos da
+  # unidade (solicitante, prestador `own`, horários).
+  DomainEvents.bind "health_unit.changed", to: [ Regulation::RndsSyncJob ]
   # Módulo 28 (ADR 0046): perfil do CEO e lista do TSB/ASB alterados; só trilha,
   # só ids (health_unit_id, user_id, count), sem consumidor.
   DomainEvents.bind "ceo_profile.changed", to: []
@@ -420,12 +429,13 @@ Rails.application.config.to_prepare do
   # Andamento do pedido de regulação (CareRegulation::Transition; contrato §11,
   # §13 G6) e prestadores/ofertas (R12): só ids (regulation_request_id e
   # user_id; care_provider_id/care_offer_id e user_id) — nunca alvo, cor,
-  # diagnóstico, justificativa nem motivo; sem consumidor.
+  # diagnóstico, justificativa nem motivo. O envio à RNDS (26c) recalcula os
+  # pedidos afetados (Regulation::RndsSyncJob).
   %w[regulation_request.created regulation_request.complemented regulation_request.external
      regulation_request.authorized regulation_request.returned regulation_request.denied
      regulation_request.cancelled regulation_request.scheduled regulation_request.completed
      regulation_request.missed regulation_request.closed care_offer.changed care_provider.changed]
-    .each { |name| DomainEvents.bind name, to: [] }
+    .each { |name| DomainEvents.bind name, to: [ Regulation::RndsSyncJob ] }
   # Notificação nascida (Surveillance::CreateNotification): só ids e booleanos
   # (notification_id, immediate) — nunca a doença, a origem nem dado do
   # paciente; o job relê a linha. O Surveillance::AlertJob só enfileira o

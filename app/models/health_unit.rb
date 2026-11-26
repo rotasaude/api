@@ -43,6 +43,10 @@ class HealthUnit < ApplicationRecord
   before_validation :default_notifying, on: :create
   # Módulo 32a (contrato §1): a UPA nasce com a senha U e os tempos na TV.
   before_validation :default_waiting_room, on: :create
+  # Módulo 26c (contrato §2; pré-voo I12): o CNES mudou (controller ou
+  # Cnes::Apply) → o envio da regulação à RNDS recalcula os pedidos da
+  # unidade. Só na edição (a unidade nova não tem pedido); só o id.
+  after_update :publish_cnes_change, if: :saved_change_to_cnes?
 
   # Endereço em texto (ADR 0023; módulo 11 entrega o que o ADR 0018 deixou em
   # aberto). Tudo opcional. O CEP vem do navegador do dashboard; o api só
@@ -99,5 +103,12 @@ class HealthUnit < ApplicationRecord
 
     self.ticket_prefix = "U" unless attribute_came_from_user?("ticket_prefix")
     self.show_wait_times = true unless attribute_came_from_user?("show_wait_times")
+  end
+
+  def publish_cnes_change
+    DomainEvents.publish(
+      "health_unit.changed",
+      health_unit_id: id
+    )
   end
 end

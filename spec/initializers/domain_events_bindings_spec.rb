@@ -285,19 +285,19 @@ end
 
 # Módulo 26a (ADR 0044): configuração da regulação (prazos e lista do enfermeiro).
 RSpec.describe "care regulation bindings (ADR 0044)" do
-  it "declares care_regulation.settings_changed with no consumer" do
-    expect(DomainEvents.registry.keys).to include("care_regulation.settings_changed")
-    expect(DomainEvents.registry["care_regulation.settings_changed"]).to be_empty
+  # Módulo 26c, Task 10 (contrato §2, gatilhos): o envio à RNDS recalcula
+  # todos os pedidos quando a configuração da regulação muda.
+  it "binds care_regulation.settings_changed to Regulation::RndsSyncJob only" do
+    expect(DomainEvents.registry["care_regulation.settings_changed"].map(&:job)).to eq([ "Regulation::RndsSyncJob" ])
   end
 
-  it "declares the regulation request, provider and offer events with no consumer" do
+  it "binds the regulation request, provider and offer events to Regulation::RndsSyncJob only" do
     names = %w[regulation_request.created regulation_request.complemented regulation_request.external
                regulation_request.authorized regulation_request.returned regulation_request.denied
                regulation_request.cancelled regulation_request.scheduled regulation_request.completed
                regulation_request.missed regulation_request.closed care_offer.changed care_provider.changed]
     names.each do |name|
-      expect(DomainEvents.registry.keys).to include(name)
-      expect(DomainEvents.registry[name]).to be_empty
+      expect(DomainEvents.registry[name].map(&:job)).to eq([ "Regulation::RndsSyncJob" ]), name
     end
     transition_names = CareRegulation::Transition::EVENTS.map { |event| "regulation_request.#{event}" }
     expect(transition_names - names).to be_empty
@@ -306,12 +306,13 @@ RSpec.describe "care regulation bindings (ADR 0044)" do
   # Task 10 (contrato §7, §13 G1, G6): a rede própria acompanha o 17 pelos
   # nove eventos do pedido de agendamento e do horário, mais o nascimento do
   # pedido (rede de segurança da corrida Cancelar × Drain).
-  it "binds the scheduling events the own network follows to CareRegulation::AppointmentSyncJob only" do
+  # Módulo 26c, Task 10: o envio à RNDS acompanha os mesmos dez eventos.
+  it "binds the scheduling events the own network follows to CareRegulation::AppointmentSyncJob and Regulation::RndsSyncJob" do
     names = %w[appointment.scheduled appointment.checked_in appointment.no_show appointment.expired appointment.booked
                appointment.moved appointment.cancelled appointment_request.closed appointment_request.moved
                appointment_request.created]
     names.each do |name|
-      expect(DomainEvents.registry[name].map(&:job)).to eq([ "CareRegulation::AppointmentSyncJob" ]), name
+      expect(DomainEvents.registry[name].map(&:job)).to eq([ "CareRegulation::AppointmentSyncJob", "Regulation::RndsSyncJob" ]), name
     end
     expect(CareRegulation::AppointmentSyncJob::EVENTS).to match_array(names)
     expect(DomainEvents.registry["appointment.confirmed"]).to be_empty
@@ -341,12 +342,25 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     end
   end
 
-  it "declares the six regulation_rnds events with no consumer (26c, Task 6)" do
-    Regulation::RndsCatalog::DOMAIN_EVENTS.each do |name|
+  # 26c, Task 6; Task 10: só regulation_rnds.settings_changed tem consumidor.
+  it "declares the five regulation_rnds delivery events with no consumer and binds settings_changed to Regulation::RndsSyncJob" do
+    (Regulation::RndsCatalog::DOMAIN_EVENTS - %w[regulation_rnds.settings_changed]).each do |name|
       expect(DomainEvents.registry.keys).to include(name)
       expect(DomainEvents.registry[name]).to be_empty
     end
-    expect(DomainEvents.registry.keys).to include("regulation_rnds.settings_changed")
+    expect(DomainEvents.registry["regulation_rnds.settings_changed"].map(&:job)).to eq([ "Regulation::RndsSyncJob" ])
+  end
+
+  # 26c, Task 10 (contrato §2, gatilhos; pré-voo I12): os 26 eventos do
+  # consumidor, com o health_unit.changed novo (mudança de CNES da unidade).
+  it "binds Regulation::RndsSyncJob to exactly its 26 events" do
+    expected = CareRegulation::Transition::EVENTS.map { |event| "regulation_request.#{event}" } +
+               %w[care_offer.changed care_provider.changed care_regulation.settings_changed regulation_rnds.settings_changed
+                  health_unit.changed] + CareRegulation::AppointmentSyncJob::EVENTS
+    bound = DomainEvents.registry.select { |_name, subs| subs.map(&:job).include?("Regulation::RndsSyncJob") }.keys
+    expect(bound).to match_array(expected)
+    expect(bound.size).to eq(26)
+    expect(DomainEvents.registry["health_unit.changed"].map(&:job)).to eq([ "Regulation::RndsSyncJob" ])
   end
 
   it "declares pharmacy.settings_changed with no consumer" do
