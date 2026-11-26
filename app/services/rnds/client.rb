@@ -24,7 +24,14 @@ module Rnds
     NETWORK_ERRORS = [ SocketError, IOError, EOFError, SystemCallError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
                        Net::ProtocolError, OpenSSL::SSL::SSLError ].freeze
 
-    Response = Data.define(:status, :rnds_id, :error) do
+    # `codes` (26c): os códigos de recusa do diagnóstico inteiro (Errors.codes);
+    # `error` é o texto limpo e cortado. `http_status`: o da resposta, quando
+    # houve (nil em timeout, rede ou token recusado).
+    Response = Data.define(:status, :rnds_id, :error, :codes, :http_status) do
+      def initialize(status:, rnds_id:, error:, codes: [].freeze, http_status: nil)
+        super(status: status, rnds_id: rnds_id, error: error, codes: codes, http_status: http_status)
+      end
+
       def inspect = "#<Rnds::Client::Response #{status}>"
       alias_method :to_s, :inspect
       def pretty_print(pp) = pp.text(inspect)
@@ -181,13 +188,14 @@ module Rnds
     end
 
     def interpret_delete(response, rnds_id)
-      case response.code.to_i
-      when 200, 204 then Response.new(status: :accepted, rnds_id: rnds_id, error: nil)
-      when 400, 422 then Response.new(status: :rejected, rnds_id: nil, error: diagnostics(response.body))
+      code = response.code.to_i
+      case code
+      when 200, 204 then Response.new(status: :accepted, rnds_id: rnds_id, error: nil, http_status: code)
+      when 400, 422 then refused(response.body, code)
       when 401, 403
         forget_token
-        Response.new(status: :unauthorized, rnds_id: nil, error: nil)
-      else Response.new(status: :transient, rnds_id: nil, error: nil)
+        Response.new(status: :unauthorized, rnds_id: nil, error: nil, http_status: code)
+      else Response.new(status: :transient, rnds_id: nil, error: nil, http_status: code)
       end
     end
 
@@ -223,15 +231,22 @@ module Rnds
       code = response.code.to_i
       case code
       when 200, 201
-        Response.new(status: :accepted, rnds_id: id_from(response["Location"]), error: nil)
+        Response.new(status: :accepted, rnds_id: id_from(response["Location"]), error: nil, http_status: code)
       when 400, 422
-        Response.new(status: :rejected, rnds_id: nil, error: diagnostics(response.body))
+        refused(response.body, code)
       when 401, 403
         forget_token
-        Response.new(status: :unauthorized, rnds_id: nil, error: nil)
+        Response.new(status: :unauthorized, rnds_id: nil, error: nil, http_status: code)
       else
-        Response.new(status: :transient, rnds_id: nil, error: nil) # 5xx e o resto: tenta de novo mais tarde
+        Response.new(status: :transient, rnds_id: nil, error: nil, http_status: code) # 5xx e o resto: tenta de novo mais tarde
       end
+    end
+
+    # Recusa: o texto limpo e cortado (`error`) e os códigos do diagnóstico inteiro.
+    def refused(body, code)
+      text = full_diagnostics(body)
+      Response.new(status: :rejected, rnds_id: nil, error: Errors.sanitize(text).presence || "A RNDS recusou o envio",
+                   codes: Errors.codes(text).freeze, http_status: code)
     end
 
     def perform(uri, request)
@@ -255,9 +270,9 @@ module Rnds
       raise Errors::Unauthorized, "certificado da RNDS ilegível"
     end
 
-    def diagnostics(body)
-      issues = Array(parse(body)["issue"]).filter_map { |issue| issue["diagnostics"] if issue.is_a?(Hash) }
-      Errors.sanitize(issues.join("; ")).presence || "A RNDS recusou o envio"
+    # O diagnóstico inteiro, sem limpeza: só para achar os códigos; nunca sai daqui.
+    def full_diagnostics(body)
+      Array(parse(body)["issue"]).filter_map { |issue| issue["diagnostics"] if issue.is_a?(Hash) }.join("; ")
     end
 
     def id_from(location)

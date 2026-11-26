@@ -184,6 +184,28 @@ RSpec.describe Rnds::Client do
       expect(fake.log.size).to eq(log_size)
     end
 
+    # Task 12, carry 2: os códigos saem do diagnóstico INTEIRO; só o texto
+    # gravável/mostrável (`error`) segue cortado em 200 caracteres.
+    it "422 longo: o código na posição 250 é classificado (codes); o error segue cortado em 200; http_status da resposta" do
+      text = "#{"x" * 250}(EDS-MSG009) O documento já foi substituído. CPF 12345678901"
+      body = JSON.generate({ resourceType: "OperationOutcome", issue: [ { severity: "error", code: "processing", diagnostics: text } ] })
+      stub_request(:post, "#{FAKE_RNDS_BASE}/api/fhir/r4/Bundle").to_return(status: 422, body: body)
+      response = regulation.post_bundle(rira, practitioner_cns: cns)
+      expect(response).to have_attributes(status: :rejected, codes: [ "EDS-MSG009" ], http_status: 422)
+      expect(response.error.size).to be <= Rnds::Errors::MAX
+      expect(response.error).not_to include("EDS-MSG009")
+      expect(response.inspect).not_to include("x" * 20)
+    end
+
+    it "http_status: 201 no aceite, 503 na 5xx; timeout e token recusado sem http_status" do
+      expect(regulation.post_bundle(rira, practitioner_cns: cns)).to have_attributes(status: :accepted, http_status: 201, codes: [])
+      fake.failures.push(503)
+      expect(regulation.post_bundle(rira(value: "mira-2"), practitioner_cns: cns)).to have_attributes(status: :transient, http_status: 503)
+      expect(regulation.post_bundle(rira(value: "TIMEOUT-1"), practitioner_cns: cns)).to have_attributes(status: :transient, http_status: nil)
+      fake.failures.push(401, 401)
+      expect(regulation.post_bundle(rira(value: "mira-3"), practitioner_cns: cns)).to have_attributes(status: :unauthorized)
+    end
+
     it "a substituição repetida volta rejected com o EDS-MSG009" do
       first = regulation.post_bundle(rira, practitioner_cns: cns).rnds_id
       regulation.post_bundle(rira(relates_to: first), practitioner_cns: cns)
@@ -197,6 +219,11 @@ RSpec.describe Rnds::Client do
     it "acha EDS-MSG009 e EHR-ERR825 e nunca devolve o texto" do
       text = "(EDS-MSG009) O documento 3f2a já foi substituído. CPF 12345678901; (EHR-ERR825) fora do estado final"
       expect(Rnds::Errors.codes(text)).to eq(%w[EDS-MSG009 EHR-ERR825])
+    end
+
+    it "código na posição 250 → classificado (o diagnóstico inteiro, não o corte de 200)" do
+      expect(Rnds::Errors.codes("#{"x" * 250} (EHR-ERR825) fora do estado final")).to eq([ "EHR-ERR825" ])
+      expect(Rnds::Errors.codes("#{"y" * 199}EDS-MSG009")).to eq([ "EDS-MSG009" ])
     end
 
     it "sem código (ou nil) -> rejected; repetido conta uma vez" do

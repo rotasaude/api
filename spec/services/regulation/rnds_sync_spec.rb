@@ -439,4 +439,38 @@ RSpec.describe Regulation::RndsSync, type: :model do
       expect(described_class.affected_request_ids("appointment.cancelled", appointment_id: SecureRandom.uuid)).to eq([])
     end
   end
+
+  # Task 12 (carry 4 e 7): o livro das remessas como o envio o usa.
+  describe "remessas do envio (Task 12)" do
+    it "unanswered_delivery?: a remessa delete e a fechada com o marcador not_found não contam" do
+      sync = recompute(municipal_request!)
+      RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "delete", rnds_id: "dup-1", sent_at: Time.current)
+      expect(described_class.unanswered_delivery?(sync)).to be(false)
+      RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "create", mira_status: "pending", digest: sync.desired_digest,
+                                     sent_at: Time.current, error_codes: [ Regulation::RndsReconcile::NOT_FOUND ])
+      expect(described_class.unanswered_delivery?(sync)).to be(false)
+      RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "create", mira_status: "pending", digest: sync.desired_digest,
+                                     sent_at: Time.current, error_codes: [ Regulation::RndsDelivery::GAVE_UP ])
+      expect(described_class.unanswered_delivery?(sync)).to be(true) # desistir não diz que não chegou
+    end
+
+    it "passo (absence) recusado + evento sem mudança → segue rejected; conteúdo novo → queued" do
+      request = reauthorize!(municipal_request!, offer: offer)
+      accept!(recompute(request))
+      schedule!(request)
+      miss!(request)
+      reauthorize!(request.reload, offer: offer)
+      sync = recompute(request)
+      step = sync.pending_steps.first
+      digest = Regulation::RiraBundle.digest(Regulation::RiraBundle.for(request: request.reload, sync: sync, status: step, now: Time.current))
+      RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "replace", mira_status: "absence", digest: digest,
+                                     sent_at: Time.current, http_status: 422, error_codes: [ "EHR-ERR999" ])
+      sync.update!(status: "rejected", last_error_codes: [ "EHR-ERR999" ])
+      travel 1.second
+
+      expect(recompute(request)).to have_attributes(status: "rejected")
+      request.requester_unit.update!(cnes: regulation_cnes) # muda o passo recusado (o CNES do solicitante)
+      expect(recompute(request)).to have_attributes(status: "queued")
+    end
+  end
 end

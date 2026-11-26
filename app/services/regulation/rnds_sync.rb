@@ -62,13 +62,17 @@ module Regulation
       RndsStatus::Target.new(status: EXCLUDED, at: [ request.events.map(&:created_at).max, request.requested_at ].compact.max)
     end
 
-    # Há remessa que saiu depois do último aceite (ou desde sempre, sem aceite)
-    # e não teve resposta (timeout; Review Focus 1, fix I2): não se sabe se a
-    # RNDS a gravou. O sinal da reconciliação é este, não o `attempts`.
+    # Há remessa de documento (create/replace) que saiu depois do último aceite
+    # (ou desde sempre, sem aceite) e não teve resposta (timeout; Review Focus
+    # 1, fix I2): não se sabe se a RNDS a gravou. O sinal da reconciliação é
+    # este, não o `attempts`. A remessa `delete` (deduplicação) não conta, e a
+    # que a reconciliação já viu não ter chegado (marcador `not_found`, Task
+    # 12) está fechada.
     def unanswered_delivery?(sync)
       return false if sync.new_record?
 
-      scope = RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id, accepted_at: nil, http_status: nil)
+      scope = RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id, kind: %w[create replace], accepted_at: nil, http_status: nil)
+                                    .where.not("? = ANY(error_codes)", RndsReconcile::NOT_FOUND)
       since = accepted_since(sync)
       scope = scope.where("sent_at > ?", since) if since
       scope.exists?
@@ -116,6 +120,9 @@ module Regulation
       digest = RiraBundle.digest(RiraBundle.build(facts: facts, sync: sync, status: target, now: now))
       digest_changed = sync.desired_digest != digest
       refused_digest = last_delivery_digest(sync)
+      # O próximo documento a sair (o primeiro passo, senão o desejado): é ele
+      # que se compara com o recusado (Task 12, carry 7: o passo recusado).
+      next_digest = steps.any? ? RiraBundle.digest(RiraBundle.build(facts: facts, sync: sync, status: steps.first, now: now)) : digest
       changed = [ sync.desired_status, sync.desired_digest, sync.pending_steps ] != [ target.status, digest, steps ]
       sync.assign_attributes(desired_status: target.status, desired_digest: digest, pending_steps: steps)
 
@@ -123,7 +130,7 @@ module Regulation
       queued = false
       unless was == SENDING
         status = next_status(sync, was, excluded: excluded, erased: erased, digest_changed: digest_changed, steps: steps,
-                                         refused_digest: refused_digest)
+                                         refused_digest: refused_digest, next_digest: next_digest)
         sync.enqueued_at = now if changed
         queued = status == "queued" && was != "queued"
         sync.assign_attributes(next_attempt_at: now, attempts: 0) if queued
@@ -141,15 +148,16 @@ module Regulation
       sync
     end
 
-    def next_status(sync, was, excluded:, erased:, digest_changed:, steps:, refused_digest:)
+    def next_status(sync, was, excluded:, erased:, digest_changed:, steps:, refused_digest:, next_digest:)
       return "erased" if erased
 
       pending = unanswered_delivery?(sync)
       return EXCLUDED if excluded && !pending && (sync.last_rnds_id.nil? || sync.sent_status == EXCLUDED)
       return was if was == "blocked" && !digest_changed
-      # rejected/failed: só com outro conteúdo do que foi recusado (sem
-      # remessa, o desejado anterior).
-      return was if REFUSED.include?(was) && sync.desired_digest == (refused_digest || sync.desired_digest_was)
+      # rejected/failed: só com outro conteúdo do que foi recusado — o próximo
+      # documento (passo ou desejado) contra a última remessa; sem remessa, o
+      # desejado anterior.
+      return was if REFUSED.include?(was) && (refused_digest ? next_digest == refused_digest : !digest_changed)
 
       differs = pending || steps.any? || [ sync.desired_status, sync.desired_digest ] != [ sync.sent_status, sync.sent_digest ]
       differs ? "queued" : "idle"

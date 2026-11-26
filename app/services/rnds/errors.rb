@@ -25,9 +25,12 @@ module Rnds
       text.to_s.dup.force_encoding("UTF-8").scrub.gsub(FORMATTED_CPF, "***").gsub(DIGITS, "***").squish.first(MAX)
     end
 
-    # Só os códigos do diagnóstico (já limpo); nunca o texto. Sem código: ["rejected"].
+    # Só os códigos do diagnóstico; nunca o texto. Procura no diagnóstico
+    # INTEIRO (26c, Task 12): um código depois do corte de 200 caracteres do
+    # `sanitize` (o do texto gravado/mostrado) ainda classifica a recusa.
+    # Sem código: ["rejected"].
     def codes(text)
-      found = sanitize(text).scan(SCAN).uniq
+      found = text.to_s.dup.force_encoding("UTF-8").scrub.scan(SCAN).uniq
       found.presence || [ NO_CODE ]
     end
   end

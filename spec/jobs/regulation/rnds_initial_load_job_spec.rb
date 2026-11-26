@@ -167,8 +167,23 @@ RSpec.describe Regulation::RndsInitialLoadJob, type: :job do
     end
   end
 
+  # Task 12: o ritmo da carga é do envio (INITIAL_RATE_PER_MINUTE), depois dos outros.
   it "70 linhas initial_load → a primeira execução do envio manda 60" do
-    pending "depende do Regulation::RndsDeliverJob (Task 12)"
-    raise NotImplementedError, "Task 12"
+    fake = fake_rnds!
+    Platform::Features.set!(city: Current.city, key: Rnds::Mock::KEY, enabled: true, maintainer: ledi_maintainer!)
+    unit = create_unit("UBS Carga Inicial", cnes: regulation_cnes)
+    doctor = doctor!(unit)
+    70.times { regulation_request!(unit: unit, doctor: doctor) }
+    RegulationRndsSync.delete_all
+    described_class.perform_now
+    expect(rows.count).to eq(70)
+    live = regulation_request!(unit: unit, doctor: doctor)
+    Regulation::RndsSync.recompute!(live, create: true, now: Time.current)
+
+    Regulation::RndsDeliverJob.perform_now
+    expect(fake.log.count { |verb, path, _| verb == "POST" && path.end_with?("/Bundle") }).to eq(61)
+    expect(RegulationRndsSync.find_by!(regulation_request_id: live.id).status).to eq("idle")
+    expect(rows.group(:status).count).to eq("idle" => 60, "queued" => 10)
+    expect(Regulation::RndsLimits::INITIAL_RATE_PER_MINUTE).to eq(60)
   end
 end

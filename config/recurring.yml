@@ -99,6 +99,13 @@ default: &default
     queue: default
     schedule: "every minute"
 
+  # 26c: envio da regulação à RNDS (cadeia de substituição, reconciliação);
+  # a purga do payload de 30 dias roda em toda rodada, ligado ou não (Q17).
+  rnds_regulation_deliver:
+    class: Regulation::RndsDeliverJob
+    queue: default
+    schedule: "every minute"
+
   # 26c: pedidos de regulação que já existiam quando o `rnds_regulation` ligou.
   rnds_regulation_initial_load:
     class: Regulation::RndsInitialLoadJob
