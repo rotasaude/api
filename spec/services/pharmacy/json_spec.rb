@@ -11,7 +11,7 @@ RSpec.describe Pharmacy::Json do
     it "unit = concentração, dispensing_unit à parte, catmat_code inteiro, controlado com a lista" do
       expect(described_class.item(losartana, dispensing_unit: "comprimido")).to eq(
         catalog_item_id: losartana.id, catmat_code: 268_856, name: losartana.label, unit: "mg", dispensing_unit: "comprimido",
-        controlled: false, controlled_list: nil
+        controlled: false, controlled_list: nil, vmp_code: losartana.vmp_code
       )
       expect(described_class.item(diazepam, dispensing_unit: "comprimido")).to include(controlled: true, controlled_list: "B1")
       expect(described_class.item(losartana, dispensing_unit: "comprimido")[:catmat_code]).to be_an(Integer)
