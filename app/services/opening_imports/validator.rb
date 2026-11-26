@@ -2,8 +2,8 @@
 # contrato §5; Valor 11; Q13, Q15, Q21, Q26; R7, R9, R24). Lê o banco (locais,
 # catálogo, produtos, aberturas, apresentações do OBM), nunca grava.
 #
-# `rows` vêm do Reader. `usable_domains` (R24) e `required_domains` (Q26: os
-# domínios com o envio à BNAFAR ligado, `Bnafar::Gate.domains`) são lidos pelo
+# `rows` vêm do Reader. `usable_domains` (R24) e `required_domains` (Q26, Q41: os
+# domínios com o envio à BNAFAR ligado, `Bnafar::Gate.domains_enabled`) são lidos pelo
 # chamador FORA da transação da cidade.
 #
 # Por linha:

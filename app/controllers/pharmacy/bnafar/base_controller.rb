@@ -1,7 +1,8 @@
 # Base das rotas do envio à BNAFAR que exigem o interruptor `bnafar` (módulo
-# 27b; contrato §6; Valor 9): situação, remessas, registros (reenvio e
-# correção). Sem o `bnafar` utilizável → 403 feature_disabled com a `feature`
-# `bnafar`. As pendências e os domínios NÃO herdam desta classe: pedem só o
+# 27b; contrato §6; Valor 9; Q40): situação, remessas, registros (reenvio e
+# correção). Sem o `bnafar` LIGADO → 403 feature_disabled com a `feature`
+# `bnafar`; o reenvio e a correção pedem também o `bnafar` utilizável
+# (`require_bnafar!` no controller). As pendências e os domínios NÃO herdam desta classe: pedem só o
 # estoque do domínio (Q19, Q22). Dentro de `Pharmacy::` o domínio é sempre
 # `::Bnafar::…` (esta pasta cria o módulo Pharmacy::Bnafar).
 module Pharmacy
@@ -11,7 +12,7 @@ module Pharmacy
       include ::BnafarReader
 
       skip_before_action :require_pharmacy!
-      before_action :require_bnafar!
+      before_action :require_bnafar_enabled!
 
       private
 

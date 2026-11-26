@@ -45,8 +45,8 @@ module Bnafar
     # o saldo de agora mais as saídas de ontem e de hoje.
     #   - `domains_all`: os domínios de estoque UTILIZÁVEIS da cidade
     #     (Stock::Domain.usable?), lidos fora da transação da cidade;
-    #   - `domains_on`: os domínios ligados ao envio (Bnafar::Gate.domains), ou
-    #     nil quando o `bnafar` está inutilizável: então a conta é feita contra
+    #   - `domains_on`: os domínios ligados ao envio (Bnafar::Gate.domains_enabled),
+    #     ou nil com o `bnafar` desligado (Q22): então a conta é feita contra
     #     `domains_all` como se o envio estivesse ligado e o `domain_off` é
     #     omitido. Com uma lista, cada linha de domínio de `domains_all` fora
     #     dela ganha `domain_off` (as outras pendências dela continuam, para a

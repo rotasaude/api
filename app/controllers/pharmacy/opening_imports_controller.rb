@@ -66,7 +66,7 @@ module Pharmacy
 
       bytes = decode(raw) or return render_refusal("file_base64", "invalid_file")
       result = OpeningImports::Upload.call(bytes: bytes, by: Current.user, usable_domains: usable_domains,
-                                           required_domains: ::Bnafar::Gate.domains(Current.city))
+                                           required_domains: ::Bnafar::Gate.domains_enabled(Current.city))
       return render_failure(result) if result.failure?
 
       @import = result.payload.fetch(:import)

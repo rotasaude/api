@@ -1,4 +1,5 @@
-# Remessas ao SI-BNAFAR (módulo 27b; contrato §3, §6; Q16; R12). Exigem o `bnafar`.
+# Remessas ao SI-BNAFAR (módulo 27b; contrato §3, §6; Q16, Q40; R12). A lista e
+# o detalhe exigem o `bnafar` ligado; o reenvio, o `bnafar` utilizável.
 #
 #   GET  /pharmacy/bnafar/submissions?from=&to=&subject=&status=&before=&limit=
 #        → { items: [<remessa>], next_before } (reference_on, id desc; 50, máx. 100)
@@ -13,6 +14,8 @@
 module Pharmacy
   module Bnafar
     class SubmissionsController < BaseController
+      before_action :require_bnafar!, only: :resend
+
       def index
         return unless bnafar_reader!
         return unless query_only!(:from, :to, :subject, :status, :before, :limit)

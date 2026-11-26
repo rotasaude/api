@@ -18,7 +18,16 @@ module Bnafar
       Platform::Features.usable?(city, KEY)
     end
 
-    # Domínios cujo interruptor está utilizável (Q6), com o bnafar utilizável.
+    # O interruptor `bnafar` LIGADO, utilizável ou não (Q40: a situação e as
+    # remessas se leem com a credencial recusada).
+    def enabled?(city)
+      return false if city.nil? || city.id.nil?
+
+      Platform::Features.enabled?(city, KEY)
+    end
+
+    # Domínios cujo interruptor está utilizável (Q6), com o bnafar utilizável:
+    # o que a Build monta e a Delivery envia.
     def domains(city)
       return [] unless usable?(city)
 
@@ -31,9 +40,13 @@ module Bnafar
     def domains_through(city, day) = switched_before(city, day, domains(city))
 
     # Domínios com o interruptor LIGADO (bnafar e o do domínio), com o estoque
-    # do domínio utilizável, seja qual for a credencial.
+    # do domínio utilizável, seja qual for a credencial (Q41). A FONTE ÚNICA
+    # (R13) dos campos de envio exigidos: a entrada (`required_for?`), a
+    # planilha (Validator, `required_domains`) e o `enabled_domains` do
+    # GET /pharmacy/bnafar/domains; e a base das pendências (`domain_off`,
+    # Q22) e do dia devido (`domains_due`).
     def domains_enabled(city)
-      return [] if city.nil? || city.id.nil? || !Platform::Features.enabled?(city, KEY)
+      return [] unless enabled?(city)
 
       DOMAIN_KEYS.select { |domain, key| Platform::Features.enabled?(city, key) && Stock::Domain.usable?(city, domain) }.keys
     end
@@ -57,7 +70,7 @@ module Bnafar
     private_class_method :switched_before
 
     def required_for?(city, location)
-      domains(city).include?(Stock::Domain.for(location))
+      domains_enabled(city).include?(Stock::Domain.for(location))
     end
   end
 end

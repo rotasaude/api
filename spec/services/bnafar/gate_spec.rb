@@ -114,6 +114,20 @@ RSpec.describe Bnafar::Gate, type: :model do
     expect(described_class.domains_due(nil, Date.new(2026, 11, 22))).to eq([])
   end
 
+  it "domains_enabled: interruptor ligado com a credencial recusada conta; bnafar desligado ou estoque inutilizável não (Q41)" do
+    city = pharmacy_city!
+    bnafar_credential!(status: "unauthorized")
+    switch!(city, "bnafar", "bnafar_medications", "bnafar_vaccines")
+    expect(described_class.domains(city)).to eq([])
+    expect(described_class.domains_enabled(city)).to eq([ Stock::Domain::MEDICATION ]) # vacinação não utilizável
+    expect(described_class.required_for?(city, location.new("central"))).to be(true)
+    expect(described_class.required_for?(city, location.new("vaccine_room"))).to be(false)
+
+    switch!(city, "bnafar", enabled: false)
+    expect(described_class.domains_enabled(city)).to eq([])
+    expect(described_class.required_for?(city, location.new("central"))).to be(false)
+  end
+
   it "required_for? num vaccine_room só com bnafar_vaccines" do
     city = vaccination_city!
     bnafar_credential!

@@ -51,6 +51,21 @@ RSpec.describe "Farmácia — importação do saldo inicial", type: :request do
     expect(StockEntry.find_by!(kind: "opening").recorded_by_user_id).to eq(keeper.id)
   end
 
+  # Q41: os campos de envio seguem o interruptor ligado, não a credencial.
+  it "bnafar e medicamentos ligados com a credencial recusada → a linha sem os campos de envio é recusada" do
+    bnafar_on!(city, since: 3.days.ago)
+    IntegrationCredential.where(kind: "bnafar").update_all(last_check_status: "unauthorized")
+    expect(::Bnafar::Gate.usable?(city)).to be(false)
+    bare = [ header_line, [ "2384299", "medicamento", losartana.catmat_code, "", "IMP-3", (Time.zone.today + 200).iso8601, "5", "", "", "", "" ].join(";") ]
+             .join("\r\n") + "\r\n"
+    stepped_up!(keeper)
+
+    upload(bare)
+    expect(response).to have_http_status(:created)
+    expect(json_body["rows"].sole).to include("status" => "error")
+    expect(json_body["report"]).to include("rows_valid" => 0)
+  end
+
   it "rows paginam por before/limit e filtram por status" do
     stepped_up!(keeper)
     upload

@@ -12,7 +12,7 @@ module Maintenance
       field :environment_editable, Boolean, null: false,
             description: "Só fora de produção o ambiente se troca"
       field :enabled_domains, [ String ], null: false,
-            description: "Os domínios com o envio utilizável (a mesma fonte de GET /pharmacy/bnafar/domains)"
+            description: "Os domínios com o envio utilizável (credencial aceita); o GET /pharmacy/bnafar/domains traz os ligados"
       field :alert, Types::BnafarAlertType, null: false
       field :started_on, GraphQL::Types::ISO8601Date, null: true
 

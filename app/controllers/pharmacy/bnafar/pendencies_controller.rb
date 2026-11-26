@@ -9,9 +9,10 @@
 # página: `by_code` conta depois do filtro de local e antes do de código;
 # `by_location`, depois do filtro de código e antes do de local (cada faceta
 # ignora o próprio filtro). Exige só o estoque de um domínio utilizável, NUNCA o `bnafar`
-# (Q22): sem ele, a conta é feita contra os domínios de estoque utilizáveis,
-# como se o envio estivesse ligado, e o `domain_off` é omitido. Com o `bnafar`
-# utilizável, o domínio de estoque não ligado ao envio vira `domain_off`.
+# (Q22): com o `bnafar` DESLIGADO, a conta é feita contra os domínios de estoque
+# utilizáveis, como se o envio estivesse ligado, e o `domain_off` é omitido.
+# Com o `bnafar` ligado (utilizável ou com a credencial recusada), o domínio de
+# estoque fora de `Gate.domains_enabled` vira `domain_off`.
 # Quem: `municipal_admin` ou `stock_keeper` de qualquer local.
 module Pharmacy
   module Bnafar
@@ -54,8 +55,8 @@ module Pharmacy
 
       def usable_domains = Stock::Domain::FEATURES.keys.select { |domain| stock_domain_usable?(domain) }
 
-      # nil quando o `bnafar` não está utilizável (sem `domain_off`).
-      def enabled_domains = ::Bnafar::Gate.usable?(Current.city) ? ::Bnafar::Gate.domains(Current.city) : nil
+      # nil com o `bnafar` desligado (sem `domain_off`, Q22).
+      def enabled_domains = ::Bnafar::Gate.enabled?(Current.city) ? ::Bnafar::Gate.domains_enabled(Current.city) : nil
     end
   end
 end

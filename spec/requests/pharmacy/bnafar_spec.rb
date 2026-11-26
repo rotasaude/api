@@ -5,6 +5,8 @@ require "rails_helper"
 # correção exigem o `bnafar`; as pendências e os domínios só o estoque do
 # domínio. Nunca o payload; nada de pessoa.
 RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city) { pharmacy_city! }
   let!(:central) { central_location!.tap { |location| location.update_columns(cnes: "1234567") } }
   let(:unit) { unit_location!(create_unit("UBS Jardim das Flores")) }
@@ -16,6 +18,10 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
   let(:today) { Time.zone.today }
   let(:off) { bnafar_on!(city, since: 10.days.ago, domains: []) }
   let(:on) { bnafar_on!(city, since: 10.days.ago) }
+
+  # Delivery#pause!: a credencial recusada tira o `bnafar` de utilizável, mas o
+  # interruptor segue LIGADO (Q40, Q41).
+  def refuse_credential! = IntegrationCredential.where(kind: "bnafar").update_all(last_check_status: "unauthorized")
 
   def post_json(path, body = {}) = post(path, params: body.to_json, headers: { "CONTENT_TYPE" => "application/json" })
 
@@ -72,6 +78,42 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       get "/pharmacy/bnafar/status", params: { cpf: "12345678909" }
       expect(response).to have_http_status(:unprocessable_entity)
       expect(json_body).to include("error" => "invalid_request", "path" => "cpf")
+    end
+  end
+
+  describe "com a credencial recusada (Q40)" do
+    before do
+      on
+      refuse_credential!
+    end
+
+    it "status → 200 com late 1 às 15:00 (R25); lista e detalhe das remessas → 200" do
+      expect(Bnafar::Gate.usable?(city)).to be(false)
+      zone = ActiveSupport::TimeZone[city.time_zone]
+      later = (zone.now + 1.day).change(hour: 15, min: 0)
+      submission = bnafar_submission!(reference_on: today - 3, status: "finished")
+
+      travel_to(later) do
+        sign_in_as(keeper)
+        get "/pharmacy/bnafar/status"
+        expect(response).to have_http_status(:ok)
+        expect(json_body["alert"]).to include("late" => 1)
+        get "/pharmacy/bnafar/submissions"
+        expect(response).to have_http_status(:ok)
+        expect(json_body["items"].map { |row| row["id"] }).to eq([ submission.id ])
+        get "/pharmacy/bnafar/submissions/#{submission.id}"
+        expect(response).to have_http_status(:ok)
+      end
+    end
+
+    it "retry e correct → 403 feature_disabled (exigem o bnafar utilizável)" do
+      submission = bnafar_submission!(reference_on: today - 1, status: "finished")
+      bnafar_record!(submission, status: "rejected", error_codes: [ "MSG12" ])
+      stepped_up!(admin)
+      post_json "/pharmacy/bnafar/submissions/#{submission.id}/retry"
+      expect([ response.status, json_body["error"], json_body["feature"] ]).to eq([ 403, "feature_disabled", "bnafar" ])
+      post_json "/pharmacy/bnafar/records/#{SecureRandom.uuid}/correct", { expected_version: 1, reason: "Destino corrigido após a conferência" }
+      expect([ response.status, json_body["error"], json_body["feature"] ]).to eq([ 403, "feature_disabled", "bnafar" ])
     end
   end
 
@@ -375,6 +417,25 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       expect(json_body["items"].map { |row| row["stock_lot_id"] }).to include(incomplete.id)
     end
 
+    it "bnafar ligado com a credencial recusada, medicamentos desligado → domain_off segue a regra (Q22)" do
+      off
+      refuse_credential!
+      expect(Bnafar::Gate.usable?(city)).to be(false)
+      sign_in_as(admin)
+      get "/pharmacy/bnafar/pendencies"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["items"].map { |row| row["code"] }).to include("domain_off")
+    end
+
+    it "bnafar ligado com a credencial recusada e medicamentos ligado → sem domain_off (Q22)" do
+      on
+      refuse_credential!
+      sign_in_as(admin)
+      get "/pharmacy/bnafar/pendencies"
+      expect(json_body["items"].map { |row| row["code"] }).to include("lot_incomplete")
+      expect(json_body["items"].map { |row| row["code"] }).not_to include("domain_off")
+    end
+
     it "sem estoque ligado → 403 feature_disabled" do
       Platform::Features.set!(city: city, key: "pharmacy", enabled: false, maintainer: ledi_maintainer!)
       CityCatalog.reset_cache!
@@ -417,10 +478,22 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       on
       sign_in_as(admin)
       get "/pharmacy/bnafar/domains"
-      expect(json_body["enabled_domains"]).to eq(Bnafar::Gate.domains(city))
+      expect(json_body["enabled_domains"]).to eq(Bnafar::Gate.domains_enabled(city))
       expect(json_body["enabled_domains"]).to eq([ Stock::Domain::MEDICATION ])
       [ central, unit ].each do |location|
         expect(Bnafar::Gate.required_for?(city, location)).to eq(json_body["enabled_domains"].include?(Stock::Domain.for(location)))
+      end
+    end
+
+    it "credencial recusada: enabled_domains segue o interruptor ligado e required_for? casa com ele (Q41)" do
+      on
+      refuse_credential!
+      expect(Bnafar::Gate.domains(city)).to eq([])
+      sign_in_as(admin)
+      get "/pharmacy/bnafar/domains"
+      expect(json_body["enabled_domains"]).to eq([ Stock::Domain::MEDICATION ])
+      [ central, unit ].each do |location|
+        expect(Bnafar::Gate.required_for?(city, location)).to be(true)
       end
     end
 
