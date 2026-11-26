@@ -7,8 +7,11 @@ module Regulation
   # dado sensível); quem chama prefixa `skeleton:`. Numa lista, todo item
   # precisa do campo.
   #
-  # Só a cardinalidade: as invariantes condicionais do perfil (mira-2..19:
-  # data, executante e data de execução por situação) não são conferidas aqui.
+  # Q23: também as invariantes de severidade error do pacote, por situação,
+  # como `<caminho>[<chave>]` (o caminho é o campo ausente ou proibido):
+  # app-2/app-3 (start e end), mira-2..12 (datas, realização e executante),
+  # mira-13..19 (par de status), ident-4 (o mesmo paciente), ident-1 (CPF/CNS),
+  # estab-2 (CNES) e date-1 (Composition.date). Documento com problema não sai.
   module RiraSkeleton
     BUNDLE = %w[type timestamp identifier.system identifier.value].freeze
     RESOURCES = %w[Composition Appointment ServiceRequest Condition].freeze
@@ -29,6 +32,25 @@ module Regulation
       ],
       "Condition" => %w[code.coding.system code.coding.code subject.identifier.system subject.identifier.value]
     }.transform_values(&:freeze).freeze
+    # Filhos obrigatórios de campos opcionais: valem quando o pai existe.
+    NESTED = {
+      "Composition" => { "relatesTo" => %w[code targetReference.reference] },
+      "Appointment" => { "specialty" => %w[coding.system coding.code], "reasonReference" => %w[reference] },
+      "ServiceRequest" => { "performerType" => %w[coding.system coding.code], "performer" => %w[identifier.system identifier.value],
+                            "reasonReference" => %w[reference] }
+    }.freeze
+
+    # Invariantes por situação (Composition.event): app-3 aceita sem datas só
+    # estes status do Appointment.
+    UNDATED_APPOINTMENT = %w[proposed cancelled waitlist].freeze
+    DATED = { "booked" => "mira-5", "attended" => "mira-7", "absence" => "mira-10" }.freeze
+    PERFORMER = { "booked" => "mira-6", "attended" => "mira-8", "absence" => "mira-11" }.freeze
+    OCCURRENCE = { "attended" => "mira-9", "absence" => "mira-12" }.freeze
+    STATUS_PAIR = { "pending" => "mira-13", "returned-to-requester" => "mira-14", "booked" => "mira-15", "attended" => "mira-16",
+                    "cancelled" => "mira-17", "absence" => "mira-18", "excluded" => "mira-19" }.freeze
+    PERSON = /\A(?!(\d)\1{10})\d{11}\z|\A(?!(\d)\2{14})[125789]\d{14}\z/
+    ESTABLISHMENT = /\A(?!(\d)\1{6})\d{7}\z/
+    DOCUMENT_DATE = /\A(200[1-9]|20[1-9]\d|[2-9]\d{3})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\z/
 
     module_function
 
@@ -46,9 +68,70 @@ module Regulation
         next problems << "Bundle.entry.#{type}" unless resource.is_a?(Hash) && resource["resourceType"] == type
 
         problems.concat(missing(type, resource, REQUIRED.fetch(type)))
+        NESTED.fetch(type, {}).each do |parent, paths|
+          problems.concat(missing("#{type}.#{parent}", resource[parent], paths)) unless blank?(resource[parent])
+        end
       end
-      problems.concat(references(entries, resources)) if problems.none? { |path| path.start_with?("Bundle.entry") }
-      problems
+      return problems if problems.any? { |path| path.start_with?("Bundle.entry") }
+
+      problems.concat(references(entries, resources))
+      problems.concat(invariants(*resources.first(4)))
+    end
+
+    def invariants(composition, appointment, request, condition)
+      code = composition.dig("event", 0, "code", 0, "coding", 0, "code")
+      out = dates(code, appointment)
+      out << "ServiceRequest.occurrenceDateTime[mira-3]" if code == "pending" && !blank?(request["occurrenceDateTime"])
+      out << "ServiceRequest.performer[mira-4]" if code == "pending" && !blank?(request["performer"])
+      out << "ServiceRequest.performer[#{PERFORMER[code]}]" if PERFORMER[code] && blank?(request["performer"])
+      out << "ServiceRequest.occurrenceDateTime[#{OCCURRENCE[code]}]" if OCCURRENCE[code] && blank?(request["occurrenceDateTime"])
+      out.concat(status_pair(code, appointment, request))
+      out.concat(identities(composition, appointment, request, condition))
+      out << "Composition.date[date-1]" unless composition["date"].is_a?(String) && composition["date"].match?(DOCUMENT_DATE)
+      out
+    end
+
+    def dates(code, appointment)
+      start, finish = %w[start end].map { |field| !blank?(appointment[field]) }
+      out = []
+      out << "Appointment.#{start ? 'end' : 'start'}[app-2]" if start != finish
+      unless (start && finish) || UNDATED_APPOINTMENT.include?(appointment["status"])
+        out.concat({ "start" => start, "end" => finish }.reject { |_, present| present }.keys.map { |field| "Appointment.#{field}[app-3]" })
+      end
+      if code == "pending"
+        out.concat({ "start" => start, "end" => finish }.select { |_, present| present }.keys.map { |field| "Appointment.#{field}[mira-2]" })
+      end
+      if (key = DATED[code])
+        out.concat({ "start" => start, "end" => finish }.reject { |_, present| present }.keys.map { |field| "Appointment.#{field}[#{key}]" })
+      end
+      out
+    end
+
+    def status_pair(code, appointment, request)
+      key = STATUS_PAIR[code]
+      return [ "Composition.event.code.coding.code[binding]" ] unless key
+
+      appointment_status, request_status = RndsCatalog::STATUS_RELATION.fetch(code)
+      out = []
+      out << "Appointment.status[#{key}]" unless appointment["status"] == appointment_status
+      out << "ServiceRequest.status[#{key}]" unless request["status"] == request_status
+      out
+    end
+
+    def identities(composition, appointment, request, condition)
+      people = { "Composition.subject.identifier.value" => composition.dig("subject", "identifier", "value"),
+                 "Appointment.participant.actor.identifier.value" => appointment.dig("participant", 0, "actor", "identifier", "value"),
+                 "ServiceRequest.subject.identifier.value" => request.dig("subject", "identifier", "value") }
+      patient = people.values.first
+      others = people.values.drop(1) + [ condition.dig("subject", "identifier", "value") ]
+      out = []
+      out << "Composition.subject.identifier.value[ident-4]" if others.any? { |value| value != patient }
+      people.each { |path, value| out << "#{path}[ident-1]" if value.is_a?(String) && !value.match?(PERSON) }
+      { "Composition.author.identifier.value" => Array(composition["author"]).map { |a| a.dig("identifier", "value") },
+        "ServiceRequest.requester.identifier.value" => [ request.dig("requester", "identifier", "value") ],
+        "ServiceRequest.performer.identifier.value" => Array(request["performer"]).map { |p| p.dig("identifier", "value") } }
+        .each { |path, values| out << "#{path}[estab-2]" if values.any? { |v| v.is_a?(String) && !v.match?(ESTABLISHMENT) } }
+      out
     end
 
     def missing(prefix, node, paths)
@@ -72,6 +155,6 @@ module Regulation
     end
 
     def blank?(value) = value.nil? || value == "" || (value.respond_to?(:empty?) && value.empty?)
-    private_class_method :missing, :present?, :references, :blank?
+    private_class_method :missing, :present?, :references, :invariants, :dates, :status_pair, :identities, :blank?
   end
 end

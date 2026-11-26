@@ -20,10 +20,12 @@ module Regulation
   #   o `default_performer_cbo` do prestador.
   # - Caráter (Q15, pré-voo B4): `settings.priority_by_color[effective_color]`
   #   (`color || suggested_color`); sem cor, nulo.
-  # - `scheduled_at`: rede própria → o horário vivo/último da cadeia (ou o do
-  #   pedido); externo → o do pedido. `absence_times` (Q18, pré-voo I7): os
-  #   `scheduled_at` dos horários `no_show`/`expired` da cadeia, em ordem (só
-  #   rede própria; o externo vai sem a data).
+  # - `scheduled_at` e `scheduled_ends_at` (Q20): rede própria → o horário
+  #   vivo/último da cadeia (fim = `effective_ends_at`; legado, +15 min) ou o
+  #   do pedido; externo → o do pedido, com fim em `+ Appointment::LEGACY_SPAN`.
+  # - `absences` (Q18, Q22): os horários `no_show` da cadeia (só rede própria),
+  #   em ordem, como `Slot(starts_at, ends_at, cnes da unidade)`. O `expired`
+  #   não é falta (volta a `authorized` no 26a); o externo não tem a data.
   # - `status_times`: { situação MIRA => instante da última linha do andamento
   #   que leva a ela } (a `pending` cai no `requested_at` sem linha).
   #
@@ -32,12 +34,14 @@ module Regulation
   RiraFacts = Data.define(
     :patient_cpf, :patient_cns, :requester_cnes, :author_cnes, :requester_id, :target_type, :target_code,
     :sigtap, :sigtap_valid, :performer_cnes, :performer_cbo, :priority, :cid10, :ciap2, :requested_at,
-    :authorized_at, :scheduled_at, :absence_times, :status_times, :own_network
+    :authorized_at, :scheduled_at, :scheduled_ends_at, :absences, :status_times, :own_network
   )
 
   class RiraFacts
     ACTIVE_APPOINTMENTS = %w[scheduled confirmed checked_in].freeze
-    MISSED_APPOINTMENTS = %w[no_show expired].freeze
+    MISSED_APPOINTMENT = "no_show".freeze
+    # Um horário faltado: datas e o CNES da unidade dele (executante da falta).
+    Slot = Data.define(:starts_at, :ends_at, :cnes)
     # andamento da 26a => situação MIRA (a mesma tabela do RndsStatus; `closed`
     # depende das faltas).
     EVENT_STATUS = RndsStatus::RULES.values.each_with_object({ "missed" => RndsStatus::ABSENCE }) do |(mira, events), map|
@@ -53,6 +57,8 @@ module Regulation
       current = appointments.select { |a| ACTIVE_APPOINTMENTS.include?(a.status) }.last
       sigtap = sigtap_for(request, settings)
       patient = request.patient
+      scheduled_at = (own && current&.scheduled_at) || request.scheduled_at
+      ends_at = own && current ? current.effective_ends_at : scheduled_at && scheduled_at + Appointment::LEGACY_SPAN
 
       new(
         patient_cpf: patient&.cpf.presence, patient_cns: patient&.cns.presence,
@@ -65,8 +71,10 @@ module Regulation
         priority: request.effective_color && (settings.priority_by_color || {})[request.effective_color].presence,
         cid10: request.cid10.presence, ciap2: request.ciap2.presence,
         requested_at: request.requested_at, authorized_at: authorization&.created_at,
-        scheduled_at: (own && current&.scheduled_at) || request.scheduled_at,
-        absence_times: appointments.select { |a| MISSED_APPOINTMENTS.include?(a.status) }.map(&:scheduled_at).sort.freeze,
+        scheduled_at: scheduled_at, scheduled_ends_at: ends_at,
+        absences: appointments.select { |a| a.status == MISSED_APPOINTMENT }.sort_by(&:scheduled_at).map do |a|
+          Slot.new(starts_at: a.scheduled_at, ends_at: a.effective_ends_at, cnes: a.health_unit&.cnes.presence)
+        end.freeze,
         status_times: status_times(request).freeze, own_network: own
       )
     end

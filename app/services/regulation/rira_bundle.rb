@@ -21,10 +21,13 @@ module Regulation
     PARTICIPANT_STATUS = "accepted".freeze
     CLINICAL_STATUS = "active".freeze
     INTENT = "proposal".freeze
-    # O executante vai em `ServiceRequest.performer` só nestas situações (Valor 7).
-    PERFORMER_STATUSES = %w[booked attended].freeze
-    # `Appointment.start` (decisão 18, Q18): a data do horário nestas situações.
+    # O executante vai em `ServiceRequest.performer` só nestas situações
+    # (Valor 7; na falta, Q22).
+    PERFORMER_STATUSES = %w[booked attended absence].freeze
+    # `Appointment.start`/`end` (decisão 18, Q20): o horário nestas situações;
+    # `ServiceRequest.occurrenceDateTime` (Q21), a data da realização.
     DATED_STATUSES = %w[booked attended absence].freeze
+    OCCURRENCE_STATUSES = %w[attended absence].freeze
 
     module_function
 
@@ -41,15 +44,18 @@ module Regulation
       profile = RiraProfile.current
       urls = Array.new(4) { "urn:uuid:#{SecureRandom.uuid}" }
       patient = { "system" => profile.identifiers[:individual], "value" => facts.patient_cpf || facts.patient_cns }
+      slot = slot_for(facts, code, at)
 
       resources = [
         composition(facts, code, at, sync, now, patient, urls, profile),
         appointment(facts, appointment_status, patient, urls, profile),
-        service_request(facts, code, request_status, patient, urls, profile),
+        service_request(facts, request_status, slot, patient, urls, profile),
         condition(facts, patient, profile)
       ]
-      place_dates!(resources, profile, scheduled_at: start_for(facts, code, at), requested_at: facts.requested_at,
+      place_dates!(resources, profile, scheduled_at: slot&.starts_at, requested_at: facts.requested_at,
                                        authorized_at: facts.authorized_at)
+      resources[1]["end"] = time(slot&.ends_at)
+      resources[2]["occurrenceDateTime"] = time(slot.starts_at) if slot && OCCURRENCE_STATUSES.include?(code)
       prune({ "resourceType" => "Bundle",
               "identifier" => { "system" => (profile.identifiers[:requester_prefix] + facts.requester_id if facts.requester_id),
                                 "value" => sync.bundle_identifier },
@@ -109,7 +115,7 @@ module Regulation
       }
     end
 
-    def service_request(facts, code, status, patient, urls, profile)
+    def service_request(facts, status, slot, patient, urls, profile)
       systems = profile.code_systems
       {
         "resourceType" => "ServiceRequest", "meta" => meta(profile.profiles[:service_request]), "status" => status,
@@ -120,7 +126,7 @@ module Regulation
         "subject" => { "identifier" => patient },
         "requester" => { "identifier" => establishment(facts.requester_cnes, profile) },
         "performerType" => (facts.performer_cbo ? { "coding" => [ coding(systems[:cbo], facts.performer_cbo) ] } : nil),
-        "performer" => (PERFORMER_STATUSES.include?(code) ? [ { "identifier" => establishment(facts.performer_cnes, profile) } ] : nil),
+        "performer" => (slot ? [ { "identifier" => establishment(slot.cnes, profile) } ] : nil),
         "reasonReference" => [ { "reference" => urls[3] } ]
       }
     end
@@ -147,16 +153,26 @@ module Regulation
       end
     end
 
-    # Rede própria, falta: o horário `no_show`/`expired` da cadeia até o
-    # instante da falta (o último, se nenhum antes); externo, sem data (Q18).
-    def start_for(facts, code, at)
+    # O horário do documento (datas e CNES do executante), ou nil:
+    # `booked`/`attended` → o horário do pedido (Q20, Q21); `absence` → o
+    # `no_show` da cadeia até o instante da falta (o último, se nenhum antes),
+    # só na rede própria (Q18, Q22; o externo fica parado na conferência).
+    def slot_for(facts, code, at)
       return nil unless DATED_STATUSES.include?(code)
-      return facts.scheduled_at unless code == RndsStatus::ABSENCE
+      return absence_slot(facts, at) if code == RndsStatus::ABSENCE
+      return nil unless facts.scheduled_at
 
-      times = Array(facts.absence_times)
-      at ? (times.select { |t| t <= at }.last || times.last) : times.last
+      RiraFacts::Slot.new(starts_at: facts.scheduled_at, ends_at: facts.scheduled_ends_at, cnes: facts.performer_cnes)
     end
 
+    def absence_slot(facts, at)
+      return nil unless facts.own_network
+
+      slots = Array(facts.absences)
+      at ? (slots.select { |s| s.starts_at <= at }.last || slots.last) : slots.last
+    end
+
+    # [código, instante] da situação: Target, passo { status, at } ou só o código.
     def situation(status, facts)
       code, at =
         if status.respond_to?(:status) then [ status.status, status.at ]
@@ -198,7 +214,7 @@ module Regulation
       end
     end
 
-    private_class_method :composition, :appointment, :service_request, :condition, :place_dates!, :start_for, :situation,
+    private_class_method :composition, :appointment, :service_request, :condition, :place_dates!, :slot_for,
                          :meta, :coding, :establishment, :time, :prune, :blank?, :positional, :sorted
   end
 end

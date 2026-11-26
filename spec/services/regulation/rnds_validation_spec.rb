@@ -1,6 +1,6 @@
 require "rails_helper"
 
-# Módulo 26c, Task 8 (Valor 4; Q9, Q15; pré-voo M16): a conferência antes do
+# Módulo 26c, Task 8 (Valor 4; Q9, Q15, Q22, Q23; pré-voo M16): a conferência antes do
 # envio. Pura sobre os fatos; todos os motivos de uma vez, na ordem do
 # BLOCK_REASONS. O SIGTAP vigente (Q9) é lido do banco pelo RiraFacts.
 RSpec.describe Regulation::RndsValidation, type: :model do
@@ -13,7 +13,9 @@ RSpec.describe Regulation::RndsValidation, type: :model do
       patient_cpf: valid_cpf(903), patient_cns: nil, requester_cnes: "2345678", author_cnes: "1234567", requester_id: "2926",
       target_type: "procedure", target_code: "0401010074", sigtap: "0401010074", sigtap_valid: true,
       performer_cnes: "3456789", performer_cbo: "225250", priority: "routine", cid10: "I10", ciap2: nil,
-      requested_at: now - 10.days, authorized_at: now - 5.days, scheduled_at: now + 3.days, absence_times: [],
+      requested_at: now - 10.days, authorized_at: now - 5.days, scheduled_at: now + 3.days,
+      scheduled_ends_at: now + 3.days + 20.minutes,
+      absences: [ Regulation::RiraFacts::Slot.new(starts_at: now - 4.days, ends_at: now - 4.days + 20.minutes, cnes: "4567890") ],
       status_times: {}, own_network: true
     }.merge(over))
   end
@@ -40,6 +42,18 @@ RSpec.describe Regulation::RndsValidation, type: :model do
     %w[pending cancelled absence returned-to-requester excluded].each do |status|
       expect(check(facts(performer_cnes: nil), status)).to eq(:ok), status
     end
+  end
+
+  it "performer_without_cnes no absence da rede própria: a unidade do no_show sem CNES (Q22)" do
+    no_cnes = [ Regulation::RiraFacts::Slot.new(starts_at: now - 4.days, ends_at: now - 4.days + 20.minutes, cnes: nil) ]
+    expect(check(facts(absences: no_cnes), "absence")).to eq([ :blocked, %w[performer_without_cnes] ])
+  end
+
+  it "external_absence_without_schedule: a falta do pedido externo fica parada (Q22)" do
+    external = facts(own_network: false, absences: [])
+    expect(check(external, "absence")).to eq([ :blocked, %w[external_absence_without_schedule] ])
+    expect(check(external, "booked")).to eq(:ok)
+    expect(check(facts, "absence")).to eq(:ok)
   end
 
   it "patient_without_cpf_or_cns; só o CNS passa" do
@@ -69,13 +83,18 @@ RSpec.describe Regulation::RndsValidation, type: :model do
 
   it "missing_priority (Q15): sem cor decidida nem sugerida, nada é enviado" do
     expect(check(facts(priority: nil), "pending")).to eq([ :blocked, %w[missing_priority] ])
-    expect(Regulation::RndsCatalog::BLOCK_REASONS.last).to eq("missing_priority")
+  end
+
+  it "os motivos novos ficam no fim do BLOCK_REASONS, nesta ordem (Q23)" do
+    expect(Regulation::RndsCatalog::BLOCK_REASONS.last(2)).to eq(%w[missing_priority external_absence_without_schedule])
   end
 
   it "motivos juntos numa lista, na ordem do BLOCK_REASONS" do
     all = facts(cid10: nil, requester_cnes: nil, performer_cnes: nil, patient_cpf: nil, performer_cbo: nil,
                 target_type: "specialty", target_code: "225120", sigtap: "0401010074", sigtap_valid: false, priority: nil)
-    expect(check(all)).to eq([ :blocked, Regulation::RndsCatalog::BLOCK_REASONS ])
+    expect(check(all)).to eq([ :blocked, Regulation::RndsCatalog::BLOCK_REASONS - %w[external_absence_without_schedule] ])
+    absent = facts(cid10: nil, own_network: false, absences: [], priority: nil)
+    expect(check(absent, "absence")).to eq([ :blocked, %w[missing_diagnosis missing_priority external_absence_without_schedule] ])
     expect(check(facts(cid10: nil, patient_cpf: nil))).to eq([ :blocked, %w[missing_diagnosis patient_without_cpf_or_cns] ])
   end
 

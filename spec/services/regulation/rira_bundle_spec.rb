@@ -2,8 +2,8 @@ require "rails_helper"
 require "zlib"
 require "rubygems/package"
 
-# Módulo 26c, Task 8 (Valores 7, 8 e 9; Q6, Q12, Q15, Q18; pré-voo B4, I6, I7,
-# I9, M16–M18): o documento RIRA montado dos fatos, a impressão digital e o
+# Módulo 26c, Task 8 (Valores 7, 8 e 9; Q6, Q12, Q15, Q18, Q20–Q23; pré-voo B4,
+# I6, I9, M16–M18): o documento RIRA montado dos fatos, a impressão digital e o
 # esqueleto. A montagem é pura sobre `RiraFacts`; os fatos do banco vêm dos
 # comandos reais da 26a e do 17. CPF e CNS são os fictícios dos helpers.
 RSpec.describe Regulation::RiraBundle, type: :model do
@@ -23,9 +23,14 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       patient_cpf: cpf, patient_cns: nil, requester_cnes: "2345678", author_cnes: "1234567", requester_id: "2926",
       target_type: "specialty", target_code: "225120", sigtap: "0301010072", sigtap_valid: true,
       performer_cnes: "3456789", performer_cbo: "225120", priority: "routine", cid10: "I10", ciap2: nil,
-      requested_at: now - 10.days, authorized_at: now - 5.days, scheduled_at: now + 3.days, absence_times: [],
+      requested_at: now - 10.days, authorized_at: now - 5.days, scheduled_at: now + 3.days,
+      scheduled_ends_at: now + 3.days + 20.minutes, absences: [ slot(now - 4.days) ],
       status_times: { "pending" => now - 10.days }, own_network: true
     }.merge(over))
+  end
+
+  def slot(starts_at, cnes: "4567890", minutes: 20)
+    Regulation::RiraFacts::Slot.new(starts_at: starts_at, ends_at: starts_at + minutes.minutes, cnes: cnes)
   end
 
   def target(status, at: now - 1.day) = Regulation::RndsStatus::Target.new(status: status, at: at)
@@ -44,9 +49,9 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       expect(bundle["entry"].map { |e| e.dig("resource", "resourceType") }).to eq(%w[Composition Appointment ServiceRequest Condition])
       expect(bundle["entry"].map { |e| e["fullUrl"] }).to all(match(/\Aurn:uuid:\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/))
       expect(res(bundle, "Appointment")).to include("status" => "proposed")
-      expect(res(bundle, "Appointment")).not_to include("start")
+      expect(res(bundle, "Appointment").keys).not_to include("start", "end")
       expect(res(bundle, "ServiceRequest")).to include("status" => "active", "intent" => "proposal")
-      expect(res(bundle, "ServiceRequest")).not_to include("performer")
+      expect(res(bundle, "ServiceRequest").keys).not_to include("performer", "occurrenceDateTime")
       composition = res(bundle, "Composition")
       expect(code_of(composition.dig("event", 0, "code", 0))).to eq("pending")
       expect(composition.dig("section", 0, "entry", 0, "reference")).to eq(bundle.dig("entry", 1, "fullUrl"))
@@ -114,7 +119,9 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       bundle = build(status: target("booked"))
       appointment = res(bundle, "Appointment")
       request = res(bundle, "ServiceRequest")
-      expect(appointment).to include("status" => "booked", "start" => (now + 3.days).iso8601, "created" => (now - 5.days).iso8601)
+      expect(appointment).to include("status" => "booked", "start" => (now + 3.days).iso8601,
+                                     "end" => (now + 3.days + 20.minutes).iso8601, "created" => (now - 5.days).iso8601)
+      expect(request).not_to include("occurrenceDateTime")
       expect(appointment["serviceCategory"]).to eq([ { "coding" => [ { "system" => profile.code_systems[:modality], "code" => "09" } ] } ])
       expect(appointment["serviceType"]).to eq([ { "coding" => [ { "system" => profile.code_systems[:sigtap], "code" => "0301010072" } ] } ])
       expect(appointment["specialty"]).to eq([ { "coding" => [ { "system" => profile.code_systems[:cbo], "code" => "225120" } ] } ])
@@ -129,27 +136,43 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       expect(request["performerType"]).to eq("coding" => [ { "system" => profile.code_systems[:cbo], "code" => "225120" } ])
     end
 
-    it "attended leva o executante; cancelled, returned e excluded, não; nenhum leva data fora de booked/attended/absence" do
-      expect(res(build(status: target("attended")), "ServiceRequest")).to include("performer")
+    it "attended (Q20, Q21): start, end, executante e occurrenceDateTime = o scheduled_at do horário atendido" do
+      bundle = build(status: target("attended"))
+      expect(res(bundle, "Appointment")).to include("status" => "fulfilled", "start" => (now + 3.days).iso8601,
+                                                    "end" => (now + 3.days + 20.minutes).iso8601)
+      expect(res(bundle, "ServiceRequest")).to include("status" => "completed", "occurrenceDateTime" => (now + 3.days).iso8601)
+      expect(res(bundle, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq("3456789")
+    end
+
+    it "cancelled, returned, excluded e pending: sem executante, sem datas do horário nem da realização" do
       %w[cancelled returned-to-requester excluded pending].each do |status|
         bundle = build(status: target(status))
-        expect(res(bundle, "ServiceRequest")).not_to include("performer")
-        expect(res(bundle, "Appointment")).not_to include("start")
+        expect(res(bundle, "ServiceRequest").keys).not_to include("performer", "occurrenceDateTime")
+        expect(res(bundle, "Appointment").keys).not_to include("start", "end")
       end
     end
 
-    it "absence (Q18): start = o horário no_show/expired até a falta; externo vai sem data; sem executante (I7)" do
-      first = now - 20.days
-      second = now - 4.days
-      own = facts(absence_times: [ first, second ])
-      step = build(own, status: { "status" => "absence", "at" => (first + 1.day).iso8601 })
-      expect(res(step, "Appointment")).to include("status" => "noshow", "start" => first.iso8601)
+    it "absence na rede própria (Q22): datas e executante do no_show até a falta; occurrenceDateTime = start" do
+      first = slot(now - 20.days, cnes: "5678901")
+      second = slot(now - 4.days, cnes: "6789012", minutes: 15)
+      own = facts(absences: [ first, second ])
+      step = build(own, status: { "status" => "absence", "at" => (now - 19.days).iso8601 })
+      expect(res(step, "Appointment")).to include("status" => "noshow", "start" => first.starts_at.iso8601,
+                                                  "end" => first.ends_at.iso8601)
+      expect(res(step, "ServiceRequest")).to include("occurrenceDateTime" => first.starts_at.iso8601)
+      expect(res(step, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq("5678901")
       final = build(own, status: target("absence", at: now))
-      expect(res(final, "Appointment")["start"]).to eq(second.iso8601)
-      expect(res(final, "ServiceRequest")).to include("status" => "completed")
-      expect(res(final, "ServiceRequest")).not_to include("performer")
-      external = build(facts(own_network: false, absence_times: []), status: target("absence"))
-      expect(res(external, "Appointment")).not_to include("start")
+      expect(res(final, "Appointment")).to include("start" => second.starts_at.iso8601, "end" => second.ends_at.iso8601)
+      expect(res(final, "ServiceRequest")).to include("status" => "completed", "occurrenceDateTime" => second.starts_at.iso8601)
+      expect(res(final, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq("6789012")
+    end
+
+    it "absence externa (Q22): sem data nem executante, e o esqueleto barra" do
+      external = build(facts(own_network: false, absences: []), status: target("absence"))
+      expect(res(external, "Appointment").keys).not_to include("start", "end")
+      expect(res(external, "ServiceRequest").keys).not_to include("performer", "occurrenceDateTime")
+      expect(Regulation::RiraSkeleton.problems(external))
+        .to include("Appointment.start[mira-10]", "ServiceRequest.performer[mira-11]", "ServiceRequest.occurrenceDateTime[mira-12]")
     end
 
     it "CID-10 tem precedência sobre CIAP-2; sem CID, o CIAP-2" do
@@ -247,12 +270,69 @@ RSpec.describe Regulation::RiraBundle, type: :model do
     end
 
     it "problems vazio em todas as situações, rede própria e externa, CPF ou CNS, CID ou CIAP" do
-      variants = [ facts, facts(own_network: false, absence_times: []), facts(patient_cpf: nil, patient_cns: valid_cns(902)),
-                   facts(cid10: nil, ciap2: "K86"), facts(performer_cbo: nil) ]
+      external = facts(own_network: false, absences: [], scheduled_ends_at: now + 3.days + 15.minutes)
+      variants = [ facts, external, facts(patient_cpf: nil, patient_cns: valid_cns(902)), facts(cid10: nil, ciap2: "K86"),
+                   facts(performer_cbo: nil) ]
       variants.product(Regulation::RndsCatalog::MIRA_STATUSES).each do |f, status|
-        expect(described_class.problems(build(f, status: target(status)))).to eq([]), status
+        next if f == external && status == "absence" # Q22: barrada (spec própria)
+
+        expect(described_class.problems(build(f, status: target(status)))).to eq([]), "#{status} #{f.own_network}"
       end
       expect(described_class.problems(build(sync: sync_double(last_rnds_id: "r1")))).to eq([])
+    end
+
+    def without(bundle, type, *keys)
+      bundle.fetch("entry").find { |e| e.dig("resource", "resourceType") == type }["resource"].except!(*keys)
+      bundle
+    end
+
+    def with(bundle, type, changes)
+      bundle.fetch("entry").find { |e| e.dig("resource", "resourceType") == type }["resource"].merge!(changes)
+      bundle
+    end
+
+    it "pending com data, realização ou executante → mira-2, mira-3, mira-4 (e app-2 com só o start)" do
+      base = build
+      expect(described_class.problems(with(base, "Appointment", "start" => now.iso8601)))
+        .to eq(%w[Appointment.end[app-2] Appointment.start[mira-2]])
+      expect(described_class.problems(with(build, "ServiceRequest", "occurrenceDateTime" => now.iso8601)))
+        .to eq(%w[ServiceRequest.occurrenceDateTime[mira-3]])
+      performer = [ { "identifier" => { "system" => profile.identifiers[:establishment], "value" => "3456789" } } ]
+      expect(described_class.problems(with(build, "ServiceRequest", "performer" => performer))).to eq(%w[ServiceRequest.performer[mira-4]])
+    end
+
+    it "booked sem end → app-2, app-3 e mira-5; sem executante → mira-6" do
+      expect(described_class.problems(without(build(status: target("booked")), "Appointment", "end")))
+        .to eq(%w[Appointment.end[app-2] Appointment.end[app-3] Appointment.end[mira-5]])
+      expect(described_class.problems(without(build(status: target("booked")), "ServiceRequest", "performer")))
+        .to eq(%w[ServiceRequest.performer[mira-6]])
+    end
+
+    it "attended sem occurrenceDateTime → mira-9; absence sem ela → mira-12" do
+      expect(described_class.problems(without(build(status: target("attended")), "ServiceRequest", "occurrenceDateTime")))
+        .to eq(%w[ServiceRequest.occurrenceDateTime[mira-9]])
+      expect(described_class.problems(without(build(status: target("absence")), "ServiceRequest", "occurrenceDateTime")))
+        .to eq(%w[ServiceRequest.occurrenceDateTime[mira-12]])
+    end
+
+    it "par de status fora da relação → mira-13..19" do
+      { "pending" => "mira-13", "returned-to-requester" => "mira-14", "booked" => "mira-15", "attended" => "mira-16",
+        "cancelled" => "mira-17", "absence" => "mira-18", "excluded" => "mira-19" }.each do |status, key|
+        expect(described_class.problems(with(build(status: target(status)), "ServiceRequest", "status" => "draft")))
+          .to include("ServiceRequest.status[#{key}]"), status
+      end
+    end
+
+    it "paciente diferente entre os recursos → ident-4; CPF, CNS e CNES fora do formato → ident-1 e estab-2; data → date-1" do
+      other = { "system" => profile.identifiers[:individual], "value" => valid_cpf(904) }
+      expect(described_class.problems(with(build, "ServiceRequest", "subject" => { "identifier" => other })))
+        .to eq(%w[Composition.subject.identifier.value[ident-4]])
+      expect(described_class.problems(build(facts(patient_cpf: "11111111111"))))
+        .to eq(%w[Composition.subject.identifier.value[ident-1] Appointment.participant.actor.identifier.value[ident-1]
+                  ServiceRequest.subject.identifier.value[ident-1]])
+      expect(described_class.problems(build(facts(requester_cnes: "123")))).to eq(%w[ServiceRequest.requester.identifier.value[estab-2]])
+      expect(described_class.problems(build(facts(author_cnes: "0000000")))).to eq(%w[Composition.author.identifier.value[estab-2]])
+      expect(described_class.problems(with(build, "Composition", "date" => now.iso8601))).to eq(%w[Composition.date[date-1]])
     end
 
     it "acusa o caminho ausente, nunca o valor" do
@@ -368,6 +448,7 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       read_facts = read(booked[:request])
       expect(read_facts).to have_attributes(performer_cnes: booked[:unit].cnes, performer_cbo: "225250", sigtap: "0401010074",
                                             scheduled_at: booked[:appointment].scheduled_at,
+                                            scheduled_ends_at: booked[:appointment].ends_at,
                                             authorized_at: booked[:request].current_authorization.created_at)
       bundle = described_class.build(facts: read_facts, sync: sync_row, status: target("booked"), now: now)
       expect(res(bundle, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq(booked[:unit].cnes)
@@ -393,24 +474,45 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       expect(read_facts).to have_attributes(own_network: false, performer_cnes: provider.cnes)
       bundle = described_class.build(facts: read_facts, sync: sync_row, status: Regulation::RndsStatus.for(request, settings: settings),
                                      now: now)
-      expect(res(bundle, "Appointment")).to include("status" => "booked", "start" => (now + 5.days).change(hour: 14).iso8601)
+      start = (now + 5.days).change(hour: 14)
+      expect(res(bundle, "Appointment")).to include("status" => "booked", "start" => start.iso8601,
+                                                    "end" => (start + Appointment::LEGACY_SPAN).iso8601)
       expect(res(bundle, "ServiceRequest")).to include("authoredOn" => request.requested_at.iso8601)
       expect(res(bundle, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq(provider.cnes)
       expect(Regulation::RiraSkeleton.problems(bundle)).to eq([])
     end
 
-    it "absence na rede própria: o Appointment.start é o scheduled_at do no_show da cadeia (Q18)" do
+    it "booked sem turno (legado): end = scheduled_at + 15 min (Q20)" do
+      booked = own_booked!(shift: false)
+      expect(booked[:appointment].ends_at).to be_nil
+      expect(read(booked[:request]).scheduled_ends_at).to eq(booked[:appointment].scheduled_at + 15.minutes)
+    end
+
+    it "expired não é falta (Q22): não entra nas datas de falta" do
+      booked = own_booked!(shift: false)
+      expire!(booked[:appointment])
+      CareRegulation::AppointmentSync.call(appointment_request_id: booked[:appointment].request_id)
+      expect(booked[:request].reload).to have_attributes(status: "authorized", misses: 0)
+      expect(read(booked[:request]).absences).to eq([])
+    end
+
+    it "absence na rede própria: datas e executante do no_show da cadeia (Q18, Q20–Q22)" do
       booked = own_booked!(shift: false)
       missed = no_show!(booked[:appointment])
       CareRegulation::AppointmentSync.call(appointment_request_id: booked[:appointment].request_id)
       request = booked[:request].reload
       expect(request).to have_attributes(status: "pending", misses: 1)
       read_facts = read(request, credential: rnds_regulation_credential!)
-      expect(read_facts.absence_times).to eq([ missed.scheduled_at ])
+      expect(read_facts.absences).to eq([ Regulation::RiraFacts::Slot.new(starts_at: missed.scheduled_at,
+                                                                           ends_at: missed.scheduled_at + 15.minutes,
+                                                                           cnes: booked[:unit].cnes) ])
       expect(read_facts.status_times["absence"]).to eq(request.events.select { |e| e.status == "missed" }.last.created_at)
       step = Regulation::RndsStatus.steps(request, since: nil, settings: settings).first
       bundle = described_class.build(facts: read_facts, sync: sync_row, status: step, now: Time.current)
-      expect(res(bundle, "Appointment")).to include("status" => "noshow", "start" => missed.scheduled_at.iso8601)
+      expect(res(bundle, "Appointment")).to include("status" => "noshow", "start" => missed.scheduled_at.iso8601,
+                                                    "end" => (missed.scheduled_at + 15.minutes).iso8601)
+      expect(res(bundle, "ServiceRequest")).to include("occurrenceDateTime" => missed.scheduled_at.iso8601)
+      expect(res(bundle, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq(booked[:unit].cnes)
       expect(Regulation::RiraSkeleton.problems(bundle)).to eq([])
     end
   end
