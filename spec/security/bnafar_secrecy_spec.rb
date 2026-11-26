@@ -18,10 +18,11 @@ require "webmock/rspec"
 #   posição; correção da saída externa (PUT); estorno da dose (preparo);
 # - D+2: DailyJob fecha D (a posição recusada vira lost) e monta D+1 com o
 #   DELETE da dose; setBnafarEnvironment(homologation); teste da credencial de
-#   homologação; outra saída externa;
-# - D+3: DailyJob e DeliverJob em homologação (evidência cURL);
-#   setBnafarEnvironment(production) com código errado e com o TOTP;
-# - D+4/D+5: monta D+3 em produção e nunca envia (o fechamento a perde);
+#   homologação; outra saída externa e outra dose;
+# - D+3/D+4: o mesmo ciclo em homologação, com a evidência cURL por lote: dois
+#   401 (pausa e novo teste), aceite e RECUSA, correção (PUT), estorno da dose
+#   (DELETE); setBnafarEnvironment(production) com código errado e com o TOTP;
+# - D+5/D+6: monta D+4 em produção e nunca envia (o fechamento a perde);
 #   leituras; `bnafar` desligado (403);
 # - D+32 e D+40: a purga (Q30), pelo sent_at e, no nunca enviado, pelo created_at.
 # Forçadas, as recusas: senha em branco, entrada sem os campos, latin-1, lote
@@ -323,12 +324,15 @@ RSpec.describe "Sigilo do envio à BNAFAR (27b)", type: :request do
       stepped_up!(admin)
       refuse(:latin1, :post, "/pharmacy/opening_imports", { file_base64: latin1 }, status: 422)
       first = req(:post, "/pharmacy/opening_imports", { file_base64: encoded[0] })
+      file_data_of = ->(id) { in_city { OpeningImport.find(id).file_data } }
+      ids[:file_data_uploaded] = [ file_data_of.(first["id"]) ]
       req(:get, "/pharmacy/opening_imports/#{first['id']}")
       ids[:applied] = req(:post, "/pharmacy/opening_imports/#{first['id']}/apply", { expected_version: first["version"] })
       travel_to(at.(0, 8, 5))
       stepped_up!(admin)
       ids[:reverted] = req(:post, "/pharmacy/opening_imports/#{first['id']}/revert", { expected_version: ids[:applied]["version"] })
       second = req(:post, "/pharmacy/opening_imports", { file_base64: encoded[1] })
+      ids[:file_data_uploaded] << file_data_of.(second["id"])
       ids[:discarded] = req(:post, "/pharmacy/opening_imports/#{second['id']}/discard", { expected_version: second["version"] })
       req(:get, "/pharmacy/opening_imports")
       req(:get, "/pharmacy/opening_imports/template.csv")
@@ -413,16 +417,44 @@ RSpec.describe "Sigilo do envio à BNAFAR (27b)", type: :request do
       req(:get, "/integrations")
       ids[:hom_check] = req(:post, "/integrations/credentials/bnafar/check", {})
       stepped_up!(keeper)
-      req(:post, "/pharmacy/external_exits", exit_body.(lot, exit_type: "S-E", destination_kind: "cnes", destination_code: "2384299",
-                                                         reason: s::REASONS[:loan], items: [ { lot_id: lot.id, quantity: 2 } ]))
+      ids[:loan] = req(:post, "/pharmacy/external_exits", exit_body.(lot, exit_type: "S-E", destination_kind: "cnes", destination_code: "2384299",
+                                                                     reason: s::REASONS[:loan], items: [ { lot_id: lot.id, quantity: 2 } ]))
+      # D+2 10:00 — outra dose da paciente (preparo), para o DELETE em homologação.
+      travel_to(at.(2, 10))
+      hom_dose = in_city { create_immunization!(room, patient: patient, stock_lot: vaccine, immunobiological_code: "42", applied_at: Time.current) }
+      in_city { Pharmacy::Ledger.record!(location: room.stock_location, lot: vaccine, kind: "immunization", quantity: 1, by: admin, document: hom_dose) }
 
-      # D+3 01:07 — montagem e envio em homologação (evidência cURL, Q8).
+      # D+3 01:07 — homologação: monta D+2 e envia com dois 401 (a credencial de
+      # homologação recusada, o envio pausa), o teste a reabilita; aceite e RECUSA.
+      # Cada chamada entra na evidência do lote (Q8).
       travel_to(at.(3, 1, 7))
+      run_daily!
+      in_city { Bnafar::Client.for(test_city, environment: "homologation").token! }
+      fake.failures.push(401, nil, 401)
+      run_deliver!
+      ids[:hom_unauthorized] = in_city { IntegrationCredential.find_by!(kind: "bnafar", environment: "homologation").last_check_status }
+      travel_to(at.(3, 1, 20))
+      stepped_up!(admin)
+      req(:post, "/integrations/credentials/bnafar/check", {})
+      run_deliver!(3)
+
+      # D+3 09:00 — correção (PUT) da saída de homologação; D+3 10:00 — o estorno da dose.
+      travel_to(at.(3, 9))
+      stepped_up!(admin)
+      hom_original = in_city { submission(day + 2, "exit", "homologation").records.find_by!(stock_location_id: central.id, replaces_record_id: nil) }
+      ids[:hom_corrected] = req(:post, "/pharmacy/bnafar/records/#{hom_original.id}/correct",
+                                { expected_version: 1, destination_kind: "cnes", destination_code: "2384043", reason: s::REASONS[:correction] })
+      run_deliver!(3)
+      travel_to(at.(3, 10))
+      in_city { Pharmacy::Ledger.record!(location: room.stock_location, lot: vaccine, kind: "immunization_reversal", quantity: 1, by: admin, document: hom_dose) }
+
+      # D+4 01:07 — homologação: monta D+3 com o DELETE da dose; envia.
+      travel_to(at.(4, 1, 7))
       run_daily!
       run_deliver!(3)
 
-      # D+3 09:00 — volta a production: sem o TOTP certo, recusado; com ele, ok (Q39).
-      travel_to(at.(3, 9))
+      # D+4 09:00 — volta a production: sem o TOTP certo, recusado; com ele, ok (Q39).
+      travel_to(at.(4, 9))
       maintenance = maintenance_login!
       gql!(maintenance, s::STATUS_QUERY, citySlug: city.slug)
       @codes << "000000"
@@ -431,14 +463,14 @@ RSpec.describe "Sigilo do envio à BNAFAR (27b)", type: :request do
       stepped_up!(admin)
       req(:get, "/integrations")
 
-      # D+4 01:07 — monta D+3 em produção; nunca envia. D+5 00:07 — o fechamento a perde.
-      travel_to(at.(4, 1, 7))
+      # D+5 01:07 — monta D+4 em produção; nunca envia. D+6 00:07 — o fechamento a perde.
+      travel_to(at.(5, 1, 7))
       run_daily!
-      travel_to(at.(5, 0, 7))
+      travel_to(at.(6, 0, 7))
       run_daily!
 
-      # D+5 09:00 — leituras de tudo; os payloads decifrados e o que o simulado recebeu.
-      travel_to(at.(5, 9))
+      # D+6 09:00 — leituras de tudo; os payloads decifrados e o que o simulado recebeu.
+      travel_to(at.(6, 9))
       stepped_up!(admin)
       req(:get, "/pharmacy/bnafar/status")
       req(:get, "/pharmacy/bnafar/submissions?limit=100")
@@ -448,7 +480,7 @@ RSpec.describe "Sigilo do envio à BNAFAR (27b)", type: :request do
       ids[:payloads] = in_city { BnafarRecord.all.to_a.map { |record| [ record.id, record.payload ] } }
       ids[:received] = fake.received.map { |entry| entry[:body] }
       ids[:evidence] = in_city do
-        BnafarBatch.joins(:bnafar_submission).pluck(:id, "bnafar_submissions.environment", :evidence)
+        BnafarBatch.joins(:bnafar_submission).pluck(:id, "bnafar_submissions.environment", :evidence, :operation)
       end
       ids[:dispensing] = in_city { StockMovement.where(kind: "dispensing").pluck(:id) }
       ids[:links] = in_city { BnafarMovementLink.pluck(:stock_movement_id) }
@@ -471,7 +503,7 @@ RSpec.describe "Sigilo do envio à BNAFAR (27b)", type: :request do
       travel_to(at.(40, 12))
       run_daily!
       ids[:full_purge] = purge_state.call
-      ids[:file_data] = in_city { OpeningImport.where(id: ids[:imports]).map(&:file_data) }
+      ids[:file_data] = ids[:imports].map { |id| in_city { OpeningImport.find(id).file_data } }
     end
 
     { ids: ids, log: log, responses: @responses, refusals: @refusals, codes: @codes, started_at: started_at,
@@ -514,6 +546,8 @@ RSpec.describe "Sigilo do envio à BNAFAR (27b)", type: :request do
       expect(ids[:check]).to include("last_check_status" => "ok", "environment" => "production")
       expect(ids[:hom_check]).to include("last_check_status" => "ok", "environment" => "homologation")
       expect(ids[:unauthorized]).to eq("unauthorized")
+      expect(ids[:hom_unauthorized]).to eq("unauthorized")
+      expect(ids[:hom_corrected]["records"].sole).to include("status" => "pending", "subject" => "exit")
       expect(ids[:applied]).to include("status" => "applied")
       expect(ids[:reverted]).to include("status" => "reverted")
       expect(ids[:discarded]).to include("status" => "discarded")
@@ -527,8 +561,8 @@ RSpec.describe "Sigilo do envio à BNAFAR (27b)", type: :request do
       expect(ids[:submissions].select { |row| row[2] == "homologation" }.map { |row| row[3] }).to include("finished")
       expect(ids[:submissions].map { |row| row[3] }).to include("lost", "finished")
       expect(ids[:records].map(&:first)).to include("accepted", "rejected", "pending")
-      expect(ids[:records].count { |_, deleted_at, _| deleted_at }).to eq(1) # a dose estornada (Q14)
-      expect(ids[:records].count { |_, _, replaces| replaces }).to eq(1) # a correção da saída externa (PUT)
+      expect(ids[:records].count { |_, deleted_at, _| deleted_at }).to eq(2) # as doses estornadas, uma por ambiente (Q14)
+      expect(ids[:records].count { |_, _, replaces| replaces }).to eq(2) # as correções das saídas externas (PUT), uma por ambiente
       expect(ids[:batches].map(&:first).uniq).to contain_exactly("post", "put", "delete")
       expect(scenario[:fake_log].map(&:first).uniq).to include("POST", "PUT", "DELETE", "GET")
       expect(tokens.size).to be >= 4
@@ -584,19 +618,41 @@ RSpec.describe "Sigilo do envio à BNAFAR (27b)", type: :request do
     end
 
     # Q8 e Q21: a evidência existe só em homologação, sem senha nem token real.
-    it "bnafar_batches.evidence só em homologação, sem usuário, senha nem token" do
-      evidence = ids[:evidence]
-      expect(evidence.select { |_, _, entries| entries.present? }.map { |_, environment, _| environment }.uniq).to eq([ "homologation" ])
-      expect(evidence.select { |_, environment, _| environment == "homologation" }.map(&:last)).to all(be_present)
-      expect(evidence.select { |_, environment, _| environment == "production" }.map(&:last)).to all(be_nil)
+    it "bnafar_batches.evidence só em homologação, por operação (post, put, delete e o 401), sem usuário, senha nem token" do
+      evidence = ids[:evidence].map { |id, environment, entries, operation| { id: id, environment: environment, entries: entries, operation: operation } }
+      expect(evidence.select { |batch| batch[:entries].present? }.map { |batch| batch[:environment] }.uniq).to eq([ "homologation" ])
+      expect(evidence.select { |batch| batch[:environment] == "production" }.map { |batch| batch[:entries] }).to all(be_nil)
+      homologation = evidence.select { |batch| batch[:environment] == "homologation" }
+      expect(homologation.map { |batch| batch[:entries] }).to all(be_present)
+      # O ciclo inteiro passou pela homologação: POST, PUT e DELETE.
+      expect(homologation.map { |batch| batch[:operation] }.uniq).to contain_exactly("post", "put", "delete")
 
-      text = JSON.generate(evidence.filter_map(&:last))
-      expect(text).to include("jwt <TOKEN>", "<USUARIO>:<SENHA>") # controle: os cURL estão lá
-      (credentials + tokens + people + reasons).each do |secret|
-        expect(secrecy.contains?(text, secret)).to be(false), "evidência contém #{secret.inspect}"
+      verbs = { "post" => "POST", "put" => "PUT", "delete" => "DELETE" }
+      homologation.group_by { |batch| batch[:operation] }.each do |operation, batches|
+        entries = batches.flat_map { |batch| batch[:entries] }
+        curls = entries.map { |entry| entry["curl"] }.join("\n")
+        expect(curls).to include("curl -X #{verbs.fetch(operation)} ", "Authorization: jwt <TOKEN>"), "#{operation}: #{curls[0, 200]}"
+        expect(entries.map { |entry| entry["status"] }).to include(200), operation
+        text = JSON.generate(entries)
+        (credentials + tokens + people + reasons).each do |secret|
+          expect(secrecy.contains?(text, secret)).to be(false), "evidência #{operation} contém #{secret.inspect}"
+        end
+        expect(text).not_to match(/jwt (?!<TOKEN>)/), operation
+        expect(text).not_to match(/Basic\s+[A-Za-z0-9+\/=]{8,}/), operation
       end
-      expect(text).not_to match(/jwt (?!<TOKEN>)/)
-      expect(text).not_to match(/Basic\s+[A-Za-z0-9+\/=]{8,}/)
+
+      # A tentativa com os dois 401: o login (só os marcadores, sem corpo) e as duas chamadas 401, na evidência do lote.
+      refused = homologation.select { |batch| batch[:entries].count { |entry| entry["status"] == 401 } >= 2 }
+      expect(refused).not_to be_empty
+      refused.each do |batch|
+        logins = batch[:entries].select { |entry| entry["curl"].include?("jwtauth") }
+        expect(logins).not_to be_empty
+        expect(logins.map { |entry| entry["curl"] }).to all(include("-u '<USUARIO>:<SENHA>'"))
+        expect(logins.map { |entry| entry["body"] }).to all(be_nil)
+      end
+      # A RECUSA da posição de homologação: o registro recusado tem a evidência do POST.
+      expect(homologation.select { |batch| batch[:operation] == "post" }.flat_map { |batch| batch[:entries] }.map { |entry| entry["body"].to_s }.join)
+        .to include("MSG09")
     end
 
     # §9: nenhum dado de pessoa vai à BNAFAR; a dispensação não entra e o S-PA fica fora.
@@ -667,7 +723,8 @@ RSpec.describe "Sigilo do envio à BNAFAR (27b)", type: :request do
     end
 
     # §5 e §9: o CSV é cifrado e apagado — depois do apply e do discard.
-    it "opening_imports.file_data NULL depois do apply e do discard" do
+    it "opening_imports.file_data preenchido depois do upload e NULL depois do apply e do discard" do
+      expect(ids[:file_data_uploaded].map { |data| data.to_s.b }).to eq(scenario[:csvs].map(&:b)) # controle: o arquivo estava lá
       expect(ids[:file_data]).to eq([ nil, nil ])
     end
 
