@@ -178,7 +178,7 @@ module OpeningImports
       manufacturer = manufacturer_of(row, resolved[:product]) if domain == Stock::Domain::IMMUNOBIOLOGICAL
       codes << "manufacturer_not_in_catalog" if resolved[:product] && manufacturer.nil?
 
-      { row: row, codes: codes, domain: domain, location: location, resolved: resolved, manufacturer: manufacturer, quantity: quantity,
+      { row: row, codes: codes, stock_domain: domain, location: location, resolved: resolved, manufacturer: manufacturer, quantity: quantity,
         fields: fields, required: required.include?(domain) }
     end
 
@@ -340,7 +340,7 @@ module OpeningImports
       price = draft[:fields][:unit_price_cents]
       count = row[:quantidade].to_i if draft[:quantity]
       RowResult.new(line: row[:line], fields: row.slice(*Reader::COLUMNS), status: codes.empty? ? "valid" : "error", error_codes: codes,
-                    stock_location_id: draft[:location]&.id, item_kind: (draft[:domain] if resolved.any?),
+                    stock_location_id: draft[:location]&.id, item_kind: (draft[:stock_domain] if resolved.any?),
                     catalog_item_id: resolved[:catalog_item]&.id, immunobiological_code: resolved[:product]&.code,
                     vector_product_id: resolved[:vector_product]&.id, manufacturer_key: draft[:manufacturer]&.key,
                     quantity: draft[:quantity], value_cents: (price && count ? price * count : nil),
@@ -353,8 +353,8 @@ module OpeningImports
       resolved = draft[:resolved]
       vmp = resolved[:product]&.obm_vmp || resolved[:catalog_item]&.vmp_code
       missing = fields[:unit_price_cents].nil? || fields[:anvisa_registration].nil? || fields[:health_program].nil?
-      missing ||= fields[:manufacturer_cnpj].nil? unless draft[:domain] == Stock::Domain::IMMUNOBIOLOGICAL
-      missing ||= vmp.present? && fields[:ampp_code].nil? unless draft[:domain] == Stock::Domain::VECTOR_CONTROL
+      missing ||= fields[:manufacturer_cnpj].nil? unless draft[:stock_domain] == Stock::Domain::IMMUNOBIOLOGICAL
+      missing ||= vmp.present? && fields[:ampp_code].nil? unless draft[:stock_domain] == Stock::Domain::VECTOR_CONTROL
       missing
     end
 
