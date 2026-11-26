@@ -188,6 +188,19 @@ RSpec.describe Regulation::RndsStatus, type: :model do
       expect(described_class.steps(request, since: nil).size).to eq(1)
     end
 
+    it "com settings: não lê RegulationRndsSetting.current e os ajustes passados decidem o desejado" do
+      request = regulation_request!(status: "external")
+      2.times { RegulationRequestEvent.create!(regulation_request: request, status: "missed", by_user: regulator) }
+      RegulationRequestEvent.create!(regulation_request: request, status: "closed", by_user: regulator)
+      request.update_columns(status: "closed", misses: 2)
+      request.reload
+      expect(RegulationRndsSetting).not_to receive(:current)
+      on = instance_double(RegulationRndsSetting, send_external: true)
+      off = instance_double(RegulationRndsSetting, send_external: false)
+      expect(described_class.steps(request, since: nil, settings: on)).to eq([])
+      expect(described_class.steps(request, since: nil, settings: off).map { |s| s["status"] }).to eq(%w[absence])
+    end
+
     it "sem falta -> []" do
       expect(described_class.steps(regulation_request!, since: nil)).to eq([])
     end

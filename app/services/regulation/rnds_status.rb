@@ -37,13 +37,14 @@ module Regulation
 
     # -> [{ "status" => "absence", "at" => iso8601 }]: uma por linha `missed`
     # depois de `since` (nil = todas), menos a última se o pedido está
-    # fechado (é a situação desejada), sem repetir o desejado no fim.
-    def steps(request, since:)
+    # fechado (é a situação desejada), sem repetir o desejado no fim. `settings`
+    # evita reler os ajustes quando o chamador já os tem.
+    def steps(request, since:, settings: nil)
       rows = request.events.select { |e| e.status == "missed" && (since.nil? || e.created_at > since) }
       rows = rows.first(rows.size - 1) if request.status == "closed" && rows.any?
       steps = rows.map { |e| { "status" => ABSENCE, "at" => e.created_at.iso8601 } }
       steps = steps.chunk_while { |a, b| a["status"] == b["status"] }.map(&:first)
-      desired = self.for(request, settings: RegulationRndsSetting.current)
+      desired = self.for(request, settings: settings || RegulationRndsSetting.current)
       steps.pop if desired.is_a?(Target) && desired.status == steps.last&.fetch("status")
       steps
     end
