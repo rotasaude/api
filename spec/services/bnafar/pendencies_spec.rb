@@ -30,9 +30,30 @@ RSpec.describe Bnafar::Pendencies, type: :model do
     bnafar_complete!(other, ampp_code: "@brasil20038375081", unit_price_cents: nil)
 
     expect(found.map(&:to_h)).to eq([ { code: "lot_incomplete", stock_location_id: central.id, location_name: central.name,
-                                        item_key: "medication:#{losartana.id}", item_label: losartana.label, stock_lot_id: other.id, lot_id: other.id, lot_number: other.lot_number, lot_version: other.bnafar_version,
+                                        item_key: "medication:#{losartana.id}", item_label: losartana.label, stock_lot_id: other.id, lot_id: other.id, lot_number: other.lot_number, lot_version: other.bnafar_version, vmp_code: "@brasil1000",
                                         fields: [ "unit_price_cents" ] } ])
     expect(codes(found)).not_to include([ "lot_incomplete", lot.id ])
+  end
+
+  describe "vmp_code (Q46)" do
+    it "medicamento: o do catálogo; vacina: o obm_vmp do YAML (nulo sem ele); vetorial: nulo" do
+      losartana.update_columns(vmp_code: "@brasil1000")
+      med_lot = stocked_lot!(central, item: losartana, quantity: "5")
+      cold = cold_chain_central!
+      vaccine_lot = vaccine_lot!(cold, code: "15", doses: 20)
+      product = Vaccination::Immunobiologicals.find("15")
+      place = vector_location!(create_unit("UVZ Q46", kind: "environmental_surveillance", cnes: "4444444"))
+      vector_lot = vector_lot!(place, product: vector_product!)
+
+      by_lot = ->(list, lot) { list.select { |pendency| pendency.stock_lot_id == lot.id }.map(&:vmp_code).uniq }
+      list = found
+      expect(by_lot.call(list, med_lot)).to eq([ "@brasil1000" ])
+      expect(by_lot.call(list, vaccine_lot)).to eq([ product.obm_vmp ])
+      expect(by_lot.call(list, vector_lot)).to eq([ nil ])
+
+      allow(Vaccination::Immunobiologicals).to receive(:find).with("15").and_return(product.with(obm_vmp: "@brasil7000"))
+      expect(by_lot.call(found(domains: [ vaccine ]), vaccine_lot)).to eq([ "@brasil7000" ])
+    end
   end
 
   it "lote de 31 caracteres → lot_number_too_long" do
@@ -143,7 +164,7 @@ RSpec.describe Bnafar::Pendencies, type: :model do
 
     list = found
     expect(list.size).to be >= 4
-    expect(list.map { |pendency| pendency.to_h.keys }.uniq).to eq([ %i[code stock_location_id location_name item_key item_label stock_lot_id fields lot_id lot_number lot_version] ])
+    expect(list.map { |pendency| pendency.to_h.keys }.uniq).to eq([ %i[code stock_location_id location_name item_key item_label stock_lot_id fields lot_id lot_number lot_version vmp_code] ])
     expect(list).to all(have_attributes(location_name: be_present, item_label: be_present))
     text = list.map(&:to_h).to_s
     expect(text).not_to match(/patient|citizen|cpf|cns|user/i)

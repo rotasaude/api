@@ -17,7 +17,7 @@
 #     está ligado ao envio.
 module Bnafar
   module Pendencies
-    Pendency = Data.define(:code, :stock_location_id, :location_name, :item_key, :item_label, :stock_lot_id, :fields, :lot_id, :lot_number, :lot_version)
+    Pendency = Data.define(:code, :stock_location_id, :location_name, :item_key, :item_label, :stock_lot_id, :fields, :lot_id, :lot_number, :lot_version, :vmp_code)
 
     module_function
 
@@ -92,7 +92,7 @@ module Bnafar
     def pendency(code, location, lot, items, fields = [])
       Pendency.new(code: code, stock_location_id: location.id, location_name: location.name, item_key: items.key(lot),
                    item_label: items.label(lot), stock_lot_id: lot.id, fields: fields,
-                   lot_id: lot.id, lot_number: lot.lot_number, lot_version: lot.bnafar_version)
+                   lot_id: lot.id, lot_number: lot.lot_number, lot_version: lot.bnafar_version, vmp_code: items.vmp(lot))
     end
 
     private_class_method :for_row, :pendency

@@ -341,8 +341,9 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       expect(json_body["items"].map { |row| row["code"] }.uniq).to eq([ "lot_incomplete" ])
       row = json_body["items"].find { |entry| entry["stock_lot_id"] == incomplete.id }
       expect(row).to include("stock_location_id" => central.id, "location_name" => central.name, "item_label" => losartana.label)
-      expect(row.keys).to match_array(%w[code stock_location_id location_name item_key item_label stock_lot_id fields lot_id lot_number lot_version])
+      expect(row.keys).to match_array(%w[code stock_location_id location_name item_key item_label stock_lot_id fields lot_id lot_number lot_version vmp_code])
       expect(row).to include("lot_id" => incomplete.id, "lot_number" => incomplete.lot_number, "lot_version" => incomplete.bnafar_version)
+      expect(row).to have_key("vmp_code")
       expect(json_body["totals"]["by_code"]).to include("lot_incomplete" => 2, "location_without_cnes" => 1)
       expect(json_body["next_before"]).to be_nil
     end
