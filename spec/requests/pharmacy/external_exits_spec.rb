@@ -152,6 +152,19 @@ RSpec.describe "Farmácia — saídas externas", type: :request do
       expect(balance_of(cold, vial_lot)).to eq(80)
     end
 
+    # Revisão final: sem o produto no YAML o frasco é desconhecido; o lote é
+    # recusado em items[i].lot_id (invalid_items), nunca 500.
+    it "vacina com código fora do YAML → 422 invalid_items em items[0].lot_id; nada gravado" do
+      vaccination_city!
+      cold = cold_chain_central!
+      gone = vaccine_lot!(cold, code: "ZZ99", doses: 100)
+      stepped_up!(pharmacy_staff!(cold, "stock_keeper"))
+      before = written
+      json_post "/pharmacy/external_exits", body([ { lot_id: gone.id, quantity: 20 } ], location_id: cold.id)
+      expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_items", "items[0].lot_id" ])
+      expect(written).to eq(before)
+    end
+
     it "municipal_admin não grava (403 missing_role); o almoxarife de outro local também não" do
       stepped_up!(pharmacy_admin!)
       before = written

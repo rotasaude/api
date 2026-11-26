@@ -69,6 +69,16 @@ RSpec.describe Bnafar::Snapshot, type: :model do
     expect(rows.map(&:type).uniq).to eq([ "A" ])
   end
 
+  # Revisão final: um imunobiológico cujo código saiu do YAML não derruba a
+  # cidade (Units.factor nil → quantidade nil; a pendência é das Pendencies).
+  it "vacina com código fora do YAML: quantidade nil e o resto da posição da cidade continua" do
+    cold = cold_chain_central!.tap { |location| location.update_columns(cnes: "2222222") }
+    med_lot, gone = travel_to(at(day, 8)) { [ stocked_lot!(central, item: losartana, quantity: "10"), vaccine_lot!(cold, code: "ZZ99", doses: 30) ] }
+
+    rows = snapshot(domains: [ med, vaccine ])
+    expect(quantities(rows)).to eq({ [ central.id, med_lot.id ] => 10, [ cold.id, gone.id ] => nil })
+  end
+
   it "farmácia e sala da mesma UBS no mesmo CNES, itens separados" do
     unit = create_unit("UBS Dupla", cnes: "7654321")
     pharmacy = unit_location!(unit)

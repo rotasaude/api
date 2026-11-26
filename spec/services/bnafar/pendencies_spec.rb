@@ -49,6 +49,20 @@ RSpec.describe Bnafar::Pendencies, type: :model do
     expect(codes(found(domains: [ vaccine ]))).to include([ "fractional_balance", lot.id ])
   end
 
+  # Revisão final: o produto que saiu do YAML é `product_without_code`
+  # (obm_vmp), não `fractional_balance` (o frasco não é conhecido, não há fração).
+  it "vacina com código fora do YAML → product_without_code, sem fractional_balance; o resto da cidade segue limpo" do
+    med_lot = complete_med_lot!
+    cold = cold_chain_central!.tap { |location| location.update_columns(cnes: "2222222") }
+    gone = vaccine_lot!(cold, code: "ZZ99", doses: 30)
+
+    list = found
+    expect(list.select { |pendency| pendency.stock_lot_id == gone.id }.map { |pendency| [ pendency.code, pendency.fields ] })
+      .to include([ "product_without_code", [ "obm_vmp" ] ])
+    expect(codes(list)).not_to include([ "fractional_balance", gone.id ])
+    expect(described_class.clean(rows).map { |row| row.lot.id }).to eq([ med_lot.id ])
+  end
+
   it "central sem CNES → location_without_cnes" do
     lot = complete_med_lot!
     central.update_columns(cnes: nil)

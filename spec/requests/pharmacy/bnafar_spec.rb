@@ -362,6 +362,19 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       expect(json_body["totals"]["by_code"]).to include("domain_off")
     end
 
+    it "vacina com código fora do YAML → 200 com product_without_code; o resto da cidade aparece" do
+      vaccination_city!
+      on
+      cold = cold_chain_central!.tap { |location| location.update_columns(cnes: "2222222") }
+      gone = vaccine_lot!(cold, code: "ZZ99", doses: 30)
+      sign_in_as(admin)
+
+      get "/pharmacy/bnafar/pendencies"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["items"].select { |row| row["stock_lot_id"] == gone.id }.map { |row| row["code"] }).to include("product_without_code")
+      expect(json_body["items"].map { |row| row["stock_lot_id"] }).to include(incomplete.id)
+    end
+
     it "sem estoque ligado → 403 feature_disabled" do
       Platform::Features.set!(city: city, key: "pharmacy", enabled: false, maintainer: ledi_maintainer!)
       CityCatalog.reset_cache!

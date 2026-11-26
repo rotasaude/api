@@ -10,7 +10,8 @@
 #     é o da pendência);
 #   - product_without_code: medicamento sem `vmp_code` (Q15), vacina sem
 #     `obm_vmp`, vetorial sem `catmat_code`;
-#   - fractional_balance: quantidade que não fecha na unidade BNAFAR;
+#   - fractional_balance: quantidade que não fecha na unidade BNAFAR (o
+#     imunobiológico fora do YAML não tem frasco: só `product_without_code`);
 #   - exit_type_missing: movimento negativo sem tipo DM12;
 #   - domain_off: só em `current`, o estoque de um domínio do estoque que não
 #     está ligado ao envio.
@@ -82,7 +83,9 @@ module Bnafar
       end
       code = items.missing_code(lot)
       found << pendency("product_without_code", origin, lot, items, [ code ]) if code
-      found << pendency("fractional_balance", origin, lot, items) if row.quantity.nil?
+      # Sem o fator (produto fora do YAML) não há fração: a verdade é o
+      # `product_without_code` acima, não o `fractional_balance`.
+      found << pendency("fractional_balance", origin, lot, items) if row.quantity.nil? && Units.factor(lot)
       found
     end
 

@@ -10,8 +10,9 @@
 # Quantidade inteira (JSON inteiro ou String de dígitos), 1..99999, na unidade de
 # movimento do lote; na vacina só em múltiplo do frasco (a regra é de
 # Bnafar::Units.to_bnafar: nil → `invalid_quantity`). O lote precisa ser do domínio
-# do local (`item_not_allowed_here`, path `items[i]`) e não se repete
-# (`invalid_items`).
+# do local (`item_not_allowed_here`, path `items[i]`), não se repete
+# (`invalid_items`) e, na vacina, tem o produto no YAML (sem ele o frasco é
+# desconhecido: `invalid_items`, path `items[i].lot_id`).
 #
 # Lote bloqueado por excursão de temperatura → `lot_blocked` (path `items[i].lot_id`), em
 # todo tipo de saída, conferido antes da trava e de novo sob ela. Lote vencido →
@@ -119,6 +120,10 @@ module Pharmacy
         lot = nil
       elsif blocked.include?(lot.id)
         problems << problem("#{prefix}.lot_id", :lot_blocked)
+        lot = nil
+      elsif ::Bnafar::Units.factor(lot).nil?
+        # Imunobiológico fora do YAML: o frasco é desconhecido, o lote é recusado.
+        problems << problem("#{prefix}.lot_id", :invalid_items)
         lot = nil
       end
       quantity = parse_quantity(raw["quantity"])
