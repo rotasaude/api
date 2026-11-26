@@ -18,6 +18,7 @@ require "csv"
 module Medications
   module ObmImport
     MAX_BYTES = 5_000_000
+    REJECTED_LIMIT = 20
     MIN_SHARE = 0.5
     COLUMNS = Rails.root.join("config/medications/obm_columns.yml")
     CODE = /\A[@0-9A-Za-z]{1,25}\z/
@@ -25,7 +26,16 @@ module Medications
     SEPARATORS = [ ";", ",", "\t" ].freeze
     ATTRIBUTES = %i[vmp_code catmat_code anvisa_registration manufacturer_cnpj description].freeze
 
-    class Invalid < StandardError; end
+    # `rejected` leva só posição e código (linha, coluna do mapa, código curto),
+    # nunca o conteúdo da célula; a mensagem segue a mesma regra.
+    class Invalid < StandardError
+      attr_reader :rejected
+
+      def initialize(message, rejected: [])
+        super(message)
+        @rejected = rejected
+      end
+    end
     class SuspiciousDrop < StandardError; end
 
     module_function
@@ -36,29 +46,46 @@ module Medications
       rows = parse(csv)
       counts = PlatformRecord.transaction(requires_new: true) { apply!(rows, by, now) }
       Result.ok(**counts)
-    rescue Invalid, CSV::MalformedCSVError => e
-      Result.fail(:invalid_file, message: e.is_a?(Invalid) ? e.message : "csv malformado", details: { path: "file" })
+    rescue Invalid => e
+      Result.fail(:invalid_file, message: e.message, details: { path: "file", rejected_lines: e.rejected.first(REJECTED_LIMIT) })
+    rescue CSV::MalformedCSVError
+      Result.fail(:invalid_file, message: "csv malformado",
+                                 details: { path: "file", rejected_lines: [ rejection(1, nil, "malformed_csv") ] })
     rescue SuspiciousDrop => e
       Result.fail(:suspicious_drop, message: e.message, details: { path: "file" })
     end
 
     def parse(csv)
       text = csv.to_s.dup.force_encoding(Encoding::UTF_8)
-      raise Invalid, "arquivo não é UTF-8" unless text.valid_encoding?
+      raise Invalid.new("arquivo não é UTF-8", rejected: [ rejection(1, nil, "not_utf8") ]) unless text.valid_encoding?
 
       text = text.delete_prefix("﻿")
-      raise Invalid, "arquivo vazio" if text.strip.empty?
+      raise Invalid.new("arquivo vazio", rejected: [ rejection(1, nil, "empty_file") ]) if text.strip.empty?
 
       config = YAML.safe_load_file(COLUMNS)
       table = CSV.parse(text, headers: true, col_sep: separator(text), skip_blanks: true)
       index = column_index(table.headers, config)
-      lines = table.each_with_index.map { |row, i| line(row, index, i + 2) }
-      raise Invalid, "arquivo sem linhas" if lines.empty?
+      results = table.each_with_index.map { |row, i| line(row, index, i + 2) }
+      raise Invalid.new("arquivo sem linhas", rejected: [ rejection(1, nil, "no_rows") ]) if results.empty?
 
-      dup = lines.map { |l| l[:ampp_code] }.tally.find { |_, n| n > 1 }
-      raise Invalid, "AMPP repetida na linha #{lines.reverse.find { |l| l[:ampp_code] == dup.first }[:line]}" if dup
+      problems = results.flat_map { |result| result[:problems] }
+      lines = results.filter_map { |result| result[:row] }
+      problems += duplicates(lines) if problems.empty?
+      raise Invalid.new(problems.first[:message], rejected: problems.map { |problem| problem.except(:message) }) if problems.any?
 
       lines
+    end
+
+    # Todas as repetições, na linha da segunda ocorrência em diante.
+    def duplicates(lines)
+      seen = Set.new
+      lines.filter_map do |l|
+        rejection(l[:line], "ampp", "duplicate", message: "AMPP repetida na linha #{l[:line]}") unless seen.add?(l[:ampp_code])
+      end
+    end
+
+    def rejection(line, column, code, message: nil)
+      { line: line, column: column, code: code }.tap { |h| h[:message] = message if message }
     end
 
     def separator(text) = SEPARATORS.max_by { |sep| text.lines.first.to_s.count(sep) }
@@ -70,47 +97,60 @@ module Medications
       normalized = headers.map { |header| normalize_header(header) }
       index = config.fetch("columns").to_h do |key, names|
         found = names.filter_map { |name| normalized.index(name) }.uniq
-        raise Invalid, "cabeçalho repetido para #{key}" if found.size > 1
+        raise Invalid.new("cabeçalho repetido para #{key}", rejected: [ rejection(1, key, "duplicate_header") ]) if found.size > 1
 
         [ key, found.first ]
       end
       missing = config.fetch("required").select { |key| index[key].nil? }
-      raise Invalid, "cabeçalho faltando: #{missing.join(', ')}" if missing.any?
+      if missing.any?
+        raise Invalid.new("cabeçalho faltando: #{missing.join(', ')}", rejected: missing.map { |key| rejection(1, key, "missing_column") })
+      end
 
       index
     end
 
+    # Uma linha vira { row:, problems: }: todos os problemas dela, não só o
+    # primeiro, para o operador corrigir o arquivo de uma vez.
     def line(row, index, number)
       cell = ->(key) { index[key] && row[index[key]].to_s.strip.presence }
+      problems = []
+      problem = lambda do |column, code, text|
+        problems << rejection(number, column, code, message: "linha #{number}: #{text}")
+        nil
+      end
+
       ampp = cell.("ampp")
       vmp = cell.("vmp")
-      raise Invalid, "linha #{number}: ampp inválida" unless ampp&.match?(CODE)
-      raise Invalid, "linha #{number}: vmp inválido" unless vmp&.match?(CODE)
+      problem.("ampp", ampp ? "invalid" : "missing", "ampp inválida") unless ampp&.match?(CODE)
+      problem.("vmp", vmp ? "invalid" : "missing", "vmp inválido") unless vmp&.match?(CODE)
 
       description = cell.("descricao")
-      raise Invalid, "linha #{number}: descricao ausente ou acima de #{DESCRIPTION_MAX}" if description.nil? || description.size > DESCRIPTION_MAX
+      if description.nil? then problem.("descricao", "missing", "descricao ausente ou acima de #{DESCRIPTION_MAX}")
+      elsif description.size > DESCRIPTION_MAX then problem.("descricao", "too_long", "descricao ausente ou acima de #{DESCRIPTION_MAX}")
+      end
 
-      { line: number, ampp_code: ampp, vmp_code: vmp, catmat_code: catmat(cell.("catmat"), number), description: description,
-        anvisa_registration: digits(cell.("registro_anvisa"), 1..13, "registro_anvisa", number),
-        manufacturer_cnpj: digits(cell.("cnpj_fabricante"), 14..14, "cnpj_fabricante", number) }
+      catmat = catmat(cell.("catmat")) || (problem.("catmat", "invalid", "catmat inválido") if cell.("catmat"))
+      anvisa = digits(cell.("registro_anvisa"), 1..13) || (problem.("registro_anvisa", "invalid", "registro_anvisa inválido") if cell.("registro_anvisa"))
+      cnpj = digits(cell.("cnpj_fabricante"), 14..14) || (problem.("cnpj_fabricante", "invalid", "cnpj_fabricante inválido") if cell.("cnpj_fabricante"))
+      return { problems: problems } if problems.any?
+
+      { problems: [], row: { line: number, ampp_code: ampp, vmp_code: vmp, catmat_code: catmat, description: description,
+                             anvisa_registration: anvisa, manufacturer_cnpj: cnpj } }
     end
 
-    def catmat(value, number)
-      return nil if value.nil?
-
-      raise Invalid, "linha #{number}: catmat inválido" unless value.match?(/\A\d{1,9}\z/) && value.to_i.positive?
+    # nil = ausente ou inválido; quem chama distingue pela célula.
+    def catmat(value)
+      return nil unless value&.match?(/\A\d{1,9}\z/) && value.to_i.positive?
 
       value.to_i
     end
 
     # Registro e CNPJ chegam com pontuação; o banco guarda só os dígitos.
-    def digits(value, size, name, number)
+    def digits(value, size)
       return nil if value.nil?
 
       only = value.gsub(/\D/, "")
-      raise Invalid, "linha #{number}: #{name} inválido" unless size.cover?(only.size)
-
-      only
+      size.cover?(only.size) ? only : nil
     end
 
     def apply!(rows, by, now)
@@ -162,6 +202,6 @@ module Medications
     # id do mantenedor fica na auditoria do maintenance, não aqui.
     def actor(by) = by.to_s.start_with?("maintenance:") ? "maintainer" : "system"
 
-    private_class_method :parse, :separator, :normalize_header, :column_index, :line, :catmat, :digits, :apply!, :link_vmp!, :actor
+    private_class_method :parse, :separator, :normalize_header, :column_index, :line, :catmat, :digits, :duplicates, :rejection, :apply!, :link_vmp!, :actor
   end
 end

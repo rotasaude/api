@@ -16,7 +16,7 @@ RSpec.describe "Maintenance: carga OBM", type: :request do
   let(:sample) { Rails.root.join("spec/fixtures/obm/sample.csv").read }
   let(:mutation) do
     "mutation($file: String!, $code: String!) { importObmCatalog(fileBase64: $file, code: $code) " \
-      "{ ok errors { path message } added changed deactivated vmpLinked unmatched } }"
+      "{ ok errors { path message } added changed deactivated vmpLinked unmatched rejectedLines { line column code } } }"
   end
 
   def browser = { "Origin" => frontend, "X-Rota-Maintenance" => "1" }
@@ -58,7 +58,8 @@ RSpec.describe "Maintenance: carga OBM", type: :request do
     import!
 
     expect(json.dig("data", "importObmCatalog"))
-      .to eq("ok" => true, "errors" => [], "added" => 3, "changed" => 0, "deactivated" => 0, "vmpLinked" => 2, "unmatched" => 1)
+      .to eq("ok" => true, "errors" => [], "added" => 3, "changed" => 0, "deactivated" => 0, "vmpLinked" => 2, "unmatched" => 1,
+             "rejectedLines" => nil)
     events = PlatformEvent.where(name: "maintenance.obm_catalog.imported").to_a
     expect(events.map { |e| e.payload["outcome"] }).to contain_exactly("attempted", "ok")
     expect(events.map(&:payload)).to all(include("rows" => 3, "module" => "medications"))
@@ -73,6 +74,22 @@ RSpec.describe "Maintenance: carga OBM", type: :request do
     expect(json.dig("data", "importObmCatalog")).to include("ok" => false)
     expect(json.dig("data", "importObmCatalog", "errors", 0)).to include("path" => "file", "message" => "invalid_file")
     # O tempo congela dentro do travel_to: a ordem do relógio não separa os dois.
+    expect(PlatformEvent.where(name: "maintenance.obm_catalog.imported").map { |e| e.payload["outcome"] })
+      .to contain_exactly("attempted", "rejected")
+  end
+
+  it "arquivo com linhas recusadas devolve rejectedLines (linha, coluna, código), nunca a célula" do
+    bad = sample.lines.first + "@brasil1;@brasil2;abc;;;SEGREDO-NA-CELULA\nMARCADOR-AMPP;@brasil3;1;;;DESCRICAO\n"
+    with_fresh_totp { |code| gql!(mutation, file: Base64.strict_encode64(bad), code: code) }
+
+    payload = json.dig("data", "importObmCatalog")
+    expect(payload).to include("ok" => false, "added" => nil)
+    expect(payload["rejectedLines"]).to eq(
+      [ { "line" => 2, "column" => "catmat", "code" => "invalid" }, { "line" => 3, "column" => "ampp", "code" => "invalid" } ]
+    )
+    expect(response.body).not_to include("SEGREDO", "MARCADOR")
+    logged = PlatformEvent.where("name LIKE ?", "%obm_catalog%").map { |e| e.payload.to_s }.join
+    expect(logged).not_to include("SEGREDO", "MARCADOR")
     expect(PlatformEvent.where(name: "maintenance.obm_catalog.imported").map { |e| e.payload["outcome"] })
       .to contain_exactly("attempted", "rejected")
   end
@@ -107,7 +124,8 @@ RSpec.describe "Maintenance: carga OBM", type: :request do
   it "o SDL da carga OBM é o combinado com o maintenance" do
     sdl = Maintenance::Schema.to_definition
     expect(sdl).to match(/importObmCatalog\([^)]*\bcode: String![^)]*\bfileBase64: String![^)]*\): ImportObmCatalogPayload/m)
-    expect(sdl).to include("type ImportObmCatalogPayload {\n  added: Int\n  changed: Int\n  deactivated: Int\n  errors: [UserError!]!\n  ok: Boolean!\n  unmatched: Int\n  vmpLinked: Int\n}")
+    expect(sdl).to include("type ImportObmCatalogPayload {\n  added: Int\n  changed: Int\n  deactivated: Int\n  errors: [UserError!]!\n  ok: Boolean!\n  rejectedLines: [ObmImportRejectedLine!]\n  unmatched: Int\n  vmpLinked: Int\n}")
+    expect(sdl).to include("type ObmImportRejectedLine {\n  code: String!\n  column: String\n  line: Int!\n}")
     expect(sdl).to include("type ObmPresentation {\n  active: Boolean!\n  amppCode: String!\n  anvisaRegistration: String\n  catmatCode: Int\n  description: String!\n  importedAt: ISO8601DateTime!\n  manufacturerCnpj: String\n  vmpCode: String!\n}")
     expect(sdl).to match(/obmUnmatched\([^)]*first: Int = 50[^)]*\): \[ObmPresentation!\]!/m)
     expect(sdl).to include("type MedicationCatalogItem {\n  catmatCode: Int!\n  parseStatus: String!\n  sourceDescription: String!\n  vmpCode: String\n}")

@@ -28,7 +28,13 @@ namespace :medications do
     abort("[medications] arquivo não encontrado: #{path}") unless File.file?(path)
 
     result = Medications::ObmImport.call(csv: File.binread(path, Medications::ObmImport::MAX_BYTES + 1), by: "system")
-    abort("[medications] OBM: #{result.reason} #{result.message}") if result.failure?
+    if result.failure?
+      # Q47: as primeiras 20 linhas recusadas, só posição e código.
+      refused = Array(result.details&.dig(:rejected_lines)).map do |r|
+        "linha #{r[:line]} coluna #{r[:column] || '-'}: #{r[:code]}"
+      end
+      abort(([ "[medications] OBM: #{result.reason} #{result.message}" ] + refused).join("\n"))
+    end
     counts = result.payload
     puts "[medications] OBM: +#{counts[:added]} ~#{counts[:changed]} -#{counts[:deactivated]}; " \
          "VMP ligado a #{counts[:vmp_linked]} itens; #{counts[:unmatched]} sem item no catálogo"

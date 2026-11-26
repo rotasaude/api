@@ -21,7 +21,8 @@ RSpec.describe "Maintenance GraphQL schema" do
     "MedicationCatalogRelease" => %w[id importedAt itemsCount hiddenCount],
     "MedicationCatalogItem" => %w[catmatCode sourceDescription parseStatus vmpCode],
     "ObmPresentation" => %w[amppCode vmpCode catmatCode anvisaRegistration manufacturerCnpj description active importedAt],
-    "ImportObmCatalogPayload" => %w[ok errors added changed deactivated vmpLinked unmatched],
+    "ImportObmCatalogPayload" => %w[ok errors added changed deactivated vmpLinked unmatched rejectedLines],
+    "ObmImportRejectedLine" => %w[line column code],
     "ImportMedicationCatalogPayload" => %w[ok errors releaseId added changed removed],
     "ImportAnvisaListsPayload" => %w[ok errors antimicrobials controlled],
     # Módulo 24c (ADR 0053): mapa de campo por município — só estado, datas e tamanho.

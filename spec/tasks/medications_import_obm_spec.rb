@@ -35,6 +35,25 @@ RSpec.describe "medications:import_obm rake task", type: :model do
       .to eq("actor" => "system", "added" => 3, "changed" => 0, "deactivated" => 0, "unmatched" => 1)
   end
 
+  it "arquivo recusado aborta listando linha, coluna e código das 20 primeiras, sem o conteúdo" do
+    rows = Array.new(25) { |i| "@brasil#{i};@vmp#{i};SEGREDO#{i};DESCRICAO" }
+    path = Rails.root.join("tmp/obm_recusado_#{SecureRandom.hex(3)}.csv")
+    File.write(path, ([ "AMPP;VMP;CATMAT;DESCRICAO" ] + rows).join("\n") + "\n")
+    err = StringIO.new
+    original, $stderr = $stderr, err
+    expect { run!(path.to_s) }.to raise_error(SystemExit)
+    $stderr = original
+
+    lines = err.string.lines.grep(/\Alinha /)
+    expect(lines.size).to eq(20)
+    expect(lines.first).to include("linha 2").and include("catmat").and include("invalid")
+    expect(err.string).not_to include("SEGREDO")
+    expect(ObmPresentation.count).to eq(0)
+  ensure
+    $stderr = original if original
+    File.delete(path) if path && File.exist?(path)
+  end
+
   it "sem caminho ou com arquivo que não existe, aborta sem tocar o catálogo" do
     expect { run!(nil) }.to raise_error(SystemExit)
     Rake::Task["medications:import_obm"].reenable

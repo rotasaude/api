@@ -23,8 +23,10 @@ module Maintenance
       field :deactivated, Integer, null: true
       field :vmp_linked, Integer, null: true
       field :unmatched, Integer, null: true
+      # As primeiras 20 linhas recusadas (Q47); nil quando o arquivo é aceito.
+      field :rejected_lines, [ Types::ObmImportRejectedLineType ], null: true
 
-      EMPTY = { added: nil, changed: nil, deactivated: nil, vmp_linked: nil, unmatched: nil }.freeze
+      EMPTY = { added: nil, changed: nil, deactivated: nil, vmp_linked: nil, unmatched: nil, rejected_lines: nil }.freeze
 
       def resolve(file_base64:, code:)
         csv = decode(file_base64)
@@ -36,9 +38,9 @@ module Maintenance
           outcome = Medications::ObmImport.call(csv: csv, by: "maintenance:#{credential.maintainer.id}")
           raise Rejected.new(outcome.reason.to_s, path: outcome.details[:path] || "file") if outcome.failure?
         end
-        return result.merge(EMPTY) unless outcome&.ok?
+        return result.merge(EMPTY).merge(rejected_lines: outcome&.details&.dig(:rejected_lines)) unless outcome&.ok?
 
-        result.merge(outcome.payload.slice(*EMPTY.keys))
+        result.merge(EMPTY).merge(outcome.payload.slice(*EMPTY.keys))
       end
 
       private

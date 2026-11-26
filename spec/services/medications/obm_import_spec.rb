@@ -82,7 +82,7 @@ RSpec.describe Medications::ObmImport, type: :model do
     result = import!(sample.sub("CATMAT", "OUTRA"))
 
     expect(result.reason).to eq(:invalid_file)
-    expect(result.details).to eq(path: "file")
+    expect(result.details).to eq(path: "file", rejected_lines: [ { line: 1, column: "catmat", code: "missing_column" } ])
     expect(result.message).to include("catmat")
     expect(ObmPresentation.count).to eq(0)
   end
@@ -103,6 +103,45 @@ RSpec.describe Medications::ObmImport, type: :model do
     end
     expect(ObmPresentation.count).to eq(0)
     expect(PlatformEvent.where(name: "obm_catalog.imported")).to be_empty
+  end
+
+  # Q47: as primeiras 20 linhas recusadas, com linha, coluna do mapa e código; nunca a célula.
+  describe "linhas recusadas" do
+    it "lista todos os problemas da linha, na ordem do arquivo, sem o conteúdo da célula" do
+      result = import!(csv_of(lines[1], "ampp com espaço;@b;abc;;123;SEGREDO-NA-DESCRICAO", ";@b2;1;;;"))
+
+      expect(result.reason).to eq(:invalid_file)
+      expect(result.details[:rejected_lines]).to eq(
+        [ { line: 3, column: "ampp", code: "invalid" }, { line: 3, column: "catmat", code: "invalid" },
+          { line: 3, column: "cnpj_fabricante", code: "invalid" },
+          { line: 4, column: "ampp", code: "missing" }, { line: 4, column: "descricao", code: "missing" } ]
+      )
+      expect(result.details.to_s + result.message.to_s).not_to include("SEGREDO")
+      expect(result.details.to_s).not_to include("ampp com")
+    end
+
+    it "limita a 20 linhas" do
+      rows = Array.new(30) { |i| "@brasil#{i};@vmp#{i};x;;;DESCRICAO #{i}" }
+      result = import!(csv_of(*rows))
+
+      expect(result.details[:rejected_lines].size).to eq(20)
+      expect(result.details[:rejected_lines].first).to eq(line: 2, column: "catmat", code: "invalid")
+      expect(result.details[:rejected_lines].last[:line]).to eq(21)
+    end
+
+    it "AMPP repetida e descrição longa saem com o código" do
+      result = import!(csv_of(lines[1], lines[1]))
+      expect(result.details[:rejected_lines]).to eq([ { line: 3, column: "ampp", code: "duplicate" } ])
+
+      result = import!(csv_of("@brasil1;@brasil2;1;;;" + ("x" * 501)))
+      expect(result.details[:rejected_lines]).to eq([ { line: 2, column: "descricao", code: "too_long" } ])
+    end
+
+    it "arquivo ilegível devolve uma linha 1 sem coluna" do
+      expect(import!("").details[:rejected_lines]).to eq([ { line: 1, column: nil, code: "empty_file" } ])
+      expect(import!("AMPP;VMP;CATMAT;DESCRICAO\n@a;\"aberta").details[:rejected_lines])
+        .to eq([ { line: 1, column: nil, code: "malformed_csv" } ])
+    end
   end
 
   it "arquivo acima do limite → file_too_large" do
