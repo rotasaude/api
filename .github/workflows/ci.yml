@@ -113,6 +113,78 @@ jobs:
             puts "PRODUCTION_BOOT_OK hosts=#{Rails.application.config.hosts.inspect}"
           '
 
+  # Módulo 26c, Task 9: prova de que os documentos RIRA que o 26c envia à RNDS
+  # passam no validador OFICIAL do HL7 contra o pacote versionado do IG
+  # (spec/fixtures/rira/br.gov.saude.rira.fhir-1.0.0-release.tgz). Sem Postgres:
+  # Regulation::RiraExamples monta tudo em memória; o boot de test (eager_load
+  # com CI) só carrega código e não abre conexão, e as URLs/host abaixo são
+  # inertes (mesmo desenho do production-boot) para que qualquer conexão
+  # acidental falhe de imediato. Java só aqui. Os exemplos e o relatório do
+  # validador sobem como artefato (evidência da homologação, decisão 3).
+  rira-validate:
+    runs-on: ubuntu-24.04
+    env:
+      RAILS_ENV: test
+      RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+      ROTA_APP_PASSWORD: inert
+      ROTA_PLATFORM_PASSWORD: inert
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: "1"
+      CITY_PUBLIC_BASE_TEMPLATE: "https://%{slug}.ci.rota-saude.example"
+      CITY_UNSET_DATABASE_URL: "postgres://inert:inert@127.0.0.1:1/inert"
+      PLATFORM_DATABASE_URL: "postgres://inert:inert@127.0.0.1:1/inert"
+      MINIO_ENDPOINT: "http://127.0.0.1:1"
+      MINIO_BUCKET: inert
+      MINIO_ACCESS_KEY_ID: inert
+      MINIO_SECRET_ACCESS_KEY: inert
+      WHATSAPP_VERIFY_TOKEN: citoken
+      WHATSAPP_APP_SECRET: cisecret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/cache@v4
+        with:
+          path: ~/validator
+          key: validator-7.0.6
+      - uses: actions/cache@v4
+        with:
+          path: ~/.fhir/packages
+          key: fhir-packages-rira-${{ hashFiles('spec/fixtures/rira/br.gov.saude.rira.fhir-1.0.0-release.tgz') }}
+      - name: Download the HL7 validator 7.0.6 (if not cached)
+        run: |
+          if [ ! -s ~/validator/validator_cli.jar ]; then
+            mkdir -p ~/validator
+            curl -fsSL -o ~/validator/validator_cli.jar \
+              https://github.com/hapifhir/org.hl7.fhir.core/releases/download/7.0.6/validator_cli.jar
+          fi
+      - name: Write the RIRA example documents (in memory, no database)
+        run: bin/rails "regulation:rira_examples[tmp/rira-examples]"
+      - name: Validate against the versioned RIRA package
+        run: |
+          # O validador sai com código != 0 quando há erro; a decisão é do jq
+          # abaixo (e um relatório ausente também derruba o passo).
+          java -jar ~/validator/validator_cli.jar tmp/rira-examples/*.json \
+            -version 4.0.1 \
+            -ig spec/fixtures/rira/br.gov.saude.rira.fhir-1.0.0-release.tgz \
+            -output tmp/rira-validation.json || true
+          errors=$(jq '[.. | objects | select(.resourceType? == "OperationOutcome") | .issue[]? | select(.severity == "error" or .severity == "fatal")] | length' tmp/rira-validation.json)
+          echo "RIRA_VALIDATION_ERRORS=${errors}"
+          test "${errors}" -eq 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rira-validation
+          path: |
+            tmp/rira-examples
+            tmp/rira-validation.json
+          if-no-files-found: warn
+
   staging-boot:
     runs-on: ubuntu-24.04
     # Spec da API de manutenção §4/§10: staging é ensaio de produção, com
