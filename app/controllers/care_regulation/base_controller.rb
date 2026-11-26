@@ -15,7 +15,7 @@ module CareRegulation
     FAILURE_STATUS = { stale_version: :conflict, invalid_transition: :conflict,
                        quota_exhausted: :conflict, citizen_not_verified: :conflict,
                        duplicate_offer: :conflict, cnes_taken: :conflict, unit_taken: :conflict,
-                       duplicate_item: :conflict,
+                       duplicate_item: :conflict, rnds_settings_changed: :conflict,
                        cbo_not_allowed: :forbidden, not_author: :forbidden, missing_role: :forbidden,
                        not_found: :not_found }.freeze
     DEFAULT_LIMIT = 50

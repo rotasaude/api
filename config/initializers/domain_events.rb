@@ -241,6 +241,10 @@ Rails.application.config.to_prepare do
   # Módulo 26a (ADR 0044): prazos por cor e lista do enfermeiro alterados; só
   # trilha, só ids (user_id), sem consumidor.
   DomainEvents.bind "care_regulation.settings_changed", to: []
+  # Módulo 26c (ADR 0044): envio da regulação à RNDS; só trilha, só ids, sem
+  # consumidor aqui (a Task 10 troca pelo consumidor do envio).
+  %w[regulation_rnds.queued regulation_rnds.accepted regulation_rnds.blocked regulation_rnds.rejected
+     regulation_rnds.excluded regulation_rnds.settings_changed].each { |name| DomainEvents.bind name, to: [] }
   # Módulo 28 (ADR 0046): perfil do CEO e lista do TSB/ASB alterados; só trilha,
   # só ids (health_unit_id, user_id, count), sem consumidor.
   DomainEvents.bind "ceo_profile.changed", to: []

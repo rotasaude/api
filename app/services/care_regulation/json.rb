@@ -86,7 +86,14 @@ module CareRegulation
     def provider(record)
       unit = record.health_unit
       { id: record.id, name: record.name, cnes: record.cnes, kind: record.kind,
-        health_unit: unit && { id: unit.id, name: unit.name }, ibge_code: record.ibge_code, active: record.active }
+        health_unit: unit && { id: unit.id, name: unit.name }, ibge_code: record.ibge_code, active: record.active,
+        default_performer_cbo: record.default_performer_cbo }
+    end
+
+    # Configurações do envio à RNDS (módulo 26c; contrato §5).
+    def rnds_settings(setting)
+      { priority_by_color: setting.priority_by_color, specialty_sigtap: setting.specialty_sigtap,
+        default_sigtap: Regulation::RndsLimits::DEFAULT_SIGTAP, send_external: setting.send_external, version: setting.version }
     end
 
     # <offer> (contrato §2): used vem da Quota (contagem das autorizações não
@@ -97,7 +104,8 @@ module CareRegulation
       owner = record.care_provider
       { id: record.id, provider: { id: owner.id, name: owner.name, kind: owner.kind },
         target: { type: record.target_type, code: record.target_code, name: name },
-        month: record.month_label, quantity: record.quantity, used: used, available: Quota.available(record, used: used) }
+        month: record.month_label, quantity: record.quantity, used: used, available: Quota.available(record, used: used),
+        performer_cbo: record.performer_cbo }
     end
 
     # `by` nulo quando o evento é do sistema (by_user_id nulo).

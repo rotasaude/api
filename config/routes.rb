@@ -504,6 +504,9 @@ Rails.application.routes.draw do
     get    "returned",             to: "returned#index"
     get    "admin/deadlines",      to: "admin/deadlines#show"
     patch  "admin/deadlines",      to: "admin/deadlines#update"
+    # Módulo 26c (Q19): vale antes de ligar o envio à RNDS (só o gate care_regulation).
+    get    "admin/rnds_settings",  to: "admin/rnds_settings#show"
+    put    "admin/rnds_settings",  to: "admin/rnds_settings#update"
     get    "admin/nurse_items",    to: "admin/nurse_items#index"
     post   "admin/nurse_items",    to: "admin/nurse_items#create"
     delete "admin/nurse_items",    to: "admin/nurse_items#destroy"

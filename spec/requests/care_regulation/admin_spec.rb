@@ -210,9 +210,29 @@ RSpec.describe "Regulação — prestadores e ofertas", type: :request do
       json_post "/regulation/admin/providers", name: "UBS Vila Hauer", kind: "own", health_unit_id: unit.id
       expect(response).to have_http_status(:created)
       expect(json_body).to eq("id" => CareProvider.last.id, "name" => "UBS Vila Hauer", "cnes" => "2384299", "kind" => "own",
-                              "health_unit" => { "id" => unit.id, "name" => "UBS Vila Hauer" }, "ibge_code" => nil, "active" => true)
+                              "health_unit" => { "id" => unit.id, "name" => "UBS Vila Hauer" }, "ibge_code" => nil, "active" => true,
+                              "default_performer_cbo" => nil)
       expect(CareProvider.last.updated_by_user).to eq(admin)
       expect(provider_events).to eq([ { "care_provider_id" => CareProvider.last.id, "user_id" => admin.id } ])
+    end
+
+    describe "CBO padrão do executante (26c, Q12)" do
+      it "o prestador grava default_performer_cbo no POST e no PATCH; null limpa; malformado → 422 invalid_cbo" do
+        stepped_up!(admin)
+        json_post "/regulation/admin/providers", name: "Clínica CBO", kind: "contracted", cnes: "3456789", default_performer_cbo: "225125"
+        expect([ response.status, json_body["default_performer_cbo"] ]).to eq([ 201, "225125" ])
+        provider = CareProvider.last
+        json_patch "/regulation/admin/providers/#{provider.id}", default_performer_cbo: "225130"
+        expect([ response.status, json_body["default_performer_cbo"] ]).to eq([ 200, "225130" ])
+        expect(provider_events.size).to eq(2)
+        json_patch "/regulation/admin/providers/#{provider.id}", default_performer_cbo: nil
+        expect(json_body["default_performer_cbo"]).to be_nil
+        json_patch "/regulation/admin/providers/#{provider.id}", default_performer_cbo: "12a456"
+        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_cbo", "path" => "default_performer_cbo" } ])
+        json_post "/regulation/admin/providers", name: "Clínica B", kind: "contracted", cnes: "3456790", default_performer_cbo: "12345"
+        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_cbo", "path" => "default_performer_cbo" } ])
+        expect(provider.reload.default_performer_cbo).to be_nil
+      end
     end
 
     # Módulo 30 (ADR 0048; T18): município do prestador.
@@ -453,7 +473,7 @@ RSpec.describe "Regulação — prestadores e ofertas", type: :request do
       expect(response).to have_http_status(:created)
       expect(json_body).to eq("id" => CareOffer.last.id, "provider" => { "id" => provider.id, "name" => "Clínica de Olhos", "kind" => "contracted" },
                               "target" => { "type" => "specialty", "code" => "225120", "name" => "Cardiologia" },
-                              "month" => "2026-10", "quantity" => 5, "used" => 0, "available" => 5)
+                              "month" => "2026-10", "quantity" => 5, "used" => 0, "available" => 5, "performer_cbo" => nil)
       expect(CareOffer.last.month).to eq(Date.new(2026, 10, 1))
       expect(CareOffer.last.updated_by_user).to eq(admin)
       expect(offer_events).to eq([ { "care_offer_id" => CareOffer.last.id, "user_id" => admin.id } ])
@@ -555,6 +575,85 @@ RSpec.describe "Regulação — prestadores e ofertas", type: :request do
       json_patch "/regulation/admin/offers/#{offer.id}", quantity: 8
       expect(response).to have_http_status(:ok)
       expect(json_body).to include("quantity" => 8, "available" => 8)
+    end
+
+    describe "CBO do executante (26c, Q12)" do
+      it "POST com performer_cbo grava e devolve; null vale" do
+        stepped_up!(admin)
+        json_post "/regulation/admin/offers", offer_body(performer_cbo: "225125")
+        expect([ response.status, json_body["performer_cbo"] ]).to eq([ 201, "225125" ])
+        expect(CareOffer.last.performer_cbo).to eq("225125")
+        json_post "/regulation/admin/offers", offer_body(target_code: "225250", performer_cbo: nil)
+        expect([ response.status, json_body["performer_cbo"] ]).to eq([ 201, nil ])
+      end
+
+      it "POST sem performer_cbo herda o da oferta do mês anterior do mesmo prestador e alvo; de outro prestador ou alvo não herda" do
+        offer!(provider: provider, quantity: 3, month: Date.new(2026, 9, 1)).update!(performer_cbo: "225125")
+        other = external_provider!(cnes: "3456782", name: "Outra clínica")
+        offer!(provider: other, quantity: 3, month: Date.new(2026, 9, 1)).update!(performer_cbo: "225130")
+        offer!(provider: provider, target_code: "225250", quantity: 3, month: Date.new(2026, 9, 1)).update!(performer_cbo: "225140")
+        stepped_up!(admin)
+        json_post "/regulation/admin/offers", offer_body
+        expect([ response.status, json_body["performer_cbo"] ]).to eq([ 201, "225125" ])
+        json_post "/regulation/admin/offers", offer_body(provider_id: external_provider!(cnes: "3456783").id)
+        expect(json_body["performer_cbo"]).to be_nil
+        json_post "/regulation/admin/offers", offer_body(month: "2026-12")
+        expect(json_body["performer_cbo"]).to be_nil
+      end
+
+      it "performer_cbo explícito null não herda" do
+        offer!(provider: provider, quantity: 3, month: Date.new(2026, 9, 1)).update!(performer_cbo: "225125")
+        stepped_up!(admin)
+        json_post "/regulation/admin/offers", offer_body(performer_cbo: nil)
+        expect(json_body["performer_cbo"]).to be_nil
+      end
+
+      it "PATCH só com performer_cbo (sem quantity) grava e publica care_offer.changed; a quantidade fica" do
+        offer = offer!(provider: provider, quantity: 5)
+        stepped_up!(admin)
+        json_patch "/regulation/admin/offers/#{offer.id}", performer_cbo: "225125"
+        expect(response).to have_http_status(:ok)
+        expect(json_body).to include("performer_cbo" => "225125", "quantity" => 5)
+        expect(offer_events).to eq([ { "care_offer_id" => offer.id, "user_id" => admin.id } ])
+        json_patch "/regulation/admin/offers/#{offer.id}", performer_cbo: "225125"
+        expect(offer_events.size).to eq(1)
+        json_patch "/regulation/admin/offers/#{offer.id}", performer_cbo: nil
+        expect([ response.status, json_body["performer_cbo"] ]).to eq([ 200, nil ])
+        expect(offer_events.size).to eq(2)
+      end
+
+      it "PATCH vazio → 422 path quantity; com outro month segue recusado" do
+        offer = offer!(provider: provider, quantity: 5)
+        stepped_up!(admin)
+        json_patch "/regulation/admin/offers/#{offer.id}", {}
+        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "quantity" } ])
+        json_patch "/regulation/admin/offers/#{offer.id}", performer_cbo: "225125", month: "2026-11"
+        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "month" } ])
+        expect(offer.reload.performer_cbo).to be_nil
+      end
+
+      it "PATCH com quantity e performer_cbo muda os dois; quantity abaixo do usado recusa sem gravar o CBO" do
+        offer = offer!(provider: provider, quantity: 5)
+        authorize_directly!(offer, count: 2)
+        stepped_up!(admin)
+        json_patch "/regulation/admin/offers/#{offer.id}", quantity: 1, performer_cbo: "225125"
+        expect([ response.status, json_body["error"] ]).to eq([ 422, "quantity_below_used" ])
+        expect(offer.reload.performer_cbo).to be_nil
+        json_patch "/regulation/admin/offers/#{offer.id}", quantity: 6, performer_cbo: "225125"
+        expect(offer.reload.attributes.values_at("quantity", "performer_cbo")).to eq([ 6, "225125" ])
+      end
+
+      it "performer_cbo malformado → 422 invalid_cbo com path performer_cbo (POST e PATCH)" do
+        stepped_up!(admin)
+        [ "12a456", "12345", 225_125, "" ].each do |bad|
+          json_post "/regulation/admin/offers", offer_body(performer_cbo: bad)
+          expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_cbo", "path" => "performer_cbo" } ])
+        end
+        expect(CareOffer.count).to eq(0)
+        offer = offer!(provider: provider, quantity: 5)
+        json_patch "/regulation/admin/offers/#{offer.id}", performer_cbo: "12a456"
+        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_cbo", "path" => "performer_cbo" } ])
+      end
     end
 
     it "PATCH sem mudança não publica evento; id inexistente → 404" do

@@ -341,6 +341,14 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     end
   end
 
+  it "declares the six regulation_rnds events with no consumer (26c, Task 6)" do
+    Regulation::RndsCatalog::DOMAIN_EVENTS.each do |name|
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+    expect(DomainEvents.registry.keys).to include("regulation_rnds.settings_changed")
+  end
+
   it "declares pharmacy.settings_changed with no consumer" do
     expect(DomainEvents.registry.keys).to include("pharmacy.settings_changed")
     expect(DomainEvents.registry["pharmacy.settings_changed"]).to be_empty
