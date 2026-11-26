@@ -155,7 +155,7 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       expect(json_body["records"].sole).to include("id" => record.id, "protocol" => 111, "bnafar_code" => record.bnafar_code, "deleted" => false,
                                                    "stock_location_id" => central.id, "item_key" => record.item_key, "error_codes" => [])
       expect(json_body["records"].sole.keys).to match_array(%w[id subject status lost lost_reason deleted stock_location_id location_name item_key item_label
-                                                               error_codes rejected_items bnafar_code protocol retry_until correct_until])
+                                                               error_codes rejected_items bnafar_code protocol retry_until correct_until stock_external_exit_id stock_external_exit_version])
       expect(json_body).to include("id" => submission.id, "reference_on" => (today - 1).iso8601, "subject" => "position", "status" => "finished")
       expect(response.body).not_to include("payload")
     end
@@ -277,6 +277,27 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       expect(response).to have_http_status(:not_found)
     end
 
+    it "Q44: o registro da saída externa traz o id e a versão atual da saída; posição e saída não externa, nulos" do
+      losartana.update_columns(vmp_code: "@brasil1000")
+      lot = bnafar_complete!(stocked_lot!(central, item: losartana, quantity: "20"), ampp_code: "@brasil20038375080")
+      attrs = { "exit_type" => "S-D", "destination_kind" => "cnpj", "destination_code" => "12ABC34501DE35",
+                "reason" => "Doação de excedente à entidade", "items" => [ { "lot_id" => lot.id, "quantity" => 3 } ] }
+      external = Pharmacy::RecordExternalExit.call(location: central, attrs: attrs, by: keeper).payload.fetch(:exit)
+      external.update!(version: 2)
+      exits = bnafar_submission!(reference_on: today - 1, subject: "exit", status: "finished")
+      positions = bnafar_submission!(reference_on: today - 1, status: "finished")
+      bnafar_record!(exits, status: "accepted", subject: "exit", stock_external_exit_id: external.id, sent_at: 2.days.ago)
+      bnafar_record!(exits, status: "accepted", subject: "exit", sent_at: 2.days.ago)
+      bnafar_record!(positions, status: "accepted", sent_at: 2.days.ago)
+      sign_in_as(admin)
+
+      get "/pharmacy/bnafar/submissions/#{exits.id}"
+      rows = json_body["records"]
+      expect(rows.map { |row| [ row["stock_external_exit_id"], row["stock_external_exit_version"] ] }).to contain_exactly([ external.id, 2 ], [ nil, nil ])
+      get "/pharmacy/bnafar/submissions/#{positions.id}"
+      expect(json_body["records"].sole).to include("stock_external_exit_id" => nil, "stock_external_exit_version" => nil)
+    end
+
     it "saída externa aceita → 200 com os registros novos (replaces_record_id), sem payload" do
       losartana.update_columns(vmp_code: "@brasil1000")
       lot = bnafar_complete!(stocked_lot!(central, item: losartana, quantity: "20"), ampp_code: "@brasil20038375080")
@@ -320,7 +341,8 @@ RSpec.describe "Farmácia — envio à BNAFAR", type: :request do
       expect(json_body["items"].map { |row| row["code"] }.uniq).to eq([ "lot_incomplete" ])
       row = json_body["items"].find { |entry| entry["stock_lot_id"] == incomplete.id }
       expect(row).to include("stock_location_id" => central.id, "location_name" => central.name, "item_label" => losartana.label)
-      expect(row.keys).to match_array(%w[code stock_location_id location_name item_key item_label stock_lot_id fields])
+      expect(row.keys).to match_array(%w[code stock_location_id location_name item_key item_label stock_lot_id fields lot_id lot_number lot_version])
+      expect(row).to include("lot_id" => incomplete.id, "lot_number" => incomplete.lot_number, "lot_version" => incomplete.bnafar_version)
       expect(json_body["totals"]["by_code"]).to include("lot_incomplete" => 2, "location_without_cnes" => 1)
       expect(json_body["next_before"]).to be_nil
     end

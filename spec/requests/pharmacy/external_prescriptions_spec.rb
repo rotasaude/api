@@ -56,7 +56,7 @@ RSpec.describe "Farmácia — receita externa", type: :request do
       expect(item).to eq(
         "id" => saved.items.sole.id, "catalog_item_id" => diazepam.id,
         "item" => { "catalog_item_id" => diazepam.id, "catmat_code" => diazepam.catmat_code, "name" => diazepam.label, "unit" => diazepam.unit,
-                    "dispensing_unit" => Pharmacy::DispensingUnit.for(diazepam), "controlled" => true, "controlled_list" => "B1" },
+                    "dispensing_unit" => Pharmacy::DispensingUnit.for(diazepam), "controlled" => true, "controlled_list" => "B1", "vmp_code" => nil },
         "free_text" => nil, "printed_description" => diazepam.label, "quantity" => "10.00", "quantity_unit" => "comprimido",
         "dosage_instructions" => "1 comprimido ao dia", "continuous" => true, "controlled" => true, "retention_required" => true,
         "valid_until" => (today + 28).iso8601, "expired" => false, "dispensed_total" => "0.00", "last_dispensed_on" => nil, "next_allowed_on" => nil,

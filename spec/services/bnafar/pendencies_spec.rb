@@ -30,7 +30,7 @@ RSpec.describe Bnafar::Pendencies, type: :model do
     bnafar_complete!(other, ampp_code: "@brasil20038375081", unit_price_cents: nil)
 
     expect(found.map(&:to_h)).to eq([ { code: "lot_incomplete", stock_location_id: central.id, location_name: central.name,
-                                        item_key: "medication:#{losartana.id}", item_label: losartana.label, stock_lot_id: other.id,
+                                        item_key: "medication:#{losartana.id}", item_label: losartana.label, stock_lot_id: other.id, lot_id: other.id, lot_number: other.lot_number, lot_version: other.bnafar_version,
                                         fields: [ "unit_price_cents" ] } ])
     expect(codes(found)).not_to include([ "lot_incomplete", lot.id ])
   end
@@ -143,7 +143,7 @@ RSpec.describe Bnafar::Pendencies, type: :model do
 
     list = found
     expect(list.size).to be >= 4
-    expect(list.map { |pendency| pendency.to_h.keys }.uniq).to eq([ %i[code stock_location_id location_name item_key item_label stock_lot_id fields] ])
+    expect(list.map { |pendency| pendency.to_h.keys }.uniq).to eq([ %i[code stock_location_id location_name item_key item_label stock_lot_id fields lot_id lot_number lot_version] ])
     expect(list).to all(have_attributes(location_name: be_present, item_label: be_present))
     text = list.map(&:to_h).to_s
     expect(text).not_to match(/patient|citizen|cpf|cns|user/i)

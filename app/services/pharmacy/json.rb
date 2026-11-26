@@ -37,7 +37,7 @@ module Pharmacy
     # <item>: `dispensing_unit` é obrigatório (lote, busca, mínimos, posição…).
     def item(catalog_item, dispensing_unit:)
       { catalog_item_id: catalog_item.id, catmat_code: catalog_item.catmat_code, name: catalog_item.label, unit: catalog_item.unit,
-        dispensing_unit: dispensing_unit, controlled: catalog_item.controlled, controlled_list: catalog_item.controlled_list }
+        dispensing_unit: dispensing_unit, controlled: catalog_item.controlled, controlled_list: catalog_item.controlled_list, vmp_code: catalog_item.vmp_code }
     end
 
     # <item> pela regra do YAML (fora de lote).

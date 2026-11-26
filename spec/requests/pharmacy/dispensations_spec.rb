@@ -48,7 +48,7 @@ RSpec.describe "Farmácia — dispensação e histórico do paciente", type: :re
         "at" => saved.dispensed_at.iso8601,
         "items" => [ { "id" => row.id, "prescription_item_id" => item.id, "catalog_item_id" => losartana.id,
                        "item" => { "catalog_item_id" => losartana.id, "catmat_code" => losartana.catmat_code, "name" => losartana.label,
-                                   "unit" => losartana.unit, "dispensing_unit" => "comprimido", "controlled" => false, "controlled_list" => nil },
+                                   "unit" => losartana.unit, "dispensing_unit" => "comprimido", "controlled" => false, "controlled_list" => nil, "vmp_code" => nil },
                        "lot_id" => lot.id, "lot" => { "id" => lot.id, "lot_number" => "LOS-2026-01", "expires_on" => lot.expires_on.iso8601 },
                        "quantity" => "30.00", "returned_total" => "0.00", "mapped_from_free_text" => false } ],
         "retention" => nil

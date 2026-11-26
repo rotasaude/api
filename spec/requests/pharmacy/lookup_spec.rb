@@ -73,7 +73,7 @@ RSpec.describe "Farmácia — receita, busca de pessoa e duplicados", type: :req
       expect(view["items"].sole).to eq(
         "id" => item.id, "catalog_item_id" => losartana.id,
         "item" => { "catalog_item_id" => losartana.id, "catmat_code" => losartana.catmat_code, "name" => losartana.label, "unit" => losartana.unit,
-                    "dispensing_unit" => Pharmacy::DispensingUnit.for(losartana), "controlled" => false, "controlled_list" => nil },
+                    "dispensing_unit" => Pharmacy::DispensingUnit.for(losartana), "controlled" => false, "controlled_list" => nil, "vmp_code" => nil },
         "free_text" => nil, "printed_description" => losartana.label, "quantity" => "30.00", "quantity_unit" => "comprimido",
         "dosage_instructions" => "1 comprimido a cada 12 horas", "continuous" => false, "controlled" => false, "retention_required" => false,
         "valid_until" => (today + 30).iso8601, "expired" => false, "dispensed_total" => "0.00", "last_dispensed_on" => nil, "next_allowed_on" => nil,

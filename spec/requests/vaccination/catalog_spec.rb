@@ -17,8 +17,17 @@ RSpec.describe "Sala de vacina — catálogo", type: :request do
     expect(groups).not_to include("10") # OUTROS, inativo
     penta = json_body["immunobiologicals"].find { |p| p["code"] == "42" }
     expect(penta).to eq("code" => "42", "name" => "Vacina penta (DTP/HB/Hib)", "multidose" => false, "doses_per_vial" => 1,
-                        "default_route" => "3", "default_site" => "18",
+                        "default_route" => "3", "default_site" => "18", "obm_vmp" => nil,
                         "manufacturers" => [ { "key" => "serum", "code" => nil, "name" => "Serum Institute of India", "validity_after_opening_hours" => 0 } ])
+  end
+
+  it "Q43: obm_vmp do produto sai do YAML (string quando preenchido)" do
+    products = Vaccination::Immunobiologicals.all
+    allow(Vaccination::Immunobiologicals).to receive(:all).and_return(products.map { |product| product.code == "42" ? product.with(obm_vmp: "@brasil777") : product })
+    sign_in_as(room_member!(room))
+    get "/vaccination/catalog"
+    expect(json_body["immunobiologicals"].find { |p| p["code"] == "42" }["obm_vmp"]).to eq("@brasil777")
+    expect(json_body["immunobiologicals"].reject { |p| p["code"] == "42" }.map { |p| p["obm_vmp"] }.uniq).to eq([ nil ])
   end
 
   it "V28: physical_loss_reasons { code, name } do SIES, os mesmos códigos que o ajuste valida" do

@@ -83,7 +83,7 @@ RSpec.describe "Farmácia — entradas e inventário de abertura", type: :reques
         "items" => [ { "lot" => { "id" => lot.id,
                                   "item" => { "catalog_item_id" => paracetamol.id, "catmat_code" => 267_778, "name" => paracetamol.label,
                                               "unit" => paracetamol.unit, "dispensing_unit" => "comprimido",
-                                              "controlled" => false, "controlled_list" => nil },
+                                              "controlled" => false, "controlled_list" => nil, "vmp_code" => nil },
                                   "lot_number" => "LOTE-A1", "expires_on" => (today + 365).iso8601, "manufacturer" => "EMS" },
                         "quantity" => "300.00" } ],
         "at" => entry.created_at.iso8601

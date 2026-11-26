@@ -32,7 +32,7 @@ RSpec.describe "Farmácia — transferências", type: :request do
   def lot_json(lot_record)
     { "id" => lot_record.id,
       "item" => { "catalog_item_id" => paracetamol.id, "catmat_code" => 267_778, "name" => paracetamol.label, "unit" => paracetamol.unit,
-                  "dispensing_unit" => "comprimido", "controlled" => false, "controlled_list" => nil },
+                  "dispensing_unit" => "comprimido", "controlled" => false, "controlled_list" => nil, "vmp_code" => nil },
       "lot_number" => lot_record.lot_number, "expires_on" => lot_record.expires_on.iso8601, "manufacturer" => lot_record.manufacturer }
   end
 

@@ -6,7 +6,8 @@
 # Registro (`record`):
 #   { id, subject, status, lost, lost_reason, deleted, stock_location_id,
 #     location_name, item_key, item_label, error_codes, rejected_items,
-#     bnafar_code, protocol, retry_until, correct_until }
+#     bnafar_code, protocol, retry_until, correct_until, stock_external_exit_id,
+#     stock_external_exit_version }
 #   - `lost`: o registro NÃO aceito de uma remessa `lost` (nunca chegou, ou
 #     chegou recusado e a janela fechou);
 #   - `lost_reason`: o primeiro código MSG que não é a MSG47 ("todos os itens
@@ -20,7 +21,7 @@ module Bnafar
   module Json
     NOT_SENT = "not_sent".freeze
     ALL_INCONSISTENT = "MSG47".freeze
-    RECORD_PRELOAD = %i[bnafar_batch bnafar_submission stock_location replaces_record].freeze
+    RECORD_PRELOAD = %i[bnafar_batch bnafar_submission stock_location replaces_record stock_external_exit].freeze
 
     module_function
 
@@ -32,7 +33,8 @@ module Bnafar
         deleted: record.deleted_at.present?, stock_location_id: record.stock_location_id, location_name: record.stock_location.name,
         item_key: record.item_key, item_label: (label_index || labels([ record ]))[record.item_key], error_codes: record.error_codes,
         rejected_items: record.rejected_items, bnafar_code: record.bnafar_code, protocol: record.bnafar_batch&.protocol,
-        retry_until: retry_until(record, submission), correct_until: correct_until(record) }
+        retry_until: retry_until(record, submission), correct_until: correct_until(record),
+        stock_external_exit_id: record.stock_external_exit_id, stock_external_exit_version: record.stock_external_exit&.version }
     end
 
     def lost_reason(record)

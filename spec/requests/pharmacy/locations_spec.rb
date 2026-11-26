@@ -111,7 +111,7 @@ RSpec.describe "Farmácia — meus locais, mínimos e busca de item", type: :req
       expect(rows.find { |row| row["catalog_item_id"] == losartana.id }).to eq(
         "catalog_item_id" => losartana.id, "minimum" => "20.00",
         "item" => { "catalog_item_id" => losartana.id, "catmat_code" => 268_856, "name" => losartana.label, "unit" => "mg",
-                    "dispensing_unit" => "unidade", "controlled" => false, "controlled_list" => nil }
+                    "dispensing_unit" => "unidade", "controlled" => false, "controlled_list" => nil, "vmp_code" => nil }
       )
       expect(rows.find { |row| row["catalog_item_id"] == paracetamol.id }).to include("minimum" => "5.50")
       expect(rows.find { |row| row["catalog_item_id"] == paracetamol.id }.dig("item", "dispensing_unit")).to eq("comprimido")
@@ -293,9 +293,17 @@ RSpec.describe "Farmácia — meus locais, mínimos e busca de item", type: :req
       items = json_body.fetch("items")
       row = items.find { |item| item["catalog_item_id"] == losartana.id }
       expect(row).to eq("catalog_item_id" => losartana.id, "catmat_code" => 268_856, "name" => losartana.label, "unit" => "mg",
-                        "dispensing_unit" => "unidade", "controlled" => false, "controlled_list" => nil)
+                        "dispensing_unit" => "unidade", "controlled" => false, "controlled_list" => nil, "vmp_code" => nil)
       expect(items.map(&:keys).uniq).to eq([ row.keys ])
       expect(response.body).not_to match(/patient|cpf|cns|paciente/i)
+    end
+
+    it "Q43: vmp_code do item do medicamento é o da carga OBM (string)" do
+      losartana.update_columns(vmp_code: "@brasil1000")
+      sign_in_as(pharmacist)
+      json_post "/pharmacy/items/search", q: "losart"
+      row = json_body.fetch("items").find { |item| item["catalog_item_id"] == losartana.id }
+      expect(row["vmp_code"]).to eq("@brasil1000")
     end
 
     it "a forma do catálogo vira a unidade de dispensação (PARACETAMOL → comprimido); controlado sai marcado" do

@@ -23,7 +23,7 @@ module Vaccination
 
     def product_json(product)
       { code: product.code, name: product.name, multidose: product.multidose, doses_per_vial: product.doses_per_vial,
-        default_route: product.default_route, default_site: product.default_site,
+        default_route: product.default_route, default_site: product.default_site, obm_vmp: product.obm_vmp,
         manufacturers: product.manufacturers.map do |m|
           { key: m.key, code: m.code, name: m.name, validity_after_opening_hours: m.validity_after_opening_hours }
         end }
