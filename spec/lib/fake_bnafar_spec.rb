@@ -15,6 +15,12 @@ RSpec.describe FakeBnafar::App, type: :model do
   let(:exit_path) { "/bnafar/produto/ibge/#{ibge}/saida-lote" }
   let(:position_path) { "/bnafar/produto/ibge/#{ibge}/posicao-estoque-lote" }
 
+  # R12: a janela do simulado é a mesma do app (o fake não carrega o app, sem
+  # ActiveSupport; a igualdade fica presa aqui).
+  it "WINDOW_DAYS é o Bnafar::Catalog::CORRECTION_DAYS" do
+    expect(described_class::WINDOW_DAYS).to eq(Bnafar::Catalog::CORRECTION_DAYS)
+  end
+
   def basic(user: "usuario-fake", pass: password) = "Basic #{Base64.strict_encode64("#{user}:#{pass}")}"
   def login(**) = mock.post("/jwtauth/auth", "HTTP_AUTHORIZATION" => basic(**))
   def token = JSON.parse(login.body).fetch("access_token")

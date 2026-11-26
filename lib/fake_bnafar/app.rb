@@ -27,7 +27,7 @@ module FakeBnafar
     SERVICES = { "saida-lote" => "2", "posicao-estoque-lote" => "4" }.freeze # DM06
     OPERATIONS = { "POST" => "1", "PUT" => "2", "DELETE" => "3" }.freeze # DM03
     LOT_LIMIT = 1000
-    WINDOW_DAYS = 30
+    WINDOW_DAYS = 30 # = Bnafar::Catalog::CORRECTION_DAYS (R12; preso em spec/lib/fake_bnafar_spec.rb)
     KEEP = 200
     REFUSED_LOT = "RECUSA".freeze
     UNKNOWN_CNES = "0000000".freeze
