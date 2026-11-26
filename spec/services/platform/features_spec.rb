@@ -112,20 +112,20 @@ RSpec.describe Platform::Features do
     expect(entry.key).to eq("psychosocial_care")
     expect(entry.requires).to eq(%w[feature:clinical_record])
     expect(entry.description).to start_with("Atenção psicossocial (CAPS)")
-    expect(described_class::CITIZEN_HIDDEN).to eq(%w[psychosocial_care collective_activities vector_control zoonoses bnafar bnafar_medications bnafar_vector_supplies bnafar_vaccines])
+    expect(described_class::CITIZEN_HIDDEN).to eq(%w[psychosocial_care collective_activities vector_control zoonoses bnafar bnafar_medications bnafar_vector_supplies bnafar_vaccines rnds_regulation])
     expect(described_class::CITIZEN_HIDDEN).to be_frozen
   end
 
   it "módulo 32a: urgency_care exige o prontuário; waiting_room_display é independente" do
     keys = Platform::Features::CATALOG.map(&:key)
-    expect(keys.last(14).first(2)).to eq(%w[urgency_care waiting_room_display])
+    expect(keys.last(15).first(2)).to eq(%w[urgency_care waiting_room_display])
     expect(Platform::Features::CATALOG.find { |e| e.key == "urgency_care" }.requires).to eq(%w[feature:clinical_record])
     expect(Platform::Features::CATALOG.find { |e| e.key == "waiting_room_display" }.requires).to eq([])
     expect(Platform::Features::CITIZEN_HIDDEN).not_to include("urgency_care", "waiting_room_display")
   end
 
   it "módulo 32b: urgency_stock_deduction exige a urgência e a farmácia" do
-    entry = Platform::Features::CATALOG[-12]
+    entry = Platform::Features::CATALOG[-13]
     expect(entry.key).to eq("urgency_stock_deduction")
     expect(entry.requires).to eq(%w[feature:urgency_care feature:pharmacy])
     expect(entry.description).to eq("Atendimentos da UPA com prescrição de medicação atualizam o estoque")
@@ -134,7 +134,7 @@ RSpec.describe Platform::Features do
 
   it "módulo 33: ombudsman fecha o catálogo; a denúncia anônima exige a ouvidoria; as duas vão ao cidadão" do
     keys = Platform::Features::CATALOG.map(&:key)
-    expect(keys.last(11).first(2)).to eq(%w[ombudsman ombudsman_anonymous_web])
+    expect(keys.last(12).first(2)).to eq(%w[ombudsman ombudsman_anonymous_web])
     expect(described_class.find("ombudsman").requires).to eq([])
     expect(described_class.find("ombudsman").description).to eq("Ouvidoria do SUS municipal")
     expect(described_class.find("ombudsman_anonymous_web").requires).to eq(%w[feature:ombudsman])
@@ -150,7 +150,7 @@ RSpec.describe Platform::Features do
 
   it "módulo 24b: home_visits e collective_activities fecham o catálogo; só home_visits vai ao cidadão (Q24)" do
     keys = Platform::Features::CATALOG.map(&:key)
-    expect(keys.last(9).first(2)).to eq(%w[home_visits collective_activities])
+    expect(keys.last(10).first(2)).to eq(%w[home_visits collective_activities])
     expect(described_class.find("home_visits").requires).to eq(%w[feature:territory_registry])
     expect(described_class.find("collective_activities").requires).to eq(%w[feature:clinical_record])
     expect(described_class::CITIZEN_HIDDEN).not_to include("home_visits")
@@ -168,7 +168,7 @@ RSpec.describe Platform::Features do
   end
 
   it "módulo 35a: vector_control vem antes do zoonoses, exige home_visits e não vai ao cidadão" do
-    expect(Platform::Features::CATALOG[-7].key).to eq("vector_control")
+    expect(Platform::Features::CATALOG[-8].key).to eq("vector_control")
     expect(described_class.find("vector_control").requires).to eq(%w[feature:home_visits])
     expect(described_class.find("vector_control").description)
       .to eq("Boletim do agente na visita, quarteirões, ciclos, ovitrampas, LIRAa e bloqueio de transmissão") # Q12
@@ -179,7 +179,7 @@ RSpec.describe Platform::Features do
   # catálogo, exige o cadastro territorial (sem cascata para o vector_control)
   # e não vai ao cidadão.
   it "módulo 35b: zoonoses fecha o catálogo do 35, exige feature:territory_registry, a descrição da Q27 e está em CITIZEN_HIDDEN" do
-    expect(Platform::Features::CATALOG[-6].key).to eq("zoonoses")
+    expect(Platform::Features::CATALOG[-7].key).to eq("zoonoses")
     expect(described_class.find("zoonoses").requires).to eq(%w[feature:territory_registry])
     expect(described_class.find("zoonoses").description)
       .to eq("Animal com tutor, vacinação antirrábica, demandas da ouvidoria, observação do agressor, leishmaniose canina e canil")
@@ -211,8 +211,8 @@ RSpec.describe Platform::Features do
   end
 
   # Módulo 27b (contrato §1; Q6): cinco interruptores fecham o catálogo.
-  it "módulo 27b: os cinco bnafar fecham o catálogo, nessa ordem, com os requires do Valor 1" do
-    expect(described_class::CATALOG.last(5).map(&:key))
+  it "módulo 27b: os cinco bnafar precedem o rnds_regulation, nessa ordem, com os requires do Valor 1" do
+    expect(described_class::CATALOG.last(6).first(5).map(&:key))
       .to eq(%w[bnafar bnafar_medications bnafar_vector_supplies bnafar_vaccines bnafar_mock])
     expect(described_class.find("bnafar").requires).to eq(%w[credential:bnafar ibge_code])
     expect(described_class.find("bnafar").description).to eq("Envio diário da posição de estoque e das saídas ao SI-BNAFAR")
@@ -267,5 +267,48 @@ RSpec.describe Platform::Features do
     expect(described_class.city_state(city)[:credentials]["bnafar"]).to eq("ok")
     allow(Bnafar::Environment).to receive(:current).and_return("homologation")
     expect(described_class.city_state(city)[:credentials]["bnafar"]).to eq("unauthorized")
+  end
+
+  # Módulo 26c (Valor 1; Q14): o envio da regulação fecha o catálogo; rnds_mock
+  # serve os dois envios pelo requisito alternativo rnds_sending.
+  it "módulo 26c: rnds_regulation fecha o catálogo com os requires do Valor 1 e some do cidadão" do
+    expect(described_class::CATALOG.last.key).to eq("rnds_regulation")
+    entry = described_class.find("rnds_regulation")
+    expect(entry.requires).to eq(%w[feature:care_regulation credential:rnds_regulation ibge_code uf])
+    expect(entry.description).to eq("Envio da regulação à RNDS")
+    expect(described_class::CITIZEN_HIDDEN).to include("rnds_regulation")
+    expect(described_class.catalog(env: "production").map(&:key)).to include("rnds_regulation")
+  end
+
+  it "módulo 26c: sem credencial → credential_missing; recusada → credential_unauthorized; care_regulation desligado → care_regulation_disabled" do
+    state = { credentials: {}, ibge_code: "4106902", uf: "PR", pec_origin: false, pec_hmac_key: false }
+    allow(described_class).to receive(:usable?).and_call_original
+    allow(described_class).to receive(:usable?).with(city, "care_regulation", anything).and_return(true)
+    expect(described_class.missing(city, "rnds_regulation", state: state)).to eq(%w[credential_missing:rnds_regulation])
+    state[:credentials]["rnds_regulation"] = "unauthorized"
+    expect(described_class.missing(city, "rnds_regulation", state: state)).to eq(%w[credential_unauthorized:rnds_regulation])
+    state[:credentials]["rnds_regulation"] = "ok"
+    expect(described_class.missing(city, "rnds_regulation", state: state)).to eq([])
+    allow(described_class).to receive(:usable?).with(city, "care_regulation", anything).and_return(false)
+    expect(described_class.missing(city, "rnds_regulation", state: state)).to eq(%w[care_regulation_disabled])
+  end
+
+  it "módulo 26c (Q14): rnds_mock exige rnds_sending — um dos dois envios utilizável" do
+    expect(described_class.find("rnds_mock").requires).to eq(%w[rnds_sending])
+    state = { credentials: {}, ibge_code: "4106902", uf: "PR", pec_origin: false, pec_hmac_key: false }
+    allow(described_class).to receive(:usable?).and_call_original
+    allow(described_class).to receive(:usable?).with(city, "rnds_immunization", anything).and_return(false)
+    allow(described_class).to receive(:usable?).with(city, "rnds_regulation", anything).and_return(false)
+    expect(described_class.missing(city, "rnds_mock", state: state)).to eq(%w[rnds_sending_disabled])
+    allow(described_class).to receive(:usable?).with(city, "rnds_regulation", anything).and_return(true)
+    expect(described_class.missing(city, "rnds_mock", state: state)).to eq([])
+    allow(described_class).to receive(:usable?).with(city, "rnds_regulation", anything).and_return(false)
+    allow(described_class).to receive(:usable?).with(city, "rnds_immunization", anything).and_return(true)
+    expect(described_class.missing(city, "rnds_mock", state: state)).to eq([])
+  end
+
+  it "módulo 26c: rnds_mock segue fora de produção" do
+    expect(described_class.catalog(env: "production").map(&:key)).not_to include("rnds_mock")
+    expect(described_class.catalog(env: "test").map(&:key)).to include("rnds_mock")
   end
 end

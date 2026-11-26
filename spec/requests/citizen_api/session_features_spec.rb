@@ -121,4 +121,17 @@ RSpec.describe "Sessão do cidadão com os interruptores", type: :request do
     features = JSON.parse(response.body)["features"]
     expect(features.grep(/bnafar/)).to eq([])
   end
+
+  # Módulo 26c (CITIZEN_HIDDEN; Valor 1): a sessão nunca traz rnds_regulation.
+  it "GET /citizen/session nunca traz rnds_regulation" do
+    city = home_visit_city!
+    sign_in_citizen
+    Platform::Features.set!(city: city, key: "rnds_regulation", enabled: true, maintainer: ledi_maintainer!)
+    allow(Platform::Features).to receive(:missing).and_wrap_original do |original, *args, **kwargs|
+      args[1].to_s == "rnds_regulation" ? [] : original.call(*args, **kwargs)
+    end
+    expect(Platform::Features.usable?(city, "rnds_regulation")).to be(true)
+    get "/citizen/session"
+    expect(JSON.parse(response.body)["features"]).not_to include("rnds_regulation")
+  end
 end

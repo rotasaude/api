@@ -166,7 +166,7 @@ module Platform
       # ADR 0047: RNDS simulada, só fora de produção.
       Entry.new(key: "rnds_mock",
                 description: "RNDS simulada (desenvolvimento) — envio sem validade",
-                requires: %w[feature:rnds_immunization],
+                requires: %w[rnds_sending],
                 environments: SIMULATION_ENVS),
       # ADR 0048: transporte sanitário (módulo 30). Sem pré-requisito. Desligado:
       # /transport/* responde feature_disabled; o que já existe segue gravado.
@@ -250,7 +250,11 @@ module Platform
       Entry.new(key: "bnafar_mock",
                 description: "BNAFAR simulado — envio sem validade",
                 requires: %w[feature:bnafar],
-                environments: SIMULATION_ENVS)
+                environments: SIMULATION_ENVS),
+      # 26c: decisões 11 e 15; desligar mantém as linhas e para o envio.
+      Entry.new(key: "rnds_regulation",
+                description: "Envio da regulação à RNDS",
+                requires: %w[feature:care_regulation credential:rnds_regulation ibge_code uf])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
@@ -258,7 +262,7 @@ module Platform
     # mesmo ligadas e utilizáveis. Lista de exclusão: todo módulo futuro com
     # interruptor sensível acrescenta a sua chave aqui.
     CITIZEN_HIDDEN = %w[psychosocial_care collective_activities vector_control zoonoses
-                        bnafar bnafar_medications bnafar_vector_supplies bnafar_vaccines].freeze
+                        bnafar bnafar_medications bnafar_vector_supplies bnafar_vaccines rnds_regulation].freeze
     class UnknownFeature < StandardError; end
 
     UNREACHABLE = [ "city_unreachable" ].freeze
@@ -379,6 +383,10 @@ module Platform
       when "vector_supplies"
         "vector_supplies_disabled" unless usable?(city, "vector_control", state: state, env: env) ||
                                           usable?(city, "zoonoses", state: state, env: env)
+      # 26c (Q14): o simulado serve a vacina e a regulação; basta um dos envios utilizável.
+      when "rnds_sending"
+        "rnds_sending_disabled" unless usable?(city, "rnds_immunization", state: state, env: env) ||
+                                       usable?(city, "rnds_regulation", state: state, env: env)
       when "vaccination_catalog_reviewed"
         "vaccination_catalog_under_review" if !SIMULATION_ENVS.include?(env.to_s) && Vaccination::Catalog.under_review?
       when /\Acredential:(\w+)\z/
