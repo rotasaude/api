@@ -26,9 +26,25 @@ module Bnafar
     end
 
     # Os de `domains(city)` ligados (bnafar e domínio) até o fim do dia `day`
-    # no fuso da cidade: ligar vale a partir do dia seguinte (§1).
-    def domains_through(city, day)
-      current = domains(city)
+    # no fuso da cidade: ligar vale a partir do dia seguinte (§1). É o que a
+    # Build monta e a Delivery envia: exige o envio UTILIZÁVEL.
+    def domains_through(city, day) = switched_before(city, day, domains(city))
+
+    # Domínios com o interruptor LIGADO (bnafar e o do domínio), com o estoque
+    # do domínio utilizável, seja qual for a credencial.
+    def domains_enabled(city)
+      return [] if city.nil? || city.id.nil? || !Platform::Features.enabled?(city, KEY)
+
+      DOMAIN_KEYS.select { |domain, key| Platform::Features.enabled?(city, key) && Stock::Domain.usable?(city, domain) }.keys
+    end
+
+    # Os domínios DEVIDOS no dia `day` (R25; alerta `late`): os de
+    # `domains_enabled` ligados até o fim de `day`, sem exigir o envio
+    # utilizável. A credencial recusada o dia todo (Delivery#pause!) tira o
+    # envio de `usable?`, mas o dia continua devido e precisa alertar.
+    def domains_due(city, day) = switched_before(city, day, domains_enabled(city))
+
+    def switched_before(city, day, current)
       return [] if current.empty?
 
       changed = CityFeature.where(city_id: city.id, key: [ KEY, *DOMAIN_KEYS.values ]).pluck(:key, :changed_at).to_h
@@ -38,6 +54,7 @@ module Bnafar
 
       current.select { |domain| before.call(DOMAIN_KEYS.fetch(domain)) }
     end
+    private_class_method :switched_before
 
     def required_for?(city, location)
       domains(city).include?(Stock::Domain.for(location))

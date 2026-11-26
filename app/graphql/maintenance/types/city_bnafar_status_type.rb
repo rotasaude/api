@@ -29,7 +29,7 @@ module Maintenance
       def state
         @state ||= begin
           zone = ActiveSupport::TimeZone[object.time_zone] || Time.zone
-          due = ::Bnafar::Gate.domains_through(object, Time.current.in_time_zone(zone).to_date - 1)
+          due = ::Bnafar::Gate.domains_due(object, Time.current.in_time_zone(zone).to_date - 1)
           read do
             environment = ::Bnafar::Environment.current
             { environment: environment,

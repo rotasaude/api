@@ -87,6 +87,33 @@ RSpec.describe Bnafar::Gate, type: :model do
     expect(described_class.domains_through(city, Date.new(2026, 11, 21))).to eq([ Stock::Domain::MEDICATION ])
   end
 
+  # R25 (revisão final): o alerta `late` conta o dia devido pelo interruptor
+  # LIGADO, mesmo com a credencial recusada (Delivery#pause! → `unauthorized`).
+  it "domains_due: credencial recusada ainda deve o dia; domains_through não" do
+    city = pharmacy_city!
+    bnafar_credential!(status: "unauthorized")
+    zone = ActiveSupport::TimeZone[city.time_zone]
+    travel_to(zone.local(2026, 11, 18, 9, 0)) { switch!(city, "bnafar", "bnafar_medications") }
+    day = Date.new(2026, 11, 20)
+
+    expect(described_class.domains(city)).to eq([])
+    expect(described_class.domains_through(city, day)).to eq([])
+    expect(described_class.domains_due(city, day)).to eq([ Stock::Domain::MEDICATION ])
+  end
+
+  it "domains_due respeita o corte do dia e exige o bnafar e o domínio ligados" do
+    city = pharmacy_city!
+    bnafar_credential!(status: "unauthorized")
+    zone = ActiveSupport::TimeZone[city.time_zone]
+    travel_to(zone.local(2026, 11, 21, 0, 30)) { switch!(city, "bnafar", "bnafar_medications") }
+    expect(described_class.domains_due(city, Date.new(2026, 11, 20))).to eq([])
+    expect(described_class.domains_due(city, Date.new(2026, 11, 21))).to eq([ Stock::Domain::MEDICATION ])
+
+    switch!(city, "bnafar", enabled: false)
+    expect(described_class.domains_due(city, Date.new(2026, 11, 22))).to eq([])
+    expect(described_class.domains_due(nil, Date.new(2026, 11, 22))).to eq([])
+  end
+
   it "required_for? num vaccine_room só com bnafar_vaccines" do
     city = vaccination_city!
     bnafar_credential!

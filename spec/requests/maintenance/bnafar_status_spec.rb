@@ -42,11 +42,13 @@ RSpec.describe "Maintenance: ambiente e situação do envio à BNAFAR", type: :r
     allow(ENV).to receive(:[]).with(MaintenanceApi::ORIGIN).and_return(frontend)
     BnafarSetting.ensure_defaults!
     BnafarSetting.where(id: 1).update_all(environment: "production", updated_by_maintainer_id: nil)
-    travel_to(1.minute.ago) do
-      post "/session", params: { email_address: maintainer.email_address, password: password }, headers: browser
-      post "/session/challenge", params: { session_id: json["session_id"], code: ROTP::TOTP.new(maintainer.otp_secret).now },
-                                 headers: browser
-    end
+    travel_to(1.minute.ago) { login! }
+  end
+
+  def login!
+    post "/session", params: { email_address: maintainer.email_address, password: password }, headers: browser
+    post "/session/challenge", params: { session_id: json["session_id"], code: ROTP::TOTP.new(maintainer.otp_secret).now },
+                               headers: browser
   end
   after { CityCatalog.reset_cache! }
 
@@ -123,6 +125,26 @@ RSpec.describe "Maintenance: ambiente e situação do envio à BNAFAR", type: :r
     expect(status["enabledDomains"]).to eq([ "medication" ])
     expect(status["alert"]).to include("lost" => 1, "rejected" => 0, "lastFinishedOn" => (Time.zone.today - 3).iso8601)
     expect(json["errors"]).to be_nil
+  end
+
+  # R25: credencial recusada o dia todo (Delivery#pause! → `unauthorized`)
+  # tira o envio de `usable?`, mas o dia continua devido: o alerta sobe.
+  it "cityBnafarStatus: credencial unauthorized com bnafar e domínio ligados desde anteontem → late 1 às 15:00" do
+    pharmacy_city!
+    zone = ActiveSupport::TimeZone[city.time_zone]
+    day = (Time.current + 2.days).in_time_zone(zone).to_date
+    bnafar_on!(city, since: zone.local(day.year, day.month, day.day) - 2.days, domains: %w[bnafar_medications])
+    IntegrationCredential.where(kind: "bnafar").update_all(last_check_status: "unauthorized")
+    expect(Bnafar::Gate.domains(city)).to eq([])
+
+    travel_to(zone.local(day.year, day.month, day.day, 15, 0)) do
+      login!
+      gql!(status_query, citySlug: city.slug)
+    end
+
+    expect(json["errors"]).to be_nil
+    expect(json.dig("data", "cityBnafarStatus", "enabledDomains")).to eq([])
+    expect(json.dig("data", "cityBnafarStatus", "alert", "late")).to eq(1)
   end
 
   it "cityBnafarStatus com Rails.env production: ambiente production e não editável" do

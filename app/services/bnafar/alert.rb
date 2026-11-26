@@ -8,7 +8,7 @@
 #     de hoje (LATE_HOUR; Q16), sem limite em R+2: a parte em `processing` nunca
 #     vira `lost` (Q31) e segue alertando. Soma 1 quando
 #     não existe remessa nenhuma de R e `domains` (os domínios devidos em R,
-#     Gate.domains_through, lidos pelo chamador fora da transação) não é vazio
+#     Gate.domains_due, lidos pelo chamador fora da transação) não é vazio
 #     (R25: o envio parado antes de montar, ex. credencial recusada o dia
 #     todo, também atrasa);
 #   - `lost`: registros NÃO aceitos de remessas `lost` com `reference_on` nos

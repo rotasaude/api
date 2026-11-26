@@ -12,7 +12,7 @@ module Pharmacy
         return unless query_only!
 
         today = Time.zone.today
-        due = ::Bnafar::Gate.domains_through(Current.city, today - 1)
+        due = ::Bnafar::Gate.domains_due(Current.city, today - 1)
         submissions = BnafarSubmission.where(environment: environment, reference_on: (today - DAYS)..).order(reference_on: :desc, subject: :asc).to_a
         render json: { environment: environment,
                        alert: ::Bnafar::Alert.call(environment: environment, now: Time.current, domains: due),
