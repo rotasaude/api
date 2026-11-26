@@ -1,8 +1,8 @@
 require "rails_helper"
 
 # Módulo 26c (Valor 1; Q10): o interruptor do envio da regulação à RNDS.
-# A credencial `rnds_regulation` ainda não grava no banco (o CHECK muda na
-# Task 5), então o estado da cidade é simulado.
+# O estado da cidade é simulado nos casos de borda; o caminho real (credencial
+# gravada, CHECK de `kind` da Task 5) tem o seu exemplo.
 RSpec.describe Regulation::RndsGate, type: :model do
   let(:city) { clinical_city! }
 
@@ -37,6 +37,16 @@ RSpec.describe Regulation::RndsGate, type: :model do
     enable!
     stub_state
     expect(described_class.enabled?(city)).to be(true)
+    expect(described_class.usable?(city)).to be(false)
+  end
+
+  it "com a credencial gravada de verdade: sem ela não passa; gravada passa; recusada na conferência não passa" do
+    enable!
+    CityConnection.with(city) { city_profile!.update!(uf: "PR", ibge_code: "4106902") }
+    expect(described_class.usable?(city)).to be(false)
+    CityConnection.with(city) { rnds_regulation_credential! }
+    expect(described_class.usable?(city)).to be(true)
+    CityConnection.with(city) { IntegrationCredential.find_by!(kind: "rnds_regulation").update_columns(last_check_status: "unauthorized") }
     expect(described_class.usable?(city)).to be(false)
   end
 

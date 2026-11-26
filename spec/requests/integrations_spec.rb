@@ -114,7 +114,7 @@ RSpec.describe "Integrações da cidade", type: :request do
     let(:pfx_password) { "pfx-regulacao-secreta" }
     let(:encoded) { Base64.strict_encode64(self_signed_pfx(password: pfx_password, not_after: 1.year.from_now)) }
     let(:body) do
-      { pfx_base64: encoded, pfx_password: pfx_password, requester_cnes: "1234567", requester_id: "2926", responsible_cns: cns }
+      { pfx_base64: encoded, pfx_password: pfx_password, requester_cnes: "1234567", requester_id: "29260000000001", responsible_cns: cns }
     end
 
     it "PUT sem step-up: 401 mfa_required" do
@@ -139,30 +139,28 @@ RSpec.describe "Integrações da cidade", type: :request do
       expect(json["credentials"].map { |c| c["kind"] }).to include("rnds", "rnds_regulation")
     end
 
-    it "a rnds continua com três chaves: com as duas a mais, 422" do
+    it "a rnds continua com três chaves: as duas a mais são descartadas e o PUT responde 200" do
       sign_in_admin!
-      put_credential("rnds", body.slice(:pfx_base64, :pfx_password, :requester_cnes))
+      put_credential("rnds", body)
       expect(response).to have_http_status(:ok)
       expect(IntegrationCredential.find_by!(kind: "rnds").secret.keys.sort).to eq(%w[pfx_base64 pfx_password requester_cnes])
     end
 
     it "PUT com step-up grava e responde sem segredo; audita só com city_id" do
-      pending "o CHECK ck_integration_credentials_kind aceita rnds_regulation só na migração da Task 5"
       sign_in_admin!
       sink = ActiveSupport::Logger.new(logs = StringIO.new)
       Rails.logger.broadcast_to(sink)
       put_credential("rnds_regulation", body)
       expect(response).to have_http_status(:ok)
       expect(json).to include("kind" => "rnds_regulation", "set" => true)
-      expect(response.body).not_to include(encoded[0, 40], pfx_password, cns, "2926")
-      expect(logs.string).not_to include(encoded[0, 40], pfx_password, cns)
+      expect(response.body).not_to include(encoded[0, 40], pfx_password, cns, "29260000000001")
+      expect(logs.string).not_to include(encoded[0, 40], pfx_password, cns, "29260000000001")
       expect(PlatformEvent.where(name: "rnds_regulation.credential_set").map(&:payload)).to eq([ { "city_id" => city.id } ])
     ensure
       Rails.logger.stop_broadcasting_to(sink) if sink
     end
 
     it "POST check com rnds_mock emite token novo no fake e grava ok" do
-      pending "o CHECK ck_integration_credentials_kind aceita rnds_regulation só na migração da Task 5"
       fake = FakeRnds::App.new(timeout_delay: 0)
       base = "http://fake-rnds.test:8094"
       vaccination_city!(rnds: true)

@@ -106,7 +106,6 @@ RSpec.describe Rnds::Client do
 
     context "com a credencial rnds_regulation gravada" do
       before do
-        pending "o CHECK ck_integration_credentials_kind aceita rnds_regulation só na migração da Task 5"
         CityConnection.with(city) { rnds_regulation_credential!(responsible_cns: cns_regulation) }
       end
 
@@ -114,6 +113,13 @@ RSpec.describe Rnds::Client do
 
       it "usa o PFX dessa credencial e lê o responsible_cns dela" do
         regulation = described_class.for(city, kind: "rnds_regulation")
+        der = lambda do |kind|
+          credential = CityConnection.with(city) { IntegrationCredential.find_by!(kind: kind) }
+          OpenSSL::PKCS12.new(credential.pfx_bytes, credential.pfx_password).certificate.to_der
+        end
+        expect(der.call("rnds_regulation")).not_to eq(der.call("rnds"))
+        expect(regulation.send(:mtls)[:cert].to_der).to eq(der.call("rnds_regulation"))
+        expect(client.send(:mtls)[:cert].to_der).to eq(der.call("rnds"))
         expect(regulation.responsible_cns).to eq(cns_regulation)
         expect(regulation.token!(fresh: true)).to be_present
         expect(regulation.inspect).not_to include(cns_regulation)

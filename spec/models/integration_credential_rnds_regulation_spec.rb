@@ -2,8 +2,8 @@ require "rails_helper"
 
 # Módulo 26c (Q13): a credencial `rnds_regulation` leva as três chaves da `rnds`
 # mais o identificador do solicitante (só dígitos) e o CNS do responsável.
-# O CHECK de `kind` do banco só aceita o valor novo na migração da Task 5; até
-# lá o modelo é exercitado só com `valid?`, sem gravar.
+# A gravação (CHECK de `kind`, migração da Task 5) é provada em
+# spec/models/regulation_rnds_schema_spec.rb; aqui, só `valid?`.
 RSpec.describe IntegrationCredential, type: :model do
   let!(:city) { vaccination_city! }
   let(:admin) { pharmacy_admin! }

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_900004) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_26_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -625,6 +625,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900004) do
     t.uuid "care_provider_id", null: false
     t.datetime "created_at", null: false
     t.date "month", null: false
+    t.string "performer_cbo", limit: 6
     t.integer "quantity", null: false
     t.string "target_code", limit: 10, null: false
     t.string "target_type", null: false
@@ -633,6 +634,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900004) do
     t.index ["care_provider_id", "target_type", "target_code", "month"], name: "idx_care_offers_unique", unique: true
     t.index ["target_type", "target_code", "month"], name: "idx_care_offers_target_month"
     t.check_constraint "month = date_trunc('month'::text, month::timestamp without time zone)::date", name: "ck_care_offers_month"
+    t.check_constraint "performer_cbo IS NULL OR performer_cbo::text ~ '^[0-9]{6}$'::text", name: "ck_care_offers_performer_cbo"
     t.check_constraint "quantity >= 0 AND quantity <= 9999", name: "ck_care_offers_quantity"
     t.check_constraint "target_type::text = ANY (ARRAY['specialty'::text, 'procedure'::text])", name: "ck_care_offers_target_type"
   end
@@ -652,6 +654,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900004) do
     t.boolean "active", default: true, null: false
     t.string "cnes", limit: 7
     t.datetime "created_at", null: false
+    t.string "default_performer_cbo", limit: 6
     t.uuid "health_unit_id"
     t.string "ibge_code", limit: 7
     t.string "kind", null: false
@@ -662,6 +665,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900004) do
     t.index ["health_unit_id"], name: "idx_care_providers_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
     t.check_constraint "(kind::text = 'own'::text) = (health_unit_id IS NOT NULL)", name: "ck_care_providers_unit"
     t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_care_providers_cnes"
+    t.check_constraint "default_performer_cbo IS NULL OR default_performer_cbo::text ~ '^[0-9]{6}$'::text", name: "ck_care_providers_default_performer_cbo"
     t.check_constraint "ibge_code IS NULL OR ibge_code::text ~ '^[0-9]{7}$'::text", name: "ck_care_providers_ibge_code"
     t.check_constraint "kind::text = 'own'::text OR cnes IS NOT NULL", name: "ck_care_providers_cnes_required"
     t.check_constraint "kind::text = ANY (ARRAY['own'::text, 'contracted'::text, 'consortium'::text, 'ppi'::text])", name: "ck_care_providers_kind"
@@ -2147,7 +2151,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900004) do
     t.index ["set_by_user_id"], name: "index_integration_credentials_on_set_by_user_id"
     t.check_constraint "environment::text = ANY (ARRAY['homologation'::text, 'production'::text])", name: "ck_integration_credentials_environment"
     t.check_constraint "kind::text = 'bnafar'::text OR environment::text = 'production'::text", name: "ck_integration_credentials_environment_kind"
-    t.check_constraint "kind::text = ANY (ARRAY['ledi'::text, 'cadsus'::text, 'rnds'::text, 'bnafar'::text])", name: "ck_integration_credentials_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['ledi'::text, 'cadsus'::text, 'rnds'::text, 'bnafar'::text, 'rnds_regulation'::text])", name: "ck_integration_credentials_kind"
     t.check_constraint "last_check_status IS NULL OR last_check_status::text = ANY (ARRAY['ok', 'unauthorized', 'unreachable', 'error']::text[])", name: "ck_integration_credentials_status"
   end
 
@@ -4159,6 +4163,61 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900004) do
     t.uuid "updated_by_user_id"
     t.check_constraint "color::text = ANY (ARRAY['red'::text, 'yellow'::text, 'green'::text, 'blue'::text])", name: "ck_regulation_risk_deadlines_color"
     t.check_constraint "days >= 1 AND days <= 365", name: "ck_regulation_risk_deadlines_days"
+  end
+
+  create_table "regulation_rnds_deliveries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "accepted_at"
+    t.string "digest", limit: 64
+    t.text "error_codes", default: [], null: false, array: true
+    t.integer "http_status"
+    t.string "kind", null: false
+    t.string "mira_status"
+    t.text "payload"
+    t.uuid "regulation_rnds_sync_id", null: false
+    t.string "rnds_id", limit: 100
+    t.datetime "sent_at", null: false
+    t.index ["regulation_rnds_sync_id", "sent_at"], name: "idx_regulation_rnds_deliveries_sync"
+    t.check_constraint "kind::text = ANY (ARRAY['create'::text, 'replace'::text, 'delete'::text])", name: "ck_regulation_rnds_deliveries_kind"
+    t.check_constraint "mira_status IS NULL OR mira_status::text = ANY (ARRAY['pending'::text, 'booked'::text, 'attended'::text, 'cancelled'::text, 'absence'::text, 'excluded'::text, 'returned-to-requester'::text])", name: "ck_regulation_rnds_deliveries_mira_status"
+  end
+
+  create_table "regulation_rnds_settings", id: :smallint, default: nil, force: :cascade do |t|
+    t.jsonb "priority_by_color", default: {"red" => "urgent", "yellow" => "routine", "green" => "routine", "blue" => "routine"}, null: false
+    t.boolean "send_external", default: false, null: false
+    t.jsonb "specialty_sigtap", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id"
+    t.integer "version", default: 1, null: false
+    t.check_constraint "id = 1", name: "ck_regulation_rnds_settings_singleton"
+  end
+
+  create_table "regulation_rnds_syncs", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.text "blocked_reasons", default: [], null: false, array: true
+    t.string "bundle_identifier", limit: 64, null: false
+    t.datetime "claimed_at"
+    t.datetime "created_at", null: false
+    t.string "desired_digest", limit: 64
+    t.string "desired_status"
+    t.datetime "enqueued_at", null: false
+    t.boolean "initial_load", default: false, null: false
+    t.datetime "last_accepted_at"
+    t.text "last_error_codes", default: [], null: false, array: true
+    t.string "last_rnds_id", limit: 100
+    t.datetime "next_attempt_at"
+    t.jsonb "pending_steps", default: [], null: false
+    t.uuid "regulation_request_id", null: false
+    t.string "sent_digest", limit: 64
+    t.string "sent_status"
+    t.string "status", null: false
+    t.datetime "updated_at", null: false
+    t.index ["bundle_identifier"], name: "idx_regulation_rnds_syncs_bundle_identifier", unique: true
+    t.index ["regulation_request_id"], name: "index_regulation_rnds_syncs_on_regulation_request_id", unique: true
+    t.index ["status", "next_attempt_at"], name: "idx_regulation_rnds_syncs_due", where: "((status)::text = ANY (ARRAY['queued'::text, 'blocked'::text, 'sending'::text]))"
+    t.check_constraint "bundle_identifier::text ~ '^[A-Za-z0-9_-]{1,64}$'::text", name: "ck_regulation_rnds_syncs_bundle_identifier"
+    t.check_constraint "desired_status IS NULL OR desired_status::text = ANY (ARRAY['pending'::text, 'booked'::text, 'attended'::text, 'cancelled'::text, 'absence'::text, 'excluded'::text, 'returned-to-requester'::text])", name: "ck_regulation_rnds_syncs_desired_status"
+    t.check_constraint "sent_status IS NULL OR sent_status::text = ANY (ARRAY['pending'::text, 'booked'::text, 'attended'::text, 'cancelled'::text, 'absence'::text, 'excluded'::text, 'returned-to-requester'::text])", name: "ck_regulation_rnds_syncs_sent_status"
+    t.check_constraint "status::text = ANY (ARRAY['idle'::text, 'queued'::text, 'sending'::text, 'blocked'::text, 'rejected'::text, 'failed'::text, 'excluded'::text, 'erased'::text])", name: "ck_regulation_rnds_syncs_status"
   end
 
   create_table "report_snapshots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -6457,6 +6516,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_900004) do
   add_foreign_key "tfd_cases", "regulation_requests"
   add_foreign_key "transport_trip_passengers", "regulation_requests"
   add_foreign_key "regulation_risk_deadlines", "users", column: "updated_by_user_id"
+  add_foreign_key "regulation_rnds_deliveries", "regulation_rnds_syncs"
+  add_foreign_key "regulation_rnds_settings", "users", column: "updated_by_user_id"
+  add_foreign_key "regulation_rnds_syncs", "regulation_requests"
   add_foreign_key "report_snapshots", "protocol_definitions"
   add_foreign_key "report_snapshots", "triages"
   add_foreign_key "rnds_outbox", "immunizations"

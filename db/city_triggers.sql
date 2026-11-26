@@ -5510,3 +5510,61 @@ BEGIN
   END LOOP;
 END
 $do$;
+
+-- Módulo 26c (MIRA; contrato; Q6, Q16, Q17): o envio da regulação à RNDS. O
+-- estado por pedido e as remessas nunca somem (DELETE e TRUNCATE recusados).
+--   - regulation_rnds_syncs: só o DELETE é recusado; a linha anda à vontade do
+--     código (fila, claim, aceite, bloqueio), com os catálogos nos CHECKs;
+--   - regulation_rnds_deliveries: a remessa é o registro do que foi enviado.
+--     O payload só vira NULL, em qualquer remessa, aceita ou não (Q17: purga
+--     por COALESCE(accepted_at, sent_at)), e sob a marca da re-cifra
+--     (rota.reencrypting) é regravado sem mexer em mais nada; a resposta
+--     (`accepted_at`, `rnds_id`, `http_status`, `error_codes`) grava-se uma
+--     vez; o resto (pedido, tipo, situação, impressão digital, `sent_at`)
+--     nunca muda.
+CREATE OR REPLACE FUNCTION rota_regulation_rnds_delivery_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['payload', 'accepted_at', 'rnds_id', 'http_status', 'error_codes'];
+BEGIN
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'payload') = (to_jsonb(OLD) - 'payload')
+     AND OLD.payload IS NOT NULL AND NEW.payload IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'regulation_rnds_deliveries: only the payload (to NULL) and the response change';
+  END IF;
+  IF NEW.payload IS DISTINCT FROM OLD.payload AND NEW.payload IS NOT NULL THEN
+    RAISE EXCEPTION 'regulation_rnds_deliveries: payload only becomes NULL';
+  END IF;
+  IF (OLD.accepted_at IS NOT NULL AND NEW.accepted_at IS DISTINCT FROM OLD.accepted_at)
+     OR (OLD.rnds_id IS NOT NULL AND NEW.rnds_id IS DISTINCT FROM OLD.rnds_id)
+     OR (OLD.http_status IS NOT NULL AND NEW.http_status IS DISTINCT FROM OLD.http_status)
+     OR (cardinality(OLD.error_codes) > 0 AND NEW.error_codes IS DISTINCT FROM OLD.error_codes) THEN
+    RAISE EXCEPTION 'regulation_rnds_deliveries: accepted_at, rnds_id, http_status and error_codes are recorded once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.regulation_rnds_deliveries') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS regulation_rnds_deliveries_guard ON regulation_rnds_deliveries';
+    EXECUTE 'CREATE TRIGGER regulation_rnds_deliveries_guard BEFORE UPDATE ON regulation_rnds_deliveries
+      FOR EACH ROW EXECUTE FUNCTION rota_regulation_rnds_delivery_guard()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['regulation_rnds_syncs', 'regulation_rnds_deliveries'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END IF;
+  END LOOP;
+END
+$do$;

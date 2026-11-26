@@ -245,7 +245,9 @@ module CityEncryption
     # A nota da inspeção da demanda, a do desfecho da observação, a do
     # desfecho do cão reagente e o motivo da eutanásia.
     [ ZoonosesDemand, :inspection_note ], [ BiteObservation, :outcome_note ],
-    [ LeishDogOutcome, :note ], [ Euthanasia, :reason_note ]
+    [ LeishDogOutcome, :note ], [ Euthanasia, :reason_note ],
+    # Módulo 26c: o Bundle RIRA enviado à RNDS (apagado em 30 dias, Q17).
+    [ RegulationRndsDelivery, :payload ]
   ].freeze
 
   module_function

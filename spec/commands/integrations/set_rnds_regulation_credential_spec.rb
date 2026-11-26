@@ -1,8 +1,7 @@
 require "rails_helper"
 
-# Módulo 26c (Q13): validação do segredo da `rnds_regulation` no comando. As
-# recusas não gravam, então rodam já; a gravação depende do CHECK de `kind`
-# da migração da Task 5.
+# Módulo 26c (Q13): validação do segredo da `rnds_regulation` no comando; a
+# gravação passa pelo CHECK de `kind` da migração da Task 5.
 RSpec.describe Integrations::SetCredential do
   let!(:city) { vaccination_city! }
   let(:admin) { pharmacy_admin! }
@@ -40,7 +39,6 @@ RSpec.describe Integrations::SetCredential do
   end
 
   it "grava, guarda só as cinco chaves e audita na plataforma só com city_id" do
-    pending "o CHECK ck_integration_credentials_kind aceita rnds_regulation só na migração da Task 5"
     result = described_class.call(kind: "rnds_regulation", secret: secret.merge("extra" => "x"), by: admin, city: city)
     expect(result).to be_ok
     credential = IntegrationCredential.find_by!(kind: "rnds_regulation")

@@ -87,7 +87,7 @@ RSpec.describe ReencryptionJob do
                                          HomeVisit CollectiveActivity CollectiveActivityParticipant
                                          VectorSample VectorStockShortfall OvitrapReading VectorTask TransmissionBlock
                                          Animal RabiesVaccination ZoonosesDemand BiteObservation LeishDogOutcome
-                                         Euthanasia])
+                                         Euthanasia RegulationRndsDelivery])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end

@@ -3,6 +3,8 @@
 # obrigatório). Nunca é apagado (trigger): desativa-se. Tipo, CNES e unidade
 # são CHECKs do banco; a validação com mensagem é dos comandos. ADR 0048: o
 # município do prestador (ibge_code, 7 dígitos; nulo = a própria cidade).
+# Módulo 26c (decisão 14, Q2, Q12): `default_performer_cbo`, o CBO padrão do
+# executante (6 dígitos ou nulo, CHECK), o último recurso do envio à RNDS.
 class CareProvider < ApplicationRecord
   belongs_to :health_unit, optional: true
   belongs_to :updated_by_user, class_name: "User"
