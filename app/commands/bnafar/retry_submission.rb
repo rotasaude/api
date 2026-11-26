@@ -39,7 +39,7 @@ module Bnafar
     end
 
     def open?(submission, today)
-      submission.status != "lost" && Window.retryable?(submission, now: today.in_time_zone)
+      submission.status != "lost" && Window.retryable?(submission, now: [ Time.current, today.in_time_zone ].max)
     end
 
     def requeue!(submission, records, payloads)

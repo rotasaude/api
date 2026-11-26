@@ -38,19 +38,31 @@ module Bnafar
       !limit.nil? && now <= limit
     end
 
-    def retry_until(submission) = (submission.reference_on + 1).in_time_zone.end_of_day
+    # Q42: o fim do reenvio de R é o MENOR entre o fim de R+1 no fuso da cidade
+    # e o fim de R+1 em Brasília (-03:00, a hora do SI-BNAFAR, que só aceita a
+    # data atual ou a do dia anterior: MSG73). Cidade a oeste de Brasília fecha
+    # às 23:00 locais (22:00 no Acre); a de Brasília e a a leste, às 23:59.
+    def retry_until(submission) = retry_until_on(submission.reference_on)
+
+    def retry_until_on(reference_on)
+      day = reference_on + 1
+      brasilia = Time.new(day.year, day.month, day.day, 0, 0, 0, "-03:00").end_of_day
+      [ day.in_time_zone.end_of_day, brasilia ].min
+    end
 
     def retryable?(submission, now: Time.current) = now <= retry_until(submission)
 
-    # Toda parte `post` ainda `queued` de remessa de `reference_on <= today - 2`
+    # Toda parte `post` ainda `queued` de remessa com a janela de reenvio fechada
+    # (`now > retry_until`, Q42)
     # vira `failed` (não sai mais), também sob remessa já `lost` (a sobra de um
     # `sending` que voltou transitório) ou com outra parte em voo. Depois, a
     # remessa sem parte `post` em voo que não está `finished` ou tem registro
     # de parte `post` não aceito (recusado e não reenviado, ou que nunca saiu)
     # vira `lost`. -> [id] das que viraram `lost`
     def close!(today:, now: Time.current)
-      sweep!(today, now)
-      ids = BnafarSubmission.where(reference_on: ..(today - 2)).where.not(status: "lost")
+      due = due_ids(today, now)
+      sweep!(due, now)
+      ids = BnafarSubmission.where(id: due).where.not(status: "lost")
                             .where.not(id: inflight_posts.select(:bnafar_submission_id))
                             .where("bnafar_submissions.status <> 'finished' OR EXISTS (#{unaccepted_posts.select('1').to_sql})")
                             .pluck(:id)
@@ -74,8 +86,15 @@ module Bnafar
                   .where("bnafar_records.bnafar_submission_id = bnafar_submissions.id")
     end
 
-    def sweep!(today, now)
-      BnafarBatch.where(operation: "post", status: "queued", bnafar_submission_id: BnafarSubmission.where(reference_on: ..(today - 2)).select(:id))
+    # Remessas cuja janela de reenvio já fechou (`now > retry_until`, Q42). O
+    # recorte por data só poupa a leitura: nenhuma fecha antes de R+1.
+    def due_ids(today, now)
+      BnafarSubmission.where(reference_on: ..(today - 1)).pluck(:id, :reference_on)
+                      .select { |_id, reference_on| now > retry_until_on(reference_on) }.map(&:first)
+    end
+
+    def sweep!(due, now)
+      BnafarBatch.where(operation: "post", status: "queued", bnafar_submission_id: due)
                  .update_all(status: "failed", last_error: WINDOW_CLOSED, finished_at: now, updated_at: now)
     end
 
@@ -92,6 +111,6 @@ module Bnafar
         true
       end
     end
-    private_class_method :inflight_posts, :unaccepted_posts, :sweep!, :lose!
+    private_class_method :inflight_posts, :unaccepted_posts, :due_ids, :sweep!, :lose!
   end
 end
