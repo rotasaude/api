@@ -34,12 +34,12 @@ module CareRegulation
     end
 
     # Só o andamento (e a publicação): não mexe em status nem em version.
-    def record_event!(request:, status:, by:, reason: nil, publish: true, event: nil)
+    def record_event!(request:, status:, by:, reason: nil, publish: true, event: nil, schedule: {})
       status = status.to_s
       name = (event || EVENT_FOR.fetch(status)).to_s
       raise ArgumentError, "evento desconhecido: #{name}" unless EVENTS.include?(name)
 
-      RegulationRequestEvent.create!(regulation_request: request, status: status, by_user: by, reason: reason)
+      RegulationRequestEvent.create!(regulation_request: request, status: status, by_user: by, reason: reason, **schedule)
       return unless publish
 
       DomainEvents.publish("regulation_request.#{name}", regulation_request_id: request.id, user_id: by&.id)

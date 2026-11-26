@@ -23,12 +23,17 @@ module Regulation
   # - `scheduled_at` e `scheduled_ends_at` (Q20): rede própria → o horário
   #   vivo/último da cadeia (fim = `effective_ends_at`; legado, +15 min) ou o
   #   do pedido; externo → o do pedido, com fim em `+ Appointment::LEGACY_SPAN`.
-  # - `absences` (Q18, Q22): os horários `no_show` da cadeia, em ordem, como
-  #   `Slot(starts_at, ends_at, cnes da unidade)`. A cadeia é lida qualquer que
-  #   seja a rede da autorização vigente: a falta vale pelo horário faltado (uma
-  #   falta própria seguida de reautorização contratada segue própria). O
-  #   `expired` não é falta (volta a `authorized` no 26a); a falta externa não
-  #   tem horário na cadeia.
+  # - `absences` (Q18, Q22, Q24): uma `Slot(starts_at, ends_at, cnes,
+  #   missed_at)` por linha `missed` do andamento, na ordem. A rede é a do
+  #   horário faltado, não a da autorização vigente:
+  #   - rede própria: o horário `no_show` da cadeia com a data da linha (ou, na
+  #     linha sem data — falta de antes da Q24 —, o último `no_show` ainda não
+  #     usado até ela): datas do horário e CNES da unidade dele;
+  #   - externo: a data, o fim e o prestador gravados na linha (sem fim, a
+  #     data + LEGACY_SPAN; CNES do prestador);
+  #   - linha sem data e sem `no_show` (falta externa de antes da Q24): sem
+  #     horário (a conferência barra com `external_absence_without_schedule`).
+  #   O `expired` não é falta (volta a `authorized` no 26a).
   # - `status_times`: { situação MIRA => instante da última linha do andamento
   #   que leva a ela } (a `pending` cai no `requested_at` sem linha).
   #
@@ -44,7 +49,12 @@ module Regulation
     ACTIVE_APPOINTMENTS = %w[scheduled confirmed checked_in].freeze
     MISSED_APPOINTMENT = "no_show".freeze
     # Um horário faltado: datas e o CNES da unidade dele (executante da falta).
-    Slot = Data.define(:starts_at, :ends_at, :cnes)
+    # `missed_at`: o instante da linha `missed` (padrão: o início do horário).
+    Slot = Data.define(:starts_at, :ends_at, :cnes, :missed_at) do
+      def initialize(starts_at:, ends_at:, cnes:, missed_at: starts_at)
+        super(starts_at: starts_at, ends_at: ends_at, cnes: cnes, missed_at: missed_at)
+      end
+    end
     # andamento da 26a => situação MIRA (a mesma tabela do RndsStatus; `closed`
     # depende das faltas).
     EVENT_STATUS = RndsStatus::RULES.values.each_with_object({ "missed" => RndsStatus::ABSENCE }) do |(mira, events), map|
@@ -75,9 +85,7 @@ module Regulation
         cid10: request.cid10.presence, ciap2: request.ciap2.presence,
         requested_at: request.requested_at, authorized_at: authorization&.created_at,
         scheduled_at: scheduled_at, scheduled_ends_at: ends_at,
-        absences: appointments.select { |a| a.status == MISSED_APPOINTMENT }.sort_by(&:scheduled_at).map do |a|
-          Slot.new(starts_at: a.scheduled_at, ends_at: a.effective_ends_at, cnes: a.health_unit&.cnes.presence)
-        end.freeze,
+        absences: absences(request, appointments),
         status_times: status_times(request).freeze, own_network: own
       )
     end
@@ -88,6 +96,26 @@ module Regulation
       Appointment.joins(:request).where(appointment_requests: { origin_regulation_request_id: request.id })
                  .includes(:health_unit, shift: :professional_link)
                  .order(:scheduled_at, :created_at, :id).to_a
+    end
+
+    def self.absences(request, appointments)
+      no_shows = appointments.select { |a| a.status == MISSED_APPOINTMENT }.sort_by(&:scheduled_at)
+      used = []
+      request.events.select { |e| e.status == "missed" }.filter_map do |row|
+        appointment = if row.scheduled_at
+                        no_shows.find { |a| a.scheduled_at == row.scheduled_at }
+                      else
+                        (no_shows - used).select { |a| a.scheduled_at <= row.created_at }.last
+                      end
+        if appointment
+          used << appointment
+          Slot.new(starts_at: appointment.scheduled_at, ends_at: appointment.effective_ends_at,
+                   cnes: appointment.health_unit&.cnes.presence, missed_at: row.created_at)
+        elsif row.scheduled_at
+          Slot.new(starts_at: row.scheduled_at, ends_at: row.ends_at || row.scheduled_at + Appointment::LEGACY_SPAN,
+                   cnes: row.care_provider&.cnes.presence, missed_at: row.created_at)
+        end
+      end.freeze
     end
 
     def self.sigtap_for(request, settings)
@@ -115,7 +143,7 @@ module Regulation
         times[status] = event.created_at if status && (times[status].nil? || event.created_at > times[status])
       end.tap { |times| times["pending"] ||= request.requested_at if request.requested_at }
     end
-    private_class_method :chain_appointments, :sigtap_for, :regulable?, :performer_cbo, :status_times
+    private_class_method :chain_appointments, :absences, :sigtap_for, :regulable?, :performer_cbo, :status_times
 
     def inspect = "#<Regulation::RiraFacts [FILTERED]>"
     def to_s = inspect

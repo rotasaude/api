@@ -522,6 +522,7 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       read_facts = read(request, credential: rnds_regulation_credential!)
       expect(read_facts.own_network).to be(false)
       expect(read_facts.absences.map(&:starts_at)).to eq([ missed.scheduled_at ])
+      expect(read_facts.absences.map(&:missed_at)).to eq([ request.events.find { |e| e.status == "missed" }.created_at ])
       step = Regulation::RndsStatus.steps(request, since: nil, settings: settings).first
       expect(step["status"]).to eq("absence")
       bundle = described_class.build(facts: read_facts, sync: sync_row, status: step, now: Time.current)
@@ -531,6 +532,53 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       expect(Regulation::RndsValidation.call(facts: read_facts, status: step)).to eq(:ok)
     end
 
+    def contracted_scheduled!(provider:, at:)
+      request = reauthorize!(regulation_request!(type: "procedure", target_code: "0401010074", unit: requester_unit),
+                             offer: offer!(provider: provider, target_type: "procedure", target_code: "0401010074"))
+      schedule_external!(request, provider: provider, at: at)
+    end
+
+    def outcome_missed!(request)
+      result = CareRegulation::RecordOutcome.call(request: request.reload, result: "missed", version: request.version, by: regulator)
+      raise "desfecho recusado: #{result.reason}" if result.failure?
+
+      request.reload
+    end
+
+    it "falta municipal num prestador contratado (Q24): sai com as datas da linha missed e o CNES do prestador" do
+      provider = external_provider!
+      at = (now + 2.days).change(hour: 14)
+      request = contracted_scheduled!(provider: provider, at: at)
+      travel_to at + 1.day
+      request = outcome_missed!(request)
+      expect(request).to have_attributes(status: "pending", scheduled_at: nil, care_provider_id: nil)
+      read_facts = read(request, credential: rnds_regulation_credential!)
+      expect(read_facts.own_network).to be(false)
+      step = Regulation::RndsStatus.steps(request, since: nil, settings: settings).first
+      bundle = described_class.build(facts: read_facts, sync: sync_row, status: step, now: Time.current)
+      expect(res(bundle, "Appointment")).to include("status" => "noshow", "start" => at.iso8601,
+                                                    "end" => (at + Appointment::LEGACY_SPAN).iso8601)
+      expect(res(bundle, "ServiceRequest")).to include("occurrenceDateTime" => at.iso8601)
+      expect(res(bundle, "ServiceRequest").dig("performer", 0, "identifier", "value")).to eq(provider.cnes)
+      expect(Regulation::RiraSkeleton.problems(bundle)).to eq([])
+      expect(Regulation::RndsValidation.call(facts: read_facts, status: step)).to eq(:ok)
+    end
+
+    it "falta registrada antes do deploy, sem horário na linha missed → external_absence_without_schedule" do
+      provider = external_provider!
+      at = (now + 2.days).change(hour: 14)
+      request = contracted_scheduled!(provider: provider, at: at)
+      travel_to at + 1.day
+      request.update_columns(scheduled_at: nil, care_provider_id: nil) # a linha nasce como as de antes da Q24
+      request = outcome_missed!(request)
+      expect(request.events.find { |e| e.status == "missed" }.scheduled_at).to be_nil
+      read_facts = read(request, credential: rnds_regulation_credential!)
+      step = Regulation::RndsStatus.steps(request, since: nil, settings: settings).first
+      expect(Regulation::RndsValidation.call(facts: read_facts, status: step)).to eq([ :blocked, %w[external_absence_without_schedule] ])
+      bundle = described_class.build(facts: read_facts, sync: sync_row, status: step, now: Time.current)
+      expect(res(bundle, "Appointment").keys).not_to include("start", "end")
+    end
+
     it "absence na rede própria: datas e executante do no_show da cadeia (Q18, Q20–Q22)" do
       booked = own_booked!(shift: false)
       missed = no_show!(booked[:appointment])
@@ -538,9 +586,10 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       request = booked[:request].reload
       expect(request).to have_attributes(status: "pending", misses: 1)
       read_facts = read(request, credential: rnds_regulation_credential!)
-      expect(read_facts.absences).to eq([ Regulation::RiraFacts::Slot.new(starts_at: missed.scheduled_at,
-                                                                           ends_at: missed.scheduled_at + 15.minutes,
-                                                                           cnes: booked[:unit].cnes) ])
+      expect(read_facts.absences).to eq([ Regulation::RiraFacts::Slot.new(
+        starts_at: missed.scheduled_at, ends_at: missed.scheduled_at + 15.minutes, cnes: booked[:unit].cnes,
+        missed_at: request.events.find { |e| e.status == "missed" }.created_at
+      ) ])
       expect(read_facts.status_times["absence"]).to eq(request.events.select { |e| e.status == "missed" }.last.created_at)
       step = Regulation::RndsStatus.steps(request, since: nil, settings: settings).first
       bundle = described_class.build(facts: read_facts, sync: sync_row, status: step, now: Time.current)

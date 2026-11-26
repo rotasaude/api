@@ -17,6 +17,11 @@
 #        remarcou, o cidadão já foi atendido ou cancelou).
 #   A cota NÃO é liberada: a falta consome a vaga (Desvio 3).
 #
+# Módulo 26c (Q24): a linha `missed` guarda o horário e o prestador que a falta
+# vai limpar (`scheduled_at`, `ends_at` — o fim do horário no_show da rede
+# própria, senão `scheduled_at + Appointment::LEGACY_SPAN` — e
+# `care_provider_id`), para o envio à RNDS. Nada mais muda.
+#
 # A linha `missed` do andamento é também a marca de falta já contada: o
 # AppointmentSync conta as faltas da autorização vigente pelas linhas
 # `missed` gravadas depois dela.
@@ -72,8 +77,23 @@ module CareRegulation
       count = [ count, Catalog::MAX_MISSES - request.misses ].min
       raise ArgumentError, "nenhuma falta a contar" unless count.positive?
 
-      count.times { Transition.record_event!(request: request, status: "missed", by: by) }
+      schedule = schedule_of(request)
+      count.times { Transition.record_event!(request: request, status: "missed", by: by, schedule: schedule) }
       request.misses + count
     end
+
+    # O horário e o prestador do pedido no instante da falta (Q24). O fim é o
+    # do horário da agenda com a mesma data (rede própria; legado, +15 min);
+    # sem ele, a data + LEGACY_SPAN.
+    def schedule_of(request)
+      at = request.scheduled_at
+      return { care_provider_id: request.care_provider_id } unless at
+
+      appointment = Appointment.joins(:request).where(appointment_requests: { origin_regulation_request_id: request.id })
+                               .where(scheduled_at: at).order(:created_at, :id).last
+      { scheduled_at: at, ends_at: appointment ? appointment.effective_ends_at : at + Appointment::LEGACY_SPAN,
+        care_provider_id: request.care_provider_id }
+    end
+    private_class_method :schedule_of
   end
 end

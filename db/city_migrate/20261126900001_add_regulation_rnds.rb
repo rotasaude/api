@@ -14,6 +14,10 @@
 #     de 30 dias, Q17) e a resposta (status HTTP, id RNDS, códigos, aceite);
 #   - care_offers.performer_cbo e care_providers.default_performer_cbo: o CBO
 #     do executante (decisão 14, Q2, Q12), 6 dígitos ou nulo;
+#   - regulation_request_events.scheduled_at, ends_at e care_provider_id (Q24):
+#     a linha `missed` guarda o horário e o prestador que a falta limpa do
+#     pedido (nulos nas outras linhas e nas faltas de antes); a linha segue só
+#     acréscimo (o trigger de re-cifra não muda);
 #   - integration_credentials: o tipo aceita rnds_regulation (sempre
 #     production: o CHECK de ambiente do 27b fica como está).
 # Triggers em db/city_triggers.sql (bloco "Módulo 26c"; o dump não representa
@@ -34,6 +38,7 @@ class AddRegulationRnds < ActiveRecord::Migration[8.1]
     create_syncs
     create_deliveries
     change_performers
+    add_miss_schedule
     replace_check :integration_credentials, "ck_integration_credentials_kind", in_list("kind", CREDENTIAL_KINDS)
 
     execute File.read(Rails.root.join("db/city_triggers.sql"))
@@ -117,6 +122,13 @@ class AddRegulationRnds < ActiveRecord::Migration[8.1]
     add_column :care_providers, :default_performer_cbo, :string, limit: 6
     add_check_constraint :care_providers, "default_performer_cbo IS NULL OR default_performer_cbo::text ~ '^[0-9]{6}$'::text",
                          name: "ck_care_providers_default_performer_cbo"
+  end
+
+  def add_miss_schedule
+    add_column :regulation_request_events, :scheduled_at, :timestamptz
+    add_column :regulation_request_events, :ends_at, :timestamptz
+    add_column :regulation_request_events, :care_provider_id, :uuid
+    add_foreign_key :regulation_request_events, :care_providers
   end
 
   def quoted(list) = list.map { |value| "'#{value}'::text" }.join(", ")

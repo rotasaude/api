@@ -50,6 +50,16 @@ RSpec.describe CareRegulation::AppointmentSync do
     expect(regulation_events("completed")).to eq([ { "regulation_request_id" => request.id, "user_id" => nil } ])
   end
 
+  it "Q24: na rede própria a linha missed guarda o horário do no_show e o fim dele, sem prestador" do
+    appointment = schedule_regulated!(appointment_request, at: 2.days.from_now.change(hour: 9))
+    sync!
+    no_show!(appointment)
+    expect(sync!).to eq("pending")
+    missed = request.reload.events.find { |e| e.status == "missed" }
+    expect(missed).to have_attributes(scheduled_at: appointment.scheduled_at, ends_at: appointment.effective_ends_at,
+                                      care_provider_id: nil)
+  end
+
   it "Review Focus 2: falta volta à fila uma vez; o no_show redespachado depois da reautorização não conta de novo" do
     appointment = schedule_regulated!(appointment_request, at: 2.days.from_now.change(hour: 9))
     sync!

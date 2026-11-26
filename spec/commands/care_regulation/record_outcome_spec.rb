@@ -61,6 +61,15 @@ RSpec.describe CareRegulation::RecordOutcome do
     expect(request.reload.misses).to eq(1)
   end
 
+  it "Q24: a falta registrada no desfecho guarda a data e o fim estimado na linha missed (estado, sem prestador)" do
+    request = scheduled!
+    travel_to appointment + 1.day
+    expect(record(request, result: "missed")).to be_ok
+    missed = request.reload.events.find { |e| e.status == "missed" }
+    expect(missed).to have_attributes(scheduled_at: appointment, ends_at: appointment + Appointment::LEGACY_SPAN, care_provider_id: nil)
+    expect(request).to have_attributes(status: "external", scheduled_at: nil)
+  end
+
   it "o dia é o da cidade: agendamento às 23h30 locais vale no mesmo dia local, mesmo já sendo o dia seguinte em UTC" do
     late = Time.zone.local(2026, 10, 16, 23, 30)
     request = scheduled!(at: late)

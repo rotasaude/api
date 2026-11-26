@@ -4100,9 +4100,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_900001) do
 
   create_table "regulation_request_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "by_user_id"
+    t.uuid "care_provider_id"
     t.datetime "created_at", null: false
+    t.timestamptz "ends_at"
     t.text "reason"
     t.uuid "regulation_request_id", null: false
+    t.timestamptz "scheduled_at"
     t.string "status", null: false
     t.index ["regulation_request_id"], name: "index_regulation_request_events_on_regulation_request_id"
     t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'returned'::text, 'authorized'::text, 'scheduled'::text, 'completed'::text, 'missed'::text, 'denied'::text, 'cancelled'::text, 'closed'::text, 'external'::text])", name: "ck_regulation_request_events_status"
@@ -6502,6 +6505,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_900001) do
   add_foreign_key "regulation_authorizations", "users", column: "authorized_by_user_id"
   add_foreign_key "regulation_request_events", "regulation_requests"
   add_foreign_key "regulation_request_events", "users", column: "by_user_id"
+  add_foreign_key "regulation_request_events", "care_providers"
   add_foreign_key "regulation_requests", "appointment_requests"
   add_foreign_key "regulation_requests", "consultation_addenda", column: "addendum_id"
   add_foreign_key "regulation_requests", "consultations"

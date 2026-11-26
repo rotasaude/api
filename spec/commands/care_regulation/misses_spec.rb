@@ -49,6 +49,30 @@ RSpec.describe CareRegulation::Misses do
     expect(request.authorizations.sole.released_at).to be_nil
   end
 
+  describe "Q24: a linha missed guarda o horário, o fim e o prestador que a falta limpa" do
+    it "agendado no prestador externo: data, fim estimado (+15 min) e prestador na linha; o pedido limpa como antes" do
+      provider = external_provider!
+      request = reauthorize!(regulation_request!, offer: offer)
+      at = (now + 2.days).change(hour: 14)
+      scheduled = CareRegulation::ScheduleExternal.call(request: request, at: at.iso8601, place: "Hospital Regional", notes: nil,
+                                                        version: request.version, by: regulator, care_provider_id: provider.id)
+      raise "agendamento recusado: #{scheduled.reason}" if scheduled.failure?
+
+      apply!(request.reload)
+      expect(request.reload).to have_attributes(status: "pending", misses: 1, scheduled_at: nil, care_provider_id: nil)
+      missed = request.events.find { |e| e.status == "missed" }
+      expect(missed).to have_attributes(scheduled_at: at, ends_at: at + Appointment::LEGACY_SPAN, care_provider_id: provider.id)
+      expect(request.events.select { |e| e.status != "missed" }.map(&:scheduled_at)).to all(be_nil)
+    end
+
+    it "sem horário marcado: as três colunas ficam nulas" do
+      request = reauthorize!(regulation_request!, offer: offer)
+      apply!(request)
+      missed = request.reload.events.find { |e| e.status == "missed" }
+      expect(missed).to have_attributes(scheduled_at: nil, ends_at: nil, care_provider_id: nil)
+    end
+  end
+
   it "segunda falta: missed e closed, com os dois eventos; outcome missed" do
     request = reauthorize!(regulation_request!, offer: offer)
     apply!(request)

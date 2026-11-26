@@ -15,9 +15,9 @@ module Regulation
   # - `specialty_without_sigtap` (Q9, pré-voo M16): alvo `specialty` com o
   #   SIGTAP resolvido não regulável ou fora da competência;
   # - `missing_priority` (Q15): sem cor decidida nem sugerida, sem caráter;
-  # - `external_absence_without_schedule` (Q22): falta sem horário `no_show`
-  #   da cadeia até ela (pedido externo: o 26a apaga a data e o prestador),
-  #   parada até a homologação. A rede é a do horário faltado.
+  # - `external_absence_without_schedule` (Q22, Q24): falta sem horário até
+  #   ela — só a falta externa registrada antes da Q24, sem a data na linha
+  #   `missed` —, parada até a homologação. A rede é a do horário faltado.
   # O esqueleto (`RiraSkeleton`, `skeleton:<caminho>`, Q23) é do chamador. Os
   # motivos são só códigos: nenhum valor do paciente sai daqui.
   module RndsValidation

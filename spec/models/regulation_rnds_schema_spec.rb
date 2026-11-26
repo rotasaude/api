@@ -159,6 +159,23 @@ RSpec.describe "Esquema do envio da regulação à RNDS (módulo 26c)", type: :m
     end
   end
 
+  describe "regulation_request_events (Q24): o horário e o prestador da falta" do
+    it "scheduled_at, ends_at e care_provider_id nulos; FK do prestador; a linha segue só acréscimo" do
+      columns = RegulationRequestEvent.columns_hash
+      expect(columns.slice("scheduled_at", "ends_at", "care_provider_id").transform_values { |c| [ c.sql_type, c.null ] })
+        .to eq("scheduled_at" => [ "timestamp with time zone", true ], "ends_at" => [ "timestamp with time zone", true ],
+               "care_provider_id" => [ "uuid", true ])
+      provider = external_provider!
+      row = RegulationRequestEvent.create!(regulation_request: request, status: "missed", scheduled_at: Time.current,
+                                           ends_at: Time.current + 15.minutes, care_provider_id: provider.id)
+      expect(row.reload.care_provider).to eq(provider)
+      refused(/fk_rails/) do
+        RegulationRequestEvent.create!(regulation_request: request, status: "missed", care_provider_id: SecureRandom.uuid)
+      end
+      refused { row.update_columns(scheduled_at: Time.current + 1.day) }
+    end
+  end
+
   it "credencial `rnds_regulation` grava (production)" do
     credential = rnds_regulation_credential!
     expect(credential.reload).to have_attributes(kind: "rnds_regulation", environment: "production")
