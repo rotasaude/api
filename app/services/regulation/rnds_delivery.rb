@@ -49,8 +49,6 @@ module Regulation
   # classe vai ao relatório de erro. CPF, CNS, CID e o Bundle nunca saem daqui.
   class RndsDelivery
     PAUSE_MESSAGE = "A RNDS recusou a credencial durante o envio da regulação; o envio está pausado.".freeze
-    SENDING = "sending".freeze
-    EXCLUDED = "excluded".freeze
     MONOTONIC = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
 
     def initialize(city, budget: RndsLimits::BUDGET, clock: MONOTONIC)
@@ -266,18 +264,12 @@ module Regulation
       locked.reload
     end
 
-    # idle | excluded | erased | nil (há o que enviar). As regras do
-    # RndsSync.next_status para uma linha que não espera resposta.
+    # idle | excluded | erased | nil (há o que enviar): a regra única do
+    # RndsSync.resting_status, para uma linha que não espera resposta.
     def resting(sync, facts)
       return nil if RndsSync.unanswered_delivery?(sync)
-      return "erased" if sync.last_rnds_id.present? && facts.patient_cpf.blank? && facts.patient_cns.blank?
-      if sync.desired_status == EXCLUDED
-        return sync.last_rnds_id.nil? || sync.sent_status == EXCLUDED ? EXCLUDED : nil
-      end
-      return nil if sync.pending_steps.any?
-      return nil if sync.desired_status.present? && [ sync.desired_status, sync.desired_digest ] != [ sync.sent_status, sync.sent_digest ]
 
-      "idle"
+      RndsSync.resting_status(sync, erased: RndsSync.erased?(sync, facts))
     end
 
     # A janela de desistência começa na 1ª remessa sem aceite depois do
@@ -292,7 +284,7 @@ module Regulation
 
     def own!(sync, token)
       RegulationRndsSync.transaction(requires_new: true) do
-        locked = RegulationRndsSync.where(id: sync.id, status: SENDING, claimed_at: token).lock("FOR UPDATE").first
+        locked = RegulationRndsSync.where(id: sync.id, status: RndsSync::SENDING, claimed_at: token).lock("FOR UPDATE").first
         raise RegulationRndsSync::LostClaim unless locked
 
         yield locked
@@ -303,7 +295,7 @@ module Regulation
 
     def published!(sync, sent_status)
       event!("regulation_rnds.accepted", sync)
-      event!("regulation_rnds.excluded", sync) if sent_status == EXCLUDED
+      event!("regulation_rnds.excluded", sync) if sent_status == RndsSync::EXCLUDED
     end
 
     def event!(name, sync)

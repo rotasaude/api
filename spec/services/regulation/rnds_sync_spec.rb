@@ -473,6 +473,38 @@ RSpec.describe Regulation::RndsSync, type: :model do
   end
 
   # Task 12 (carry 4 e 7): o livro das remessas como o envio o usa.
+  # Revisão final M1: a regra de repouso é uma só, do recálculo e do envio.
+  describe ".resting_status e .erased? (a regra única do RndsSync e do RndsDelivery)" do
+    def row(**attrs) = RegulationRndsSync.new({ desired_status: "pending", desired_digest: "a", sent_status: "pending", sent_digest: "a",
+                                                pending_steps: [] }.merge(attrs))
+
+    it "erased; excluded nunca aceito ou já aceito; substituição excluded; passos; diferença; idle" do
+      expect(described_class.resting_status(row, erased: true)).to eq("erased")
+      expect(described_class.resting_status(row(desired_status: "excluded", last_rnds_id: nil), erased: false)).to eq("excluded")
+      expect(described_class.resting_status(row(desired_status: "excluded", last_rnds_id: "RA1", sent_status: "excluded"), erased: false))
+        .to eq("excluded")
+      expect(described_class.resting_status(row(desired_status: "excluded", last_rnds_id: "RA1"), erased: false)).to be_nil
+      expect(described_class.resting_status(row(pending_steps: [ { "status" => "absence", "at" => "x" } ]), erased: false)).to be_nil
+      expect(described_class.resting_status(row(desired_digest: "b"), erased: false)).to be_nil
+      expect(described_class.resting_status(row, erased: false)).to eq("idle")
+    end
+
+    it "erased? só com documento aceito e sem CPF nem CNS" do
+      facts = Struct.new(:patient_cpf, :patient_cns)
+      expect(described_class.erased?(row(last_rnds_id: "RA1"), facts.new(nil, nil))).to be(true)
+      expect(described_class.erased?(row(last_rnds_id: nil), facts.new(nil, nil))).to be(false)
+      expect(described_class.erased?(row(last_rnds_id: "RA1"), facts.new("52998224725", nil))).to be(false)
+    end
+
+    it "o envio não reimplementa a regra; as remessas de documento são o catálogo sem o delete" do
+      source = Rails.root.join("app/services/regulation/rnds_delivery.rb").read
+      expect(source).to include("RndsSync.resting_status(")
+      expect(source).not_to match(/^\s*(SENDING|EXCLUDED) =/)
+      expect(RegulationRndsDelivery::DOCUMENT_KINDS).to eq(Regulation::RndsCatalog::DELIVERY_KINDS - %w[delete])
+      expect(Rails.root.join("app/services/regulation/rnds_sync.rb").read).not_to include("%w[create replace]")
+    end
+  end
+
   describe "remessas do envio (Task 12)" do
     it "unanswered_delivery?: a remessa delete e a fechada pela reconciliação (unanswered_closed_at, Q25) não contam" do
       sync = recompute(municipal_request!)

@@ -221,4 +221,15 @@ RSpec.describe Regulation::RndsStatus, type: :model do
       expect(described_class.steps(request.reload, since: nil).size).to eq(1)
     end
   end
+
+  # Revisão final M1: o `closed` → absence/cancelled é uma regra só (RndsStatus e RiraFacts).
+  describe ".closed_status" do
+    it "MAX_MISSES faltas → absence; menos → cancelled; o RiraFacts usa a mesma regra" do
+      max = CareRegulation::Catalog::MAX_MISSES
+      expect(described_class.closed_status(Struct.new(:misses).new(max))).to eq("absence")
+      expect(described_class.closed_status(Struct.new(:misses).new(max - 1))).to eq("cancelled")
+      expect(Rails.root.join("app/services/regulation/rira_facts.rb").read).to include("RndsStatus.closed_status(request)")
+      expect(Rails.root.join("app/services/regulation/rira_facts.rb").read).not_to include("MAX_MISSES")
+    end
+  end
 end

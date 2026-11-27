@@ -8,7 +8,8 @@
 # muda; nunca é apagada (trigger). O payload não sai em inspect, to_s,
 # pretty_print nem as_json.
 class RegulationRndsDelivery < ApplicationRecord
-  DOCUMENT_KINDS = %w[create replace].freeze
+  # As remessas de documento: o catálogo (Valor 4) sem o `delete`.
+  DOCUMENT_KINDS = (Regulation::RndsCatalog::DELIVERY_KINDS - %w[delete]).freeze
 
   encrypts :payload
 

@@ -26,10 +26,7 @@ module Regulation
       return :none if request.status == "draft"
       return :excluded if request.state_regulated && !settings.send_external
 
-      if request.status == "closed"
-        absent = request.misses >= CareRegulation::Catalog::MAX_MISSES
-        return Target.new(status: absent ? ABSENCE : "cancelled", at: last_at(request, %w[closed]))
-      end
+      return Target.new(status: closed_status(request), at: last_at(request, %w[closed])) if request.status == "closed"
 
       status, events = RULES.fetch(request.status) { raise ArgumentError, "situação sem correspondência: #{request.status}" }
       Target.new(status: status, at: last_at(request, events) || request.requested_at)
@@ -50,6 +47,10 @@ module Regulation
       steps.pop if desired.is_a?(Target) && desired.status == steps.last&.fetch("status")
       steps
     end
+
+    # A situação MIRA do `closed` (a regra única, também do RiraFacts): com
+    # MAX_MISSES faltas, `absence`; senão `cancelled`.
+    def closed_status(request) = request.misses >= CareRegulation::Catalog::MAX_MISSES ? ABSENCE : "cancelled"
 
     def last_at(request, statuses)
       request.events.select { |e| statuses.include?(e.status) }.map(&:created_at).max

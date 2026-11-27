@@ -116,7 +116,7 @@ module Regulation
     def apply!(sync, request, target, settings, now, lane)
       facts = RiraFacts.for(request: request, settings: settings, credential: nil)
       excluded = target.status == EXCLUDED
-      erased = sync.last_rnds_id.present? && facts.patient_cpf.blank? && facts.patient_cns.blank?
+      erased = erased?(sync, facts)
       steps = excluded || erased ? [] : RndsStatus.steps(request, since: accepted_since(sync), settings: settings)
       digest = RiraBundle.digest(RiraBundle.build(facts: facts, sync: sync, status: target, now: now))
       digest_changed = sync.desired_digest != digest
@@ -130,8 +130,8 @@ module Regulation
       was = sync.status
       queued = false
       unless was == SENDING
-        status = next_status(sync, was, excluded: excluded, erased: erased, digest_changed: digest_changed, steps: steps,
-                                         refused_digest: refused_digest, next_digest: next_digest)
+        status = next_status(sync, was, erased: erased, digest_changed: digest_changed, refused_digest: refused_digest,
+                                         next_digest: next_digest)
         sync.enqueued_at = now if changed
         queued = status == "queued" && was != "queued"
         sync.initial_load = lane_of(sync, lane, changed: changed, queued: queued)
@@ -150,19 +150,41 @@ module Regulation
       sync
     end
 
-    def next_status(sync, was, excluded:, erased:, digest_changed:, steps:, refused_digest:, next_digest:)
+    # A situação da linha com o desejado já gravado: `erased`, depois as regras
+    # de repouso (`resting_status`, as mesmas do envio) quando não há remessa
+    # sem resposta, com o `blocked` e o `rejected`/`failed` mantidos até o
+    # conteúdo mudar; o resto vai à fila.
+    def next_status(sync, was, erased:, digest_changed:, refused_digest:, next_digest:)
       return "erased" if erased
 
-      pending = unanswered_delivery?(sync)
-      return EXCLUDED if excluded && !pending && (sync.last_rnds_id.nil? || sync.sent_status == EXCLUDED)
+      resting = unanswered_delivery?(sync) ? nil : resting_status(sync, erased: false)
+      return EXCLUDED if resting == EXCLUDED
       return was if was == "blocked" && !digest_changed
       # rejected/failed: só com outro conteúdo do que foi recusado — o próximo
       # documento (passo ou desejado) contra a última remessa; sem remessa, o
       # desejado anterior.
       return was if REFUSED.include?(was) && (refused_digest ? next_digest == refused_digest : !digest_changed)
 
-      differs = pending || steps.any? || [ sync.desired_status, sync.desired_digest ] != [ sync.sent_status, sync.sent_digest ]
-      differs ? "queued" : "idle"
+      resting || "queued"
+    end
+
+    # Q8: já havia documento aceito e o paciente perdeu CPF e CNS.
+    def erased?(sync, facts) = sync.last_rnds_id.present? && facts.patient_cpf.blank? && facts.patient_cns.blank?
+
+    # A situação de repouso de uma linha que não espera resposta, a regra única
+    # do recálculo e do envio (RndsDelivery): `erased`; `excluded` quando o
+    # desejado é `excluded` e nada foi aceito ou o `excluded` já foi aceito
+    # (com outro documento aceito, a substituição vai: nil); nil com passos ou
+    # com o desejado diferente do último aceite; senão `idle`.
+    def resting_status(sync, erased:)
+      return "erased" if erased
+      if sync.desired_status == EXCLUDED
+        return sync.last_rnds_id.nil? || sync.sent_status == EXCLUDED ? EXCLUDED : nil
+      end
+      return nil if sync.pending_steps.any?
+      return nil if sync.desired_status.present? && [ sync.desired_status, sync.desired_digest ] != [ sync.sent_status, sync.sent_digest ]
+
+      "idle"
     end
 
     # A faixa da linha depois do recálculo (Q26).
@@ -177,7 +199,7 @@ module Regulation
     def last_delivery_digest(sync)
       return nil if sync.new_record?
 
-      RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id, kind: %w[create replace]).order(:sent_at, :id).last&.digest
+      RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id, kind: RegulationRndsDelivery::DOCUMENT_KINDS).order(:sent_at, :id).last&.digest
     end
 
     # O `sent_at` da última remessa aceita (nil = nenhuma: todos os passos).

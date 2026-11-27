@@ -139,11 +139,7 @@ module Regulation
 
     def self.status_times(request)
       request.events.each_with_object({}) do |event, times|
-        status = if event.status == "closed"
-                   request.misses >= CareRegulation::Catalog::MAX_MISSES ? RndsStatus::ABSENCE : "cancelled"
-                 else
-                   EVENT_STATUS[event.status]
-                 end
+        status = event.status == "closed" ? RndsStatus.closed_status(request) : EVENT_STATUS[event.status]
         times[status] = event.created_at if status && (times[status].nil? || event.created_at > times[status])
       end.tap { |times| times["pending"] ||= request.requested_at if request.requested_at }
     end
