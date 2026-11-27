@@ -29,6 +29,8 @@ module RegulationRndsSecrecy
   PFX_PASSWORD = "SenhaPfxSigiloAmetista91".freeze
   # O formato é só dígitos (1 a 20): o marcador é um número improvável.
   REQUESTER_ID = "73905128467031".freeze
+  # O CNES do solicitante da credencial (7 dígitos): também é segredo da credencial.
+  REQUESTER_CNES = "8306142".freeze
   BAD_REQUESTER = "Req Sigilo Opala".freeze
   BAD_CNS = "987654321098765".freeze
   PEOPLE = [
@@ -210,7 +212,7 @@ RSpec.describe "Sigilo do envio da regulação à RNDS (26c)", type: :request do
     platform_before = PlatformEvent.pluck(:id)
     encoded = Base64.strict_encode64(self_signed_pfx(password: s::PFX_PASSWORD, not_after: 1.year.from_now))
     ids[:pfx_slice] = encoded[200, 60]
-    credential = { pfx_base64: encoded, pfx_password: s::PFX_PASSWORD, requester_cnes: "1234567", requester_id: s::REQUESTER_ID,
+    credential = { pfx_base64: encoded, pfx_password: s::PFX_PASSWORD, requester_cnes: s::REQUESTER_CNES, requester_id: s::REQUESTER_ID,
                    responsible_cns: valid_cns(901) }
     ids[:responsible_cns] = credential[:responsible_cns]
 
@@ -413,7 +415,7 @@ RSpec.describe "Sigilo do envio da regulação à RNDS (26c)", type: :request do
     let(:scenario) { @scenario }
     let(:ids) { scenario[:ids] }
     let(:patients) { scenario[:patients] }
-    let(:credentials) { [ secrecy::PFX_PASSWORD, secrecy::REQUESTER_ID, ids[:responsible_cns], ids[:pfx_slice] ] }
+    let(:credentials) { [ secrecy::PFX_PASSWORD, secrecy::REQUESTER_ID, secrecy::REQUESTER_CNES, ids[:responsible_cns], ids[:pfx_slice] ] }
     let(:tokens) { scenario[:tokens] }
     let(:people) do
       secrecy::PEOPLE.flat_map(&:values) + secrecy::WORDS + patients.flat_map { |patient| [ patient.cns, *secrecy.cpf_forms(patient.cpf) ] }
@@ -489,7 +491,7 @@ RSpec.describe "Sigilo do envio da regulação à RNDS (26c)", type: :request do
       expect(tokens).not_to be_empty
 
       logged = log.scan(/"(pfx_password|pfx_base64|requester_id|responsible_cns|requester_cnes)"\s*=>\s*("[^"]*"|\[FILTERED\])/)
-      expect(logged.map(&:first).uniq).to include("pfx_password", "pfx_base64", "requester_id", "responsible_cns")
+      expect(logged.map(&:first).uniq).to include("pfx_password", "pfx_base64", "requester_id", "responsible_cns", "requester_cnes")
       expect(logged.map(&:last)).to all(include("[FILTERED]"))
     end
 
