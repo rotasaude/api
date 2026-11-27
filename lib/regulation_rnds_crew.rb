@@ -49,6 +49,12 @@ require_relative "vaccination_crew"
 #       semente grava a coluna direto e o diz aqui. O 15 também passa para `scheduled` pelo
 #       Transition, como o AppointmentSync faz (sem horário na agenda).
 #
+#   Atenção na prova (14): a tela de configurações confere o mapa inteiro a cada
+#   salvar, então, com a ginecologia (225250) no mapa, TODO salvar volta 422
+#   `invalid_sigtap` com `path` `specialty_sigtap.225250`. Para salvar outra coisa,
+#   tire essa entrada do mapa (ou troque o código por um regulável, como o
+#   0301010072) no mesmo salvar: é também o que solta o pedido 14 na próxima rodada.
+#
 # Os marcadores do simulado ficam em dois pedidos válidos da 26a (3 e 4, só
 # pendentes): `bundle_identifier` RECUSA-<uuid> (422 EHR-ERR999) e TIMEOUT-<uuid>
 # (o simulado grava e não responde). O simulado dorme a cada POST de um
@@ -72,7 +78,8 @@ class RegulationRndsCrew
   PROVIDER_PERFORMER_CBO = RegulationCrew::OPHTHALMOLOGY
   SECOND_UNIT = "UBS Vila Esperança".freeze
   POLYCLINIC = "Policlínica Municipal do Cajuru".freeze
-  PHONE_PREFIX = "92222".freeze
+  # Só desta semente (o 92222 é do ClinicalRecordCrew).
+  PHONE_PREFIX = "99222".freeze
   MARKER_NAMESPACE = "6f1d3c52-8a0e-4b7a-9f3e-2c5d7e1b4a60".freeze
   # Pedidos da 26a que carregam os marcadores do simulado.
   REFUSED_N = 3
@@ -170,7 +177,9 @@ class RegulationRndsCrew
         "[seeds]               #{result[:requests]} pedidos novos; motivos de parado conferidos: #{result[:blocked].map { |reason, count| "#{reason} #{count}" }.join(', ')}",
         "[seeds]               sem pedido: missing_priority (suggested_color é NOT NULL) e patient_without_cpf_or_cns (só o provisório da UPA nasce assim)",
         "[seeds]               marcadores do simulado: pedidos 3 (RECUSA, 422 EHR-ERR999) e 4 (TIMEOUT: o simulado dorme a cada POST, a rodada espera esse tempo)",
-        "[seeds]               o bloqueio na tela vem do envio (RndsDeliverJob) rodando no worker" ]
+        "[seeds]               o bloqueio na tela vem do envio (RndsDeliverJob) rodando no worker",
+        "[seeds]               configurações: a ginecologia (#{GYNECOLOGY}) fica no mapa com um SIGTAP vencido (pedido 14); todo salvar " \
+        "da tela volta invalid_sigtap em specialty_sigtap.#{GYNECOLOGY} até essa entrada sair do mapa (remova ou troque o código ao salvar)" ]
     end
 
     private

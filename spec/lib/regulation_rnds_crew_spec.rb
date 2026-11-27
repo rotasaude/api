@@ -69,6 +69,15 @@ RSpec.describe RegulationRndsCrew, type: :model do
     Regulation::RndsValidation.call(facts: facts, status: sync.pending_steps.first || Regulation::RndsSync.target(request, settings: settings))
   end
 
+  # Final wave, item 8: o 92222 era do ClinicalRecordCrew; o prefixo desta semente é só dela.
+  it "o prefixo de telefone não colide com o de outra semente" do
+    others = Dir[Rails.root.join("lib/*_crew.rb")].reject { |file| file.end_with?("/regulation_rnds_crew.rb") }.flat_map do |file|
+      File.read(file).scan(/PHONE_PREFIX = "(\d{5})"|%s(9\d{4})%04d/).flatten.compact
+    end
+    expect(others).to include(ClinicalRecordCrew::PHONE_PREFIX, "97777") # controle: a varredura acha as duas formas
+    expect(others).not_to include(described_class::PHONE_PREFIX)
+  end
+
   describe "depois da semente de Curitiba" do
     seed_once do
       CityCatalog.reset_cache!
@@ -134,6 +143,23 @@ RSpec.describe RegulationRndsCrew, type: :model do
         expect([ refused, timeout ].map { |sync| verdict(sync.regulation_request) }).to eq([ :ok, :ok ])
         expect([ refused.status, timeout.status ]).to eq(%w[queued queued])
       end
+    end
+
+    # Final wave, item 8: o mapa salvo guarda o SIGTAP vencido da ginecologia (pedido 14); a tela de
+    # configurações recusa todo salvar enquanto ele estiver lá. As summary_lines dizem como sair disso.
+    it "o SIGTAP vencido da ginecologia barra o salvar com o path dela; removido, salva (o roteiro das summary_lines)" do
+      settings = RegulationRndsSetting.current
+      admin = User.find_by!(email_address: "admin@curitiba.demo")
+      attrs = { "expected_version" => settings.version, "priority_by_color" => settings.priority_by_color,
+                "specialty_sigtap" => settings.specialty_sigtap, "send_external" => settings.send_external }
+      refused = Regulation::SaveRndsSettings.call(attrs: attrs, by: admin)
+      expect([ refused.reason, refused.details ]).to eq([ :invalid_sigtap, { path: "specialty_sigtap.#{described_class::GYNECOLOGY}" } ])
+      expect(described_class.summary_lines(seeded).join("\n")).to include("specialty_sigtap.#{described_class::GYNECOLOGY}")
+
+      saved = Regulation::SaveRndsSettings.call(attrs: attrs.merge("specialty_sigtap" => settings.specialty_sigtap.except(described_class::GYNECOLOGY)),
+                                                by: admin)
+      expect(saved).to be_ok
+      expect(RegulationRndsSetting.current.specialty_sigtap).not_to have_key(described_class::GYNECOLOGY)
     end
 
     it "nenhum segredo nas summary_lines" do
