@@ -5511,20 +5511,26 @@ BEGIN
 END
 $do$;
 
--- Módulo 26c (MIRA; contrato; Q6, Q16, Q17): o envio da regulação à RNDS. O
--- estado por pedido e as remessas nunca somem (DELETE e TRUNCATE recusados).
+-- Módulo 26c (MIRA; contrato; Q6, Q16, Q17, Q25): o envio da regulação à
+-- RNDS. Os ajustes, o estado por pedido e as remessas nunca somem (DELETE e
+-- TRUNCATE recusados).
+--   - regulation_rnds_settings: linha única (CHECK); muda à vontade do código;
 --   - regulation_rnds_syncs: só o DELETE é recusado; a linha anda à vontade do
 --     código (fila, claim, aceite, bloqueio), com os catálogos nos CHECKs;
 --   - regulation_rnds_deliveries: a remessa é o registro do que foi enviado.
 --     O payload só vira NULL, em qualquer remessa, aceita ou não (Q17: purga
 --     por COALESCE(accepted_at, sent_at)), e sob a marca da re-cifra
---     (rota.reencrypting) é regravado sem mexer em mais nada; a resposta
+--     (rota.reencrypting) é regravado sem mexer em mais nada. A resposta
 --     (`accepted_at`, `rnds_id`, `http_status`, `error_codes`) grava-se uma
---     vez; o resto (pedido, tipo, situação, impressão digital, `sent_at`)
---     nunca muda.
+--     vez cada, e só enquanto não houve resposta HTTP (OLD.http_status NULL):
+--     a resposta inteira vai num UPDATE, e a adoção pela reconciliação
+--     (`accepted_at` + `rnds_id`, `http_status` segue NULL) passa. O
+--     `unanswered_closed_at` (Q25: a reconciliação não achou o documento)
+--     grava-se uma vez, só na remessa sem resposta e sem aceite. O resto
+--     (pedido, tipo, situação, impressão digital, `sent_at`) nunca muda.
 CREATE OR REPLACE FUNCTION rota_regulation_rnds_delivery_guard() RETURNS trigger AS $fn$
 DECLARE
-  moving text[] := ARRAY['payload', 'accepted_at', 'rnds_id', 'http_status', 'error_codes'];
+  moving text[] := ARRAY['payload', 'accepted_at', 'rnds_id', 'http_status', 'error_codes', 'unanswered_closed_at'];
 BEGIN
   IF current_setting('rota.reencrypting', true) = 'on'
      AND (to_jsonb(NEW) - 'payload') = (to_jsonb(OLD) - 'payload')
@@ -5537,11 +5543,19 @@ BEGIN
   IF NEW.payload IS DISTINCT FROM OLD.payload AND NEW.payload IS NOT NULL THEN
     RAISE EXCEPTION 'regulation_rnds_deliveries: payload only becomes NULL';
   END IF;
+  IF OLD.http_status IS NOT NULL
+     AND (NEW.accepted_at IS DISTINCT FROM OLD.accepted_at OR NEW.rnds_id IS DISTINCT FROM OLD.rnds_id
+          OR NEW.http_status IS DISTINCT FROM OLD.http_status OR NEW.error_codes IS DISTINCT FROM OLD.error_codes) THEN
+    RAISE EXCEPTION 'regulation_rnds_deliveries: the response is recorded only while unanswered (http_status NULL)';
+  END IF;
   IF (OLD.accepted_at IS NOT NULL AND NEW.accepted_at IS DISTINCT FROM OLD.accepted_at)
      OR (OLD.rnds_id IS NOT NULL AND NEW.rnds_id IS DISTINCT FROM OLD.rnds_id)
-     OR (OLD.http_status IS NOT NULL AND NEW.http_status IS DISTINCT FROM OLD.http_status)
      OR (cardinality(OLD.error_codes) > 0 AND NEW.error_codes IS DISTINCT FROM OLD.error_codes) THEN
     RAISE EXCEPTION 'regulation_rnds_deliveries: accepted_at, rnds_id, http_status and error_codes are recorded once';
+  END IF;
+  IF NEW.unanswered_closed_at IS DISTINCT FROM OLD.unanswered_closed_at
+     AND (OLD.unanswered_closed_at IS NOT NULL OR OLD.http_status IS NOT NULL OR OLD.accepted_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'regulation_rnds_deliveries: unanswered_closed_at is recorded once, only on an unanswered delivery';
   END IF;
   RETURN NEW;
 END;
@@ -5556,7 +5570,7 @@ BEGIN
     EXECUTE 'CREATE TRIGGER regulation_rnds_deliveries_guard BEFORE UPDATE ON regulation_rnds_deliveries
       FOR EACH ROW EXECUTE FUNCTION rota_regulation_rnds_delivery_guard()';
   END IF;
-  FOREACH item IN ARRAY ARRAY['regulation_rnds_syncs', 'regulation_rnds_deliveries'] LOOP
+  FOREACH item IN ARRAY ARRAY['regulation_rnds_settings', 'regulation_rnds_syncs', 'regulation_rnds_deliveries'] LOOP
     IF to_regclass('public.' || item) IS NOT NULL THEN
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',

@@ -62,20 +62,15 @@ module Regulation
       RndsStatus::Target.new(status: EXCLUDED, at: [ request.events.map(&:created_at).max, request.requested_at ].compact.max)
     end
 
-    # Há remessa de documento (create/replace) que saiu depois do último aceite
-    # (ou desde sempre, sem aceite) e não teve resposta (timeout; Review Focus
-    # 1, fix I2): não se sabe se a RNDS a gravou. O sinal da reconciliação é
-    # este, não o `attempts`. A remessa `delete` (deduplicação) não conta, e a
-    # que a reconciliação já viu não ter chegado (marcador `not_found`, Task
-    # 12) está fechada.
+    # Há remessa de documento que saiu depois do último aceite (ou desde
+    # sempre, sem aceite) e não teve resposta (timeout; Review Focus 1, fix
+    # I2): não se sabe se a RNDS a gravou. O sinal da reconciliação é este,
+    # não o `attempts`. O predicado é o RegulationRndsDelivery.unanswered_for
+    # (a remessa `delete` não conta; a fechada pela reconciliação, Q25, também não).
     def unanswered_delivery?(sync)
       return false if sync.new_record?
 
-      scope = RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id, kind: %w[create replace], accepted_at: nil, http_status: nil)
-                                    .where.not("? = ANY(error_codes)", RndsReconcile::NOT_FOUND)
-      since = accepted_since(sync)
-      scope = scope.where("sent_at > ?", since) if since
-      scope.exists?
+      RegulationRndsDelivery.unanswered_for(sync).exists?
     end
 
     # -> [id do pedido] | :all
@@ -174,7 +169,7 @@ module Regulation
     def accepted_since(sync)
       return nil if sync.new_record?
 
-      RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id).where.not(accepted_at: nil).maximum(:sent_at)
+      RegulationRndsDelivery.accepted_since(sync)
     end
 
     def by_offers(offer_ids)

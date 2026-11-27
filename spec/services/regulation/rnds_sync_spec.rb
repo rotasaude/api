@@ -442,16 +442,16 @@ RSpec.describe Regulation::RndsSync, type: :model do
 
   # Task 12 (carry 4 e 7): o livro das remessas como o envio o usa.
   describe "remessas do envio (Task 12)" do
-    it "unanswered_delivery?: a remessa delete e a fechada com o marcador not_found não contam" do
+    it "unanswered_delivery?: a remessa delete e a fechada pela reconciliação (unanswered_closed_at, Q25) não contam" do
       sync = recompute(municipal_request!)
       RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "delete", rnds_id: "dup-1", sent_at: Time.current)
       expect(described_class.unanswered_delivery?(sync)).to be(false)
-      RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "create", mira_status: "pending", digest: sync.desired_digest,
-                                     sent_at: Time.current, error_codes: [ Regulation::RndsReconcile::NOT_FOUND ])
+      closed = RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "create", mira_status: "pending", digest: sync.desired_digest,
+                                              sent_at: Time.current)
+      expect(described_class.unanswered_delivery?(sync)).to be(true)
+      closed.update_columns(unanswered_closed_at: Time.current)
       expect(described_class.unanswered_delivery?(sync)).to be(false)
-      RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "create", mira_status: "pending", digest: sync.desired_digest,
-                                     sent_at: Time.current, error_codes: [ Regulation::RndsDelivery::GAVE_UP ])
-      expect(described_class.unanswered_delivery?(sync)).to be(true) # desistir não diz que não chegou
+      expect(RegulationRndsDelivery.unanswered_for(sync)).to be_empty # o mesmo predicado da reconciliação
     end
 
     it "passo (absence) recusado + evento sem mudança → segue rejected; conteúdo novo → queued" do

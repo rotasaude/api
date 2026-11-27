@@ -42,6 +42,13 @@ RSpec.describe "Esquema do envio da regulação à RNDS (módulo 26c)", type: :m
       expect(RegulationRndsSetting.current).to eq(setting)
       refused(/ck_regulation_rnds_settings_singleton/) { RegulationRndsSetting.create!(id: 2, updated_at: Time.current) }
     end
+
+    it "DELETE e TRUNCATE recusados (Fix round 2)" do
+      setting = RegulationRndsSetting.current
+      refused(/regulation_rnds_settings : DELETE refused/) { setting.delete }
+      refused(/append-only: TRUNCATE refused/) { ApplicationRecord.connection.execute("TRUNCATE regulation_rnds_settings") }
+      expect(RegulationRndsSetting.exists?(1)).to be(true)
+    end
   end
 
   describe "regulation_rnds_syncs" do
@@ -79,6 +86,14 @@ RSpec.describe "Esquema do envio da regulação à RNDS (módulo 26c)", type: :m
       refused(/ck_regulation_rnds_syncs_desired_status/) { row.update_columns(desired_status: "scheduled") }
     end
 
+    it "retry_window_started_at: timestamptz nulo; reopen_retry_window! o zera (o Reenviar da Task 14)" do
+      column = RegulationRndsSync.columns_hash["retry_window_started_at"]
+      expect([ column.sql_type, column.null ]).to eq([ "timestamp with time zone", true ])
+      row = sync!(retry_window_started_at: 20.days.ago)
+      row.reopen_retry_window!
+      expect(row.reload.retry_window_started_at).to be_nil
+    end
+
     it "DELETE → trigger; inspect só id e situação" do
       row = sync!(bundle_identifier: "MARCA-#{SecureRandom.hex(8)}")
       refused(/regulation_rnds_syncs : DELETE refused/) { row.delete }
@@ -113,15 +128,50 @@ RSpec.describe "Esquema do envio da regulação à RNDS (módulo 26c)", type: :m
 
     it "a resposta grava uma vez; sent_at, digest e situação nunca mudam" do
       row = delivery!(sync)
-      row.update_columns(http_status: 422, error_codes: %w[EHR-ERR825])
-      refused(/recorded once/) { row.update_columns(http_status: 201) }
-      refused(/recorded once/) { row.update_columns(error_codes: %w[EDS-MSG009]) }
-      row.update_columns(rnds_id: "rnds-2", accepted_at: Time.current)
+      row.update_columns(rnds_id: "rnds-2", accepted_at: Time.current) # a adoção (sem resposta HTTP)
       refused(/recorded once/) { row.update_columns(rnds_id: "rnds-3") }
       refused(/recorded once/) { row.update_columns(accepted_at: nil) }
       refused(/only the payload/) { row.update_columns(sent_at: 1.day.ago) }
       refused(/only the payload/) { row.update_columns(digest: "b" * 64) }
       refused(/only the payload/) { row.update_columns(mira_status: "booked") }
+    end
+
+    # Fix round 2 (Q25): a resposta só se grava enquanto não houve resposta HTTP.
+    it "respondida (http_status gravado) → nenhuma coluna de resposta muda mais; a resposta inteira num UPDATE passa" do
+      refused_row = delivery!(sync)
+      refused_row.update_columns(http_status: 422, error_codes: %w[EHR-ERR825])
+      refused(/only while unanswered|recorded once/) { refused_row.update_columns(http_status: 201) }
+      refused(/only while unanswered|recorded once/) { refused_row.update_columns(error_codes: %w[EDS-MSG009]) }
+      refused(/only while unanswered/) { refused_row.update_columns(rnds_id: "rnds-9", accepted_at: Time.current) }
+
+      unavailable = delivery!(sync)
+      unavailable.update_columns(http_status: 503)
+      refused(/only while unanswered/) { unavailable.update_columns(error_codes: %w[EHR-ERR999]) }
+      refused(/only while unanswered/) { unavailable.update_columns(accepted_at: Time.current) }
+
+      accepted = delivery!(sync)
+      accepted.update_columns(http_status: 201, rnds_id: "rnds-10", accepted_at: Time.current)
+      expect(accepted.reload).to have_attributes(http_status: 201, rnds_id: "rnds-10")
+    end
+
+    it "unanswered_closed_at: uma vez, só na remessa sem resposta nem aceite; depois dela a payload ainda some" do
+      columns = RegulationRndsDelivery.columns_hash
+      expect([ columns["unanswered_closed_at"].sql_type, columns["unanswered_closed_at"].null ]).to eq([ "timestamp with time zone", true ])
+      open = delivery!(sync)
+      open.update_columns(unanswered_closed_at: Time.current)
+      refused(/unanswered_closed_at/) { open.update_columns(unanswered_closed_at: 1.minute.from_now) }
+      refused(/unanswered_closed_at/) { open.update_columns(unanswered_closed_at: nil) }
+      open.update_columns(payload: nil)
+      expect(open.reload.payload).to be_nil
+
+      answered = delivery!(sync)
+      answered.update_columns(http_status: 503)
+      refused(/unanswered_closed_at/) { answered.update_columns(unanswered_closed_at: Time.current) }
+      adopted = delivery!(sync)
+      adopted.update_columns(accepted_at: Time.current, rnds_id: "rnds-11")
+      refused(/unanswered_closed_at/) { adopted.update_columns(unanswered_closed_at: Time.current) }
+      [ answered, adopted ].each { |row| row.update_columns(payload: nil) } # Q17: a purga vale em qualquer remessa
+      expect([ answered.reload.payload, adopted.reload.payload ]).to eq([ nil, nil ])
     end
 
     it "payload cifrado com a chave da cidade; re-cifra sob a marca passa; inspect sem payload" do

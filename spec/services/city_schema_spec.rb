@@ -157,12 +157,12 @@ RSpec.describe CitySchema do
                              "opening_import_rows_append_only_truncate")
   end
 
-  # Módulo 26c (Task 5; Q17): o estado por pedido e as remessas nunca somem;
-  # a remessa tem guarda (payload só a NULL, resposta uma vez); truncate
-  # recusado nas duas.
+  # Módulo 26c (Task 5; Q17; Task 12, Q25): os ajustes, o estado por pedido e
+  # as remessas nunca somem; a remessa tem guarda (payload só a NULL,
+  # resposta uma vez e só sem resposta HTTP); truncate recusado nas três.
   it "loads the 26c triggers into a database restored from the dump" do
     names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
-    tables = %w[regulation_rnds_syncs regulation_rnds_deliveries]
+    tables = %w[regulation_rnds_settings regulation_rnds_syncs regulation_rnds_deliveries]
 
     expect(names).to include("regulation_rnds_deliveries_guard", *tables.map { |t| "#{t}_no_delete" },
                              *tables.map { |t| "#{t}_append_only_truncate" })

@@ -3,8 +3,9 @@
 # texto, para caber o marcador do simulado), o último documento aceito, as
 # situações MIRA enviada e desejada com as impressões digitais, os passos
 # pendentes, a situação da linha (`Regulation::RndsCatalog::SYNC_STATUSES`),
-# os motivos de bloqueio, os códigos de erro (só o código), o cursor
-# (`enqueued_at`) e o token do claim (`claimed_at`). Nunca é apagado
+# os motivos de bloqueio, os códigos de erro (só os da RNDS, Q25), o cursor
+# (`enqueued_at`), o token do claim (`claimed_at`) e o início da janela de
+# desistência (`retry_window_started_at`, Q16/Q25). Nunca é apagado
 # (trigger). O inspect mostra só o id e a situação.
 class RegulationRndsSync < ApplicationRecord
   attribute :bundle_identifier, :string, default: -> { SecureRandom.uuid }
@@ -46,6 +47,13 @@ class RegulationRndsSync < ApplicationRecord
   # posse (`claimed_at`), não pelo `updated_at`, que o consumidor mexe (I2).
   def self.release_stale!(before:, now: Time.current)
     where(status: "sending").where("claimed_at IS NULL OR claimed_at < ?", before).update_all(status: "queued", updated_at: now)
+  end
+
+  # O "Reenviar" manual (Task 14) reabre a contagem do GIVE_UP_AFTER (Q16,
+  # Q25): a janela recomeça no próximo envio. `retry_window_started_at` nunca
+  # sai em resposta da API.
+  def reopen_retry_window!
+    update!(retry_window_started_at: nil)
   end
 
   def inspect = "#<RegulationRndsSync id=#{id} status=#{status}>"

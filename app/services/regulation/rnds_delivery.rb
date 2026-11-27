@@ -34,20 +34,19 @@ module Regulation
   #      - 401/403 → credencial `unauthorized` (só a do `set_at` lido), esta e
   #        as demais voltam a `queued` sem tentativa, `:paused`;
   #      - 5xx/timeout → `attempts + 1`, espera do Rnds::Backoff; `failed`
-  #        quando a 1ª remessa sem aceite da série passou de GIVE_UP_AFTER
-  #        (Q16; ver `give_up_start`).
+  #        quando `retry_window_started_at` (o `sent_at` da 1ª remessa sem
+  #        aceite depois do último aceite, Q16/Q25) passou de GIVE_UP_AFTER.
+  #        O aceite e o "Reenviar" manual (`reopen_retry_window!`) a zeram.
+  #
+  # `error_codes` e `last_error_codes` guardam só códigos da RNDS (Q25).
   #
   # O alvo (simulado × real) sai do `Rnds::Mock.on?` (usable?), lido fora da
   # transação da cidade. Erro inesperado numa linha não trava o lote: só a
   # classe vai ao relatório de erro. CPF, CNS, CID e o Bundle nunca saem daqui.
   class RndsDelivery
     PAUSE_MESSAGE = "A RNDS recusou a credencial durante o envio da regulação; o envio está pausado.".freeze
-    # Marcador da remessa em que a linha desistiu (Q16): a série seguinte (o
-    # "Reenviar" da Task 14) conta só do que sai depois dela.
-    GAVE_UP = "gave_up".freeze
     SENDING = "sending".freeze
     EXCLUDED = "excluded".freeze
-    DOCUMENT_KINDS = %w[create replace].freeze
     MONOTONIC = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
 
     def initialize(city, budget: RndsLimits::BUDGET, clock: MONOTONIC)
@@ -90,18 +89,16 @@ module Regulation
       sync = RegulationRndsSync.find(sync.id)
       facts = RiraFacts.for(request: request, settings: @settings, credential: @credential)
 
-      reconciled = false
       if RndsSync.unanswered_delivery?(sync)
         case RndsReconcile.call(sync: sync, client: @client, now: now, token: token, requester_id: @credential.requester_id)
         when :transient then return transient!(sync, token, now)
         when :unauthorized then return pause!(now)
         when :adopted, :deduplicated then return adopted!(sync, token, facts, now)
         end
-        reconciled = true # :none: o que saiu não chegou à RNDS
-        sync.reload
+        sync.reload # :none: o que saiu não chegou à RNDS (remessa fechada, Q25)
       end
 
-      return finish!(sync, token, facts, now, reconciled: reconciled) if resting(sync, facts, reconciled: reconciled)
+      return finish!(sync, token, facts, now) if resting(sync, facts)
 
       target = sync.pending_steps.first || RndsSync.target(request, settings: @settings)
       verdict = RndsValidation.call(facts: facts, status: target)
@@ -134,7 +131,7 @@ module Regulation
 
         accept!(sync, token, facts, delivery, response, now)
       when :rejected
-        codes = response.codes.presence || Rnds::Errors.codes(response.error)
+        codes = RndsReconcile.rnds_codes(response)
         delivery.update!(http_status: response.http_status || 422, error_codes: codes)
         return replaced!(sync, token, facts, codes, now) if codes.include?(RndsLimits::REPLACED_CODE)
 
@@ -152,7 +149,7 @@ module Regulation
       own!(sync, token) do |locked|
         delivery.update!(accepted_at: now, rnds_id: response.rnds_id, http_status: response.http_status || 201)
         locked.update!(last_rnds_id: response.rnds_id, last_accepted_at: now, sent_status: delivery.mira_status,
-                       sent_digest: delivery.digest, attempts: 0, last_error_codes: [], blocked_reasons: [])
+                       sent_digest: delivery.digest, attempts: 0, last_error_codes: [], blocked_reasons: [], retry_window_started_at: nil)
         conclude!(locked, facts, now)
         published!(locked, delivery.mira_status)
       end
@@ -209,13 +206,13 @@ module Regulation
     end
 
     # Falha transitória (5xx, timeout, rede, erro nosso): nova tentativa com
-    # espera; `failed` quando a série passou de GIVE_UP_AFTER (Q16).
+    # espera; `failed` quando a janela (Q16/Q25) passou de GIVE_UP_AFTER. Só
+    # a linha muda: a remessa já respondida nunca é tocada de novo (trigger).
     def transient!(sync, token, now)
       own!(sync, token) do |locked|
         attempts = locked.attempts + 1
-        start = give_up_start(locked)
+        start = locked.retry_window_started_at
         gave_up = start.present? && start <= now - RndsLimits::GIVE_UP_AFTER
-        mark_gave_up!(locked) if gave_up
         locked.update!(status: gave_up ? "failed" : "queued", attempts: attempts, next_attempt_at: now + Rnds::Backoff.wait(attempts))
       end
       :transient
@@ -237,16 +234,16 @@ module Regulation
     end
 
     # Fecha a linha sem POST (nada a enviar) ou depois de uma adoção.
-    def finish!(sync, token, facts, now, reconciled: false)
-      own!(sync, token) { |locked| conclude!(locked, facts, now, reconciled: reconciled) }
+    def finish!(sync, token, facts, now)
+      own!(sync, token) { |locked| conclude!(locked, facts, now) }
       :finished
     end
 
     # Com a linha travada: o desejado relido (o passo consumido some) e a
     # situação de repouso, ou `queued` (agora) se ainda há o que enviar.
-    def conclude!(locked, facts, now, reconciled: false)
+    def conclude!(locked, facts, now)
       refresh!(locked, now)
-      status = resting(locked, facts, reconciled: reconciled) || "queued"
+      status = resting(locked, facts) || "queued"
       if status == "queued"
         locked.update!(status: status, next_attempt_at: now, blocked_reasons: [])
       else
@@ -262,8 +259,8 @@ module Regulation
 
     # idle | excluded | erased | nil (há o que enviar). As regras do
     # RndsSync.next_status para uma linha que não espera resposta.
-    def resting(sync, facts, reconciled: false)
-      return nil if !reconciled && RndsSync.unanswered_delivery?(sync)
+    def resting(sync, facts)
+      return nil if RndsSync.unanswered_delivery?(sync)
       return "erased" if sync.last_rnds_id.present? && facts.patient_cpf.blank? && facts.patient_cns.blank?
       if sync.desired_status == EXCLUDED
         return sync.last_rnds_id.nil? || sync.sent_status == EXCLUDED ? EXCLUDED : nil
@@ -274,33 +271,14 @@ module Regulation
       "idle"
     end
 
+    # A janela de desistência começa na 1ª remessa sem aceite depois do
+    # último aceite (Q16/Q25): a que sai agora, se ainda não havia.
     def sending!(sync, token, bundle, code, now)
       own!(sync, token) do |locked|
+        locked.update!(retry_window_started_at: now) if locked.retry_window_started_at.nil?
         RegulationRndsDelivery.create!(regulation_rnds_sync_id: locked.id, kind: locked.last_rnds_id ? "replace" : "create",
                                        mira_status: code, digest: RiraBundle.digest(bundle), payload: JSON.generate(bundle), sent_at: now)
       end
-    end
-
-    # Q16 (pré-voo I4): a série conta do `sent_at` da 1ª remessa de documento
-    # sem aceite e sem resposta definitiva (sem resposta ou 5xx) depois da
-    # última fronteira: o último aceite, a última resposta 4xx (recusa ou
-    # credencial: a linha parou) e a remessa em que a linha desistiu (o
-    # "Reenviar" reabre a contagem). O tempo parado antes de sair não conta;
-    # o `enqueued_at` é só do alarme.
-    def give_up_start(sync)
-      window(sync).minimum(:sent_at)
-    end
-
-    def window(sync)
-      documents = RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id, kind: DOCUMENT_KINDS)
-      boundary = documents.where("accepted_at IS NOT NULL OR http_status BETWEEN 400 AND 499 OR ? = ANY(error_codes)", GAVE_UP)
-                          .maximum(:sent_at)
-      scope = documents.where(accepted_at: nil).where("http_status IS NULL OR http_status >= 500")
-      boundary ? scope.where("sent_at > ?", boundary) : scope
-    end
-
-    def mark_gave_up!(sync)
-      window(sync).where("cardinality(error_codes) = 0").order(:sent_at, :id).last&.update!(error_codes: [ GAVE_UP ])
     end
 
     def own!(sync, token)

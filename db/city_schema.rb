@@ -4179,6 +4179,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_900001) do
     t.uuid "regulation_rnds_sync_id", null: false
     t.string "rnds_id", limit: 100
     t.datetime "sent_at", null: false
+    t.timestamptz "unanswered_closed_at"
     t.index ["regulation_rnds_sync_id", "sent_at"], name: "idx_regulation_rnds_deliveries_sync"
     t.check_constraint "kind::text = ANY (ARRAY['create'::text, 'replace'::text, 'delete'::text])", name: "ck_regulation_rnds_deliveries_kind"
     t.check_constraint "mira_status IS NULL OR mira_status::text = ANY (ARRAY['pending'::text, 'booked'::text, 'attended'::text, 'cancelled'::text, 'absence'::text, 'excluded'::text, 'returned-to-requester'::text])", name: "ck_regulation_rnds_deliveries_mira_status"
@@ -4210,6 +4211,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_900001) do
     t.datetime "next_attempt_at"
     t.jsonb "pending_steps", default: [], null: false
     t.uuid "regulation_request_id", null: false
+    t.timestamptz "retry_window_started_at"
     t.string "sent_digest", limit: 64
     t.string "sent_status"
     t.string "status", null: false

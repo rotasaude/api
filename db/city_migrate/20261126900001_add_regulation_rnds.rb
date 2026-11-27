@@ -82,6 +82,8 @@ class AddRegulationRnds < ActiveRecord::Migration[8.1]
       t.boolean :initial_load, null: false, default: false
       t.datetime :enqueued_at, null: false
       t.datetime :claimed_at
+      # Q25: início da janela de desistência (GIVE_UP_AFTER, Q16); nunca sai na API.
+      t.timestamptz :retry_window_started_at
       t.timestamps
     end
     add_index :regulation_rnds_syncs, :bundle_identifier, unique: true, name: "idx_regulation_rnds_syncs_bundle_identifier"
@@ -108,6 +110,8 @@ class AddRegulationRnds < ActiveRecord::Migration[8.1]
       t.text :error_codes, array: true, null: false, default: []
       t.datetime :sent_at, null: false
       t.datetime :accepted_at
+      # Q25: a reconciliação não achou o documento (só na remessa sem resposta).
+      t.timestamptz :unanswered_closed_at
     end
     add_index :regulation_rnds_deliveries, %i[regulation_rnds_sync_id sent_at], name: "idx_regulation_rnds_deliveries_sync"
     add_check_constraint :regulation_rnds_deliveries, in_list("kind", DELIVERY_KINDS), name: "ck_regulation_rnds_deliveries_kind"

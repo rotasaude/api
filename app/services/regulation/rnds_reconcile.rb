@@ -18,20 +18,27 @@ module Regulation
   # o `http_status` fica nulo (não houve resposta: `accepted_at` com
   # `http_status` NULL = adotada). Sem remessa sem resposta (o caminho do
   # EDS-MSG009), a linha adota só o id, com `sent_status`/`sent_digest` nulos,
-  # e reenvia. `:none` fecha as remessas sem resposta com o marcador terminal
-  # `not_found` (não chegaram): o GET nunca vira remessa, e a linha não fica
-  # reivindicada para sempre. `:transient`/`:unauthorized`: nada muda.
+  # e reenvia. Adotar é aceitar: a janela de desistência (Q16/Q25) zera.
+  # `:none` fecha as remessas sem resposta com `unanswered_closed_at` (Q25:
+  # não chegaram): o GET nunca vira remessa, e a linha não fica reivindicada
+  # para sempre. `:transient`/`:unauthorized`: nada muda. `error_codes` só
+  # guarda códigos da RNDS (Q25).
   #
   # A situação da linha (`queued`/`idle`/...) é de quem chama (RndsDelivery).
   # Com `token:` (o do claim), toda gravação reconfere a posse (I2). Nada do
   # paciente nem do documento sai daqui: só ids e códigos.
   module RndsReconcile
-    NOT_FOUND = "not_found".freeze
     FINAL = "final".freeze
-    DOCUMENT_KINDS = %w[create replace].freeze
     NEVER = Time.utc(9999)
 
     module_function
+
+    # Os códigos de uma recusa que podem ser gravados (Q25, §9): só os da RNDS
+    # (`Rnds::Errors::CODE`); sem código, nenhum (nunca o `rejected` do
+    # Errors.codes nem texto).
+    def rnds_codes(response)
+      (response.codes.presence || Rnds::Errors.codes(response.error)).grep(Rnds::Errors::CODE)
+    end
 
     # -> :adopted | :none | :deduplicated | :transient | :unauthorized
     def call(sync:, client:, now: Time.current, token: nil,
@@ -45,7 +52,7 @@ module Regulation
       return from_last(sync, documents, token, now) if sync.last_rnds_id.present?
 
       heads = roots(documents).filter_map { |root| head_of(root.id, documents) }.select { |doc| doc.status == FINAL }.uniq(&:id)
-      return none!(sync, token) if heads.empty?
+      return none!(sync, token, now) if heads.empty?
 
       keep, *extra = heads
       extra.each do |duplicate|
@@ -58,7 +65,7 @@ module Regulation
 
     def from_last(sync, documents, token, now)
       head = head_of(sync.last_rnds_id, documents)
-      return none!(sync, token) if head.nil? || head.id == sync.last_rnds_id || head.status != FINAL
+      return none!(sync, token, now) if head.nil? || head.id == sync.last_rnds_id || head.status != FINAL
 
       adopt!(sync, head.id, token, now)
       :adopted
@@ -108,7 +115,7 @@ module Regulation
         delivery.update!(http_status: response.http_status || 204)
         :ok
       when :rejected
-        codes = response.codes.presence || Rnds::Errors.codes(response.error)
+        codes = rnds_codes(response)
         delivery.update!(http_status: response.http_status || 422, error_codes: codes)
         return :ok if codes.include?(RndsLimits::NOT_FINAL_CODE)
 
@@ -126,31 +133,22 @@ module Regulation
 
     def adopt!(sync, rnds_id, token, now)
       write(sync, token) do |locked|
-        adopted = unanswered(locked).order(sent_at: :desc, id: :desc).first
+        adopted = RegulationRndsDelivery.unanswered_for(locked).order(sent_at: :desc, id: :desc).first
         if adopted
           adopted.update!(accepted_at: now, rnds_id: rnds_id)
           locked.update!(last_rnds_id: rnds_id, last_accepted_at: now, sent_status: adopted.mira_status, sent_digest: adopted.digest,
-                         attempts: 0, last_error_codes: [])
+                         attempts: 0, last_error_codes: [], retry_window_started_at: nil)
         else
           locked.update!(last_rnds_id: rnds_id, sent_status: nil, sent_digest: nil)
         end
       end
     end
 
-    def none!(sync, token)
+    def none!(sync, token, now)
       write(sync, token) do |locked|
-        unanswered(locked).where("cardinality(error_codes) = 0").find_each { |delivery| delivery.update!(error_codes: [ NOT_FOUND ]) }
+        RegulationRndsDelivery.unanswered_for(locked).find_each { |delivery| delivery.update!(unanswered_closed_at: now) }
       end
       :none
-    end
-
-    # Remessas de documento sem resposta depois do último aceite (o mesmo
-    # critério do RndsSync.unanswered_delivery?).
-    def unanswered(sync)
-      scope = RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id, kind: DOCUMENT_KINDS, accepted_at: nil, http_status: nil)
-                                    .where.not("? = ANY(error_codes)", NOT_FOUND)
-      since = RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id).where.not(accepted_at: nil).maximum(:sent_at)
-      since ? scope.where("sent_at > ?", since) : scope
     end
 
     def write(sync, token)
@@ -164,6 +162,6 @@ module Regulation
       end
     end
 
-    private_class_method :from_last, :head_of, :roots, :order_key, :remove!, :adopt!, :none!, :unanswered, :write
+    private_class_method :from_last, :head_of, :roots, :order_key, :remove!, :adopt!, :none!, :write
   end
 end

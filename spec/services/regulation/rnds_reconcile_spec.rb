@@ -3,8 +3,8 @@ require "rails_helper"
 # Módulo 26c, Task 12 (contrato §3; pré-voo B5, B6; carry 4): a reconciliação
 # de uma linha pelo `GET /identifier`, contra o FakeRnds::App. Os resultados:
 # `:adopted` (a cabeça da cadeia vira o `last_rnds_id`, a remessa sem resposta
-# é adotada), `:none` (nada chegou: a remessa sem resposta ganha o marcador
-# terminal), `:deduplicated` (dois `final` sem relação: o mais novo é apagado),
+# é adotada), `:none` (nada chegou: a remessa sem resposta fecha com
+# `unanswered_closed_at`, Q25), `:deduplicated` (dois `final` sem relação: o mais novo é apagado),
 # `:transient` e `:unauthorized` (nada muda). A situação da linha depois disso
 # é do envio (RndsDelivery).
 RSpec.describe Regulation::RndsReconcile, type: :model do
@@ -81,10 +81,11 @@ RSpec.describe Regulation::RndsReconcile, type: :model do
     expect(RegulationRndsDelivery.where(regulation_rnds_sync_id: sync.id)).to be_empty
   end
 
-  it ":none — nada chegou: a remessa sem resposta ganha o marcador terminal; a linha não muda" do
+  it ":none — nada chegou: a remessa sem resposta fecha (unanswered_closed_at); a linha não muda" do
     delivery = unanswered!
     expect(call).to eq(:none)
-    expect(delivery.reload).to have_attributes(error_codes: [ "not_found" ], http_status: nil, accepted_at: nil, rnds_id: nil)
+    expect(delivery.reload).to have_attributes(unanswered_closed_at: Time.current, error_codes: [], http_status: nil, accepted_at: nil,
+                                               rnds_id: nil)
     expect(sync.reload).to have_attributes(last_rnds_id: nil, sent_digest: nil)
     expect(Regulation::RndsSync.unanswered_delivery?(sync)).to be(false)
   end

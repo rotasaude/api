@@ -280,6 +280,15 @@ RSpec.describe Regulation::RndsDeliverJob, type: :job do
       expect(sync).to have_attributes(status: "rejected", last_error_codes: [ "EHR-ERR999" ])
       expect(sync.deliveries.size).to eq(2)
     end
+
+    it "422 sem código da RNDS → rejected sem códigos gravados (Q25: só ERROR_CODE)" do
+      sync = sync!(municipal_request!)
+      warm_token!
+      fake.failures.push(422) # OperationOutcome "Erro simulado", sem código
+      run!
+      expect(sync.reload).to have_attributes(status: "rejected", last_error_codes: [])
+      expect(sync.deliveries.sole).to have_attributes(http_status: 422, error_codes: [])
+    end
   end
 
   describe "reconciliação pelo GET /identifier" do
@@ -430,9 +439,25 @@ RSpec.describe Regulation::RndsDeliverJob, type: :job do
       expect(lookups.size).to eq(1)
       sync.reload
       expect(sync).to have_attributes(status: "excluded", last_rnds_id: nil, next_attempt_at: nil)
-      expect(lost.reload).to have_attributes(error_codes: [ "not_found" ], http_status: nil, accepted_at: nil)
+      expect(lost.reload).to have_attributes(unanswered_closed_at: Time.current, error_codes: [], http_status: nil, accepted_at: nil)
       expect(Regulation::RndsSync.unanswered_delivery?(sync)).to be(false)
       expect(sync!(request)).to have_attributes(status: "excluded")
+    end
+  end
+
+  describe "remessa sem resposta que não chegou (Q25)" do
+    it "GET sem documento → a remessa fecha (unanswered_closed_at) e a linha segue: envia na mesma rodada" do
+      sync = sync!(municipal_request!)
+      lost = RegulationRndsDelivery.create!(regulation_rnds_sync: sync, kind: "create", mira_status: "pending", digest: sync.desired_digest,
+                                            sent_at: Time.current)
+      travel 1.second
+      run!
+
+      expect(lookups.size).to eq(1)
+      expect(posts.size).to eq(1)
+      expect(lost.reload).to have_attributes(unanswered_closed_at: Time.current, error_codes: [], accepted_at: nil, http_status: nil)
+      expect(sync.reload).to have_attributes(status: "idle", last_rnds_id: fake.accepted.last[:id])
+      expect(sync.deliveries.last).to have_attributes(kind: "create", http_status: 201)
     end
   end
 
@@ -477,27 +502,58 @@ RSpec.describe Regulation::RndsDeliverJob, type: :job do
       expect(sync.reload).to have_attributes(status: "idle", attempts: 0)
     end
 
-    it "conta da 1ª remessa sem aceite: 16 dias depois → failed; enqueued_at antigo não conta; o Reenviar reabre a contagem" do
+    it "conta da 1ª remessa sem aceite (retry_window_started_at): 16 dias depois → failed; enqueued_at antigo não conta; o Reenviar reabre" do
       sync = sync!(municipal_request!)
       sync.update_columns(enqueued_at: 20.days.ago) # esperou parado: não conta (I4)
       warm_token!
       fake.failures.push(503)
       run!
-      expect(sync.reload).to have_attributes(status: "queued", attempts: 1)
+      first = sync.deliveries.sole
+      expect(sync.reload).to have_attributes(status: "queued", attempts: 1, retry_window_started_at: first.sent_at)
 
       travel 16.days
       fake.failures.push(503)
-      run!
-      expect(sync.reload).to have_attributes(status: "failed", attempts: 2)
-      expect(sync.deliveries.last.error_codes).to eq([ "gave_up" ])
+      expect { run! }.not_to raise_error
+      expect(sync.reload).to have_attributes(status: "failed", attempts: 2, retry_window_started_at: first.sent_at)
+      expect(RegulationRndsDelivery.pluck(:error_codes).uniq).to eq([ [] ]) # só códigos da RNDS (Q25)
       run!
       expect(posts.size).to eq(2) # failed não é reivindicado
 
-      # O que o "Reenviar" da Task 14 faz: queued, attempts 0, agora, conteúdo e enqueued_at intactos.
+      # O "Reenviar" da Task 14: reopen_retry_window! + queued, attempts 0, agora (conteúdo e enqueued_at intactos).
+      sync.reopen_retry_window!
       sync.update!(status: "queued", attempts: 0, next_attempt_at: Time.current)
       fake.failures.push(503)
       run!
-      expect(sync.reload).to have_attributes(status: "queued", attempts: 1)
+      expect(sync.reload).to have_attributes(status: "queued", attempts: 1, retry_window_started_at: sync.deliveries.last.sent_at)
+    end
+
+    it "com o trigger endurecido, a 503 que esgota o prazo vira failed sem levantar e o resto do lote segue" do
+      stale = sync!(municipal_request!)
+      warm_token!
+      fake.failures.push(503)
+      run!
+      travel 16.days
+      fresh = sync!(municipal_request!)
+      reported = []
+      allow(Rails.error).to receive(:report) { |error, **| reported << error.message }
+      fake.failures.push(503) # a primeira do lote: a linha vencida
+      expect { run! }.not_to raise_error
+
+      expect(stale.reload).to have_attributes(status: "failed", attempts: 2)
+      expect(stale.deliveries.last).to have_attributes(http_status: 503, error_codes: [])
+      expect(fresh.reload).to have_attributes(status: "idle", attempts: 0)
+      expect(reported).to be_empty
+    end
+
+    it "aceite zera retry_window_started_at" do
+      sync = sync!(municipal_request!)
+      warm_token!
+      fake.failures.push(503)
+      run!
+      expect(sync.reload.retry_window_started_at).to be_present
+      travel 1.minute
+      run!
+      expect(sync.reload).to have_attributes(status: "idle", retry_window_started_at: nil)
     end
   end
 
