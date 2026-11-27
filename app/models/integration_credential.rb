@@ -57,6 +57,10 @@ class IntegrationCredential < ApplicationRecord
   end
 
   def inspect = "#<IntegrationCredential id=#{id.inspect} kind=#{kind.inspect} last_check_status=#{last_check_status.inspect}>"
+  def to_s = inspect
+  def pretty_print(pp) = pp.text(inspect)
+  # O `as_json` padrão do ActiveRecord decifra e devolve `secret`: aqui só o que não é segredo (módulo 26c, §9).
+  def as_json(*) = { "id" => id, "kind" => kind, "environment" => environment }
 
   private
 
