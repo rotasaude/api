@@ -78,7 +78,7 @@ class RegulationRndsCrew
   PROVIDER_PERFORMER_CBO = RegulationCrew::OPHTHALMOLOGY
   SECOND_UNIT = "UBS Vila Esperança".freeze
   POLYCLINIC = "Policlínica Municipal do Cajuru".freeze
-  # Só desta semente (o 92222 é do ClinicalRecordCrew).
+  # Só desta semente (o anterior colidia com o do ClinicalRecordCrew).
   PHONE_PREFIX = "99222".freeze
   MARKER_NAMESPACE = "6f1d3c52-8a0e-4b7a-9f3e-2c5d7e1b4a60".freeze
   # Pedidos da 26a que carregam os marcadores do simulado.

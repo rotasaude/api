@@ -833,7 +833,8 @@ RSpec.describe "Sigilo do envio à BNAFAR (27b) — Platform.audit e DomainEvent
     expect(files.sum { |file| File.read(file).scan(/Platform\s*\.\s*audit\b/).size }).to eq(audits.size)
 
     shared = shared_files.flat_map { |file| calls(file, :audit, "Platform").map { |call| [ file, call ] } }
-    expect(shared.map { |_, call| name_of(call) }).to contain_exactly("rnds.credential_set", "bnafar.credential_set")
+    # Módulo 26c: a credencial rnds_regulation audita o seu próprio nome (R18).
+    expect(shared.map { |_, call| name_of(call) }).to contain_exactly("rnds.credential_set", "bnafar.credential_set", "rnds_regulation.credential_set")
     bnafar = shared.select { |_, call| name_of(call) == "bnafar.credential_set" }
 
     (audits + bnafar).each do |file, call|
