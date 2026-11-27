@@ -53,9 +53,12 @@ module Regulation
     MISSED_APPOINTMENT = "no_show".freeze
     # Um horário faltado: datas e o CNES da unidade dele (executante da falta).
     # `missed_at`: o instante da linha `missed` (padrão: o início do horário).
-    Slot = Data.define(:starts_at, :ends_at, :cnes, :missed_at) do
-      def initialize(starts_at:, ends_at:, cnes:, missed_at: starts_at)
-        super(starts_at: starts_at, ends_at: ends_at, cnes: cnes, missed_at: missed_at)
+    # `unit_id` (rede própria: a unidade do `no_show`) e `provider_id` (externo:
+    # o prestador gravado na linha) só servem ao atalho da correção (RndsJson):
+    # não entram no documento.
+    Slot = Data.define(:starts_at, :ends_at, :cnes, :missed_at, :unit_id, :provider_id) do
+      def initialize(starts_at:, ends_at:, cnes:, missed_at: starts_at, unit_id: nil, provider_id: nil)
+        super(starts_at: starts_at, ends_at: ends_at, cnes: cnes, missed_at: missed_at, unit_id: unit_id, provider_id: provider_id)
       end
     end
     # andamento da 26a => situação MIRA (a mesma tabela do RndsStatus; `closed`
@@ -111,10 +114,10 @@ module Regulation
         if appointment
           used << appointment
           Slot.new(starts_at: appointment.scheduled_at, ends_at: appointment.effective_ends_at,
-                   cnes: appointment.health_unit&.cnes.presence, missed_at: row.created_at)
+                   cnes: appointment.health_unit&.cnes.presence, missed_at: row.created_at, unit_id: appointment.health_unit_id)
         elsif row.scheduled_at
           Slot.new(starts_at: row.scheduled_at, ends_at: row.ends_at || row.scheduled_at + Appointment::LEGACY_SPAN,
-                   cnes: row.care_provider&.cnes.presence, missed_at: row.created_at)
+                   cnes: row.care_provider&.cnes.presence, missed_at: row.created_at, provider_id: row.care_provider_id)
         end
       end.freeze
     end

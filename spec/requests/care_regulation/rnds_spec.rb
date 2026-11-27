@@ -72,6 +72,9 @@ RSpec.describe "Regulação — situação, lista e reenvio do envio à RNDS", t
       sign_in_as(doctor!(create_unit("UBS RNDS status")))
       get "/regulation/rnds/status"
       expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+      sign_in_as(regulator)
+      get "/regulation/rnds/status", params: { foo: "1" }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "foo" } ])
     end
   end
 
@@ -124,6 +127,28 @@ RSpec.describe "Regulação — situação, lista e reenvio do envio à RNDS", t
       get "/regulation/rnds/syncs"
       expect(json_body["items"][0]["fix"]).to include("provider_id" => auth[:offer].care_provider_id, "unit_id" => auth[:unit].id,
                                                       "offer_id" => nil)
+    end
+
+    # Final wave, item 7: a falta da rede própria aponta a unidade do horário faltado, não a do prestador vigente.
+    it "fix: falta na rede própria com a unidade do no_show sem CNES → unit_id dessa unidade, mesmo reautorizado em outra" do
+      auth = own_authorized_request!
+      appointment = schedule_regulated!(auth[:appointment_request], at: (Time.current + 3.days).change(hour: 9))
+      CareRegulation::AppointmentSync.call(appointment_request_id: auth[:appointment_request].id)
+      no_show!(appointment)
+      CareRegulation::AppointmentSync.call(appointment_request_id: auth[:appointment_request].id)
+      other_unit = create_unit("Policlínica #{SecureRandom.hex(3)}", cnes: regulation_cnes)
+      request = reauthorize!(auth[:regulation_request].reload, offer: offer!(provider: own_provider!(other_unit)))
+      sync = Regulation::RndsSync.recompute!(request, create: true, now: Time.current)
+      expect(sync.pending_steps.map { |step| step["status"] }).to eq(%w[absence])
+      facts = Regulation::RiraFacts.for(request: request, settings: RegulationRndsSetting.current, credential: nil)
+      expect(Regulation::RndsValidation.call(facts: facts, status: sync.pending_steps.first).last).to include("performer_without_cnes")
+      sync.update_columns(status: "blocked", blocked_reasons: [ "performer_without_cnes" ])
+
+      sign_in_as(admin)
+      get "/regulation/rnds/syncs", params: { status: "blocked" }
+      expect(json_body["items"].sole["fix"]).to eq("offer_id" => nil, "provider_id" => nil, "unit_id" => appointment.health_unit_id,
+                                                    "offer_month" => nil, "settings" => false)
+      expect(appointment.health_unit_id).to eq(auth[:unit].id)
     end
 
     it "reason=EHR-ERR999 filtra os recusados" do

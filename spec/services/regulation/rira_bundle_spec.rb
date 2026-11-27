@@ -588,7 +588,7 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       read_facts = read(request, credential: rnds_regulation_credential!)
       expect(read_facts.absences).to eq([ Regulation::RiraFacts::Slot.new(
         starts_at: missed.scheduled_at, ends_at: missed.scheduled_at + 15.minutes, cnes: booked[:unit].cnes,
-        missed_at: request.events.find { |e| e.status == "missed" }.created_at
+        missed_at: request.events.find { |e| e.status == "missed" }.created_at, unit_id: missed.health_unit_id
       ) ])
       expect(read_facts.status_times["absence"]).to eq(request.events.select { |e| e.status == "missed" }.last.created_at)
       step = Regulation::RndsStatus.steps(request, since: nil, settings: settings).first
