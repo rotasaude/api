@@ -5,7 +5,11 @@ module Regulation
     :package, :profiles, :code_systems, :identifiers, :priority_system,
     :appointment_status_system, :service_request_status_system,
     :participation_status_system, :date_fields, :doc_type, :confirmed
-  ) do
+  )
+
+  # Reaberta como classe (não no bloco do Data.define): uma constante no bloco
+  # cairia em Regulation, o escopo léxico.
+  class RiraProfile
     PATH = Rails.root.join("config/rnds/rira_1_0.yml")
 
     def self.current

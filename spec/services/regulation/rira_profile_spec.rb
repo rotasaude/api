@@ -5,10 +5,11 @@ require "rubygems/package"
 # O perfil RIRA é lido do pacote OFICIAL versionado em spec/fixtures/rira
 # (br.gov.saude.rira.fhir, CC0). Estes specs travam cada URL do YAML ao pacote.
 RSpec.describe Regulation::RiraProfile, type: :model do
-  FIXTURE = Rails.root.join("spec/fixtures/rira/br.gov.saude.rira.fhir-1.0.0-release.tgz")
+  # Método, e não constante: dentro de um bloco do RSpec ela cairia em Object.
+  def self.fixture = Rails.root.join("spec/fixtures/rira/br.gov.saude.rira.fhir-1.0.0-release.tgz")
 
   def self.package_files
-    @package_files ||= Zlib::GzipReader.open(FIXTURE) do |gz|
+    @package_files ||= Zlib::GzipReader.open(fixture) do |gz|
       files = {}
       Gem::Package::TarReader.new(gz).each { |e| files[e.full_name] = e.read if e.file? && e.full_name.end_with?(".json") }
       files
@@ -28,8 +29,14 @@ RSpec.describe Regulation::RiraProfile, type: :model do
 
   let(:profile) { described_class.current }
 
+  it "as constantes ficam no próprio perfil: nada vaza para Regulation nem para Object" do
+    expect(described_class::PATH).to eq(Rails.root.join("config/rnds/rira_1_0.yml"))
+    expect(Regulation.const_defined?(:PATH, false)).to be(false)
+    expect(Object.const_defined?(:FIXTURE, false)).to be(false)
+  end
+
   it "o SHA-256 do fixture é o do YAML" do
-    expect(Digest::SHA256.file(FIXTURE).hexdigest).to eq(profile.package[:sha256])
+    expect(Digest::SHA256.file(self.class.fixture).hexdigest).to eq(profile.package[:sha256])
     pkg = JSON.parse(package_files.fetch("package/package.json"))
     expect(pkg["name"]).to eq(profile.package[:id])
     expect(pkg["version"]).to eq(profile.package[:version])
