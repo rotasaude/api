@@ -122,11 +122,14 @@ jobs:
   # URLs/host abaixo são inertes (mesmo desenho do production-boot) para que qualquer conexão
   # acidental falhe de imediato. Java só aqui. Os exemplos e o relatório do
   # validador sobem como artefato (evidência da homologação, decisão 3).
+  # O jar do validador é de terceiro: o sha256 é conferido depois do download
+  # e depois da restauração do cache (o do metadado da release 7.0.6), e o
+  # RAILS_MASTER_KEY fica só no passo que gera os exemplos, nunca no do Java.
   rira-validate:
     runs-on: ubuntu-24.04
     env:
       RAILS_ENV: test
-      RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+      VALIDATOR_SHA256: 2686590539f0b3ba7683149b25d78249f6886c04e2c326e884c5049d8947df89
       ROTA_APP_PASSWORD: inert
       ROTA_PLATFORM_PASSWORD: inert
       DATABASE_HOST: 127.0.0.1
@@ -164,7 +167,11 @@ jobs:
             curl -fsSL -o ~/validator/validator_cli.jar \
               https://github.com/hapifhir/org.hl7.fhir.core/releases/download/7.0.6/validator_cli.jar
           fi
+      - name: Verify the HL7 validator checksum (downloaded or restored from the cache)
+        run: echo "${VALIDATOR_SHA256}  ${HOME}/validator/validator_cli.jar" | sha256sum -c -
       - name: Write the RIRA example documents (in memory, no database)
+        env:
+          RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
         run: bin/rails "regulation:rira_examples[tmp/rira-examples]"
       - name: Validate against the versioned RIRA package
         run: |
