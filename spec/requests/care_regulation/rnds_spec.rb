@@ -41,13 +41,25 @@ RSpec.describe "Regulação — situação, lista e reenvio do envio à RNDS", t
       )
     end
 
-    it "initial_load_pending conta as linhas da carga inicial que não estão idle" do
+    # Re-revisão N3: só o que ainda espera a vez na faixa da carga inicial (queued/sending).
+    it "initial_load_pending conta só as linhas da faixa da carga inicial que esperam envio (queued, sending)" do
       sync!(status: "queued", initial_load: true)
       sync!(status: "idle", initial_load: true)
       sync!(status: "excluded", initial_load: true)
       sign_in_as(admin)
       get "/regulation/rnds/status"
-      expect(json_body).to include("initial_load_pending" => 2, "late_banner" => false)
+      expect(json_body).to include("initial_load_pending" => 1, "late_banner" => false)
+    end
+
+    it "linha em massa que termina blocked/rejected/failed não conta em initial_load_pending" do
+      %w[queued sending].each { |status| sync!(status: status, initial_load: true) }
+      sync!(status: "blocked", initial_load: true, blocked_reasons: [ "missing_diagnosis" ])
+      sync!(status: "rejected", initial_load: true, last_error_codes: [ "EHR-ERR999" ])
+      sync!(status: "failed", initial_load: true)
+      sync!(status: "queued", initial_load: false)
+      sign_in_as(regulator)
+      get "/regulation/rnds/status"
+      expect(json_body).to include("initial_load_pending" => 2)
     end
 
     it "interruptor desligado → 403 feature_disabled com feature rnds_regulation" do

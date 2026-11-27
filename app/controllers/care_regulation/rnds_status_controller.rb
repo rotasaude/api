@@ -14,7 +14,11 @@ module CareRegulation
 
       missing = Platform::Features.missing(Current.city, Regulation::RndsGate::KEY)
       counts = Regulation::RndsAlert.counts(RegulationRndsSync.all, now: Time.current)
-      pending = RegulationRndsSync.where(initial_load: true).where.not(status: "idle").count
+      # Só o que ainda espera a vez na faixa da carga inicial (re-revisão N3):
+      # a linha parada, recusada ou desistida da faixa não conta no aviso
+      # ("N pedidos na fila, no ritmo de 60 por minuto"). O `initial_load` em
+      # si fica como está: é a faixa e a carência do alarme (do enqueued_at, Q26).
+      pending = RegulationRndsSync.where(initial_load: true, status: %w[queued sending]).count
       render json: Regulation::RndsJson.status(usable: missing.empty?, missing: missing, counts: counts, initial_load_pending: pending)
     end
   end

@@ -774,6 +774,39 @@ RSpec.describe Regulation::RndsDeliverJob, type: :job do
       expect(Regulation::RndsAlert.counts(now: Time.current)[:late]).to eq(0)
     end
 
+    # Re-revisão N1: a mudança viva que chega durante o `sending` de uma linha da faixa em massa.
+    it "mudança viva durante sending de linha da faixa em massa → volta na faixa normal e o late conta do novo enqueued_at" do
+      request = municipal_request!
+      sync = sync!(request)
+      run!
+      travel 1.minute
+      rnds_settings!(priority_by_color: settings.priority_by_color.transform_values { "urgent" })
+      consume!("regulation_rnds.settings_changed")
+      Regulation::RndsRecomputeAllJob.perform_now
+      bulk_at = sync.reload.enqueued_at
+      expect(sync).to have_attributes(status: "queued", initial_load: true)
+
+      travel 1.minute
+      live_at = nil
+      allow_any_instance_of(Rnds::Client).to receive(:post_bundle).and_wrap_original do |original, *args, **kwargs|
+        unless live_at
+          decide!(request, "return")
+          consume!("regulation_request.returned")
+          live_at = Time.current
+          expect(sync.reload).to have_attributes(status: "sending", initial_load: false, enqueued_at: live_at)
+        end
+        original.call(*args, **kwargs)
+      end
+      run!
+
+      expect(sync.reload).to have_attributes(status: "queued", initial_load: false, enqueued_at: live_at,
+                                             desired_status: "returned-to-requester")
+      expect(live_at).to be > bulk_at
+      travel_to live_at.tomorrow.change(hour: 23, min: 30)
+      expect(Regulation::RndsAlert.late?(sync, now: Time.current)).to be(true)
+      expect(Regulation::RndsAlert.counts(now: Time.current)[:late]).to eq(1)
+    end
+
     it "evento durante o POST → depois do 201 a linha fica queued com o conteúdo novo" do
       request = reauthorize!(municipal_request!, offer: offer)
       sync = sync!(request)

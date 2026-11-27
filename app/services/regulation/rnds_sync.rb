@@ -129,17 +129,21 @@ module Regulation
 
       was = sync.status
       queued = false
+      # O relógio do D-1 (`enqueued_at`) e a faixa não são da posse do claim:
+      # mudam também com a linha `sending` (re-revisão N1, M3). Lá a mudança
+      # viva a devolve à faixa normal; o ajuste não a leva à da carga (não entra
+      # na fila agora: `queued` falso).
+      sync.enqueued_at = now if changed
       unless was == SENDING
         status = next_status(sync, was, erased: erased, digest_changed: digest_changed, refused_digest: refused_digest,
                                          next_digest: next_digest)
-        sync.enqueued_at = now if changed
         queued = status == "queued" && was != "queued"
-        sync.initial_load = lane_of(sync, lane, changed: changed, queued: queued)
         sync.assign_attributes(next_attempt_at: now, attempts: 0) if queued
         sync.next_attempt_at = nil if %w[idle excluded erased].include?(status)
         sync.blocked_reasons = [] unless status == "blocked"
         sync.status = status
       end
+      sync.initial_load = lane_of(sync, lane, changed: changed, queued: queued)
       sync.save!
       if queued
         DomainEvents.publish(
