@@ -499,6 +499,10 @@ Rails.application.routes.draw do
     post   "requests/:id/schedule", to: "decisions#schedule"
     post   "requests/:id/outcome", to: "decisions#outcome"
     get    "exports/state.csv",    to: "exports#state"
+    # Módulo 26c (Q10, Q11): situação, lista e reenvio do envio à RNDS.
+    get    "rnds/status",          to: "rnds_status#show"
+    get    "rnds/syncs",           to: "rnds_syncs#index"
+    post   "rnds/syncs/:id/retry", to: "rnds_syncs#retry"
     # A unidade solicitante (contrato §5): devolvidos e complemento.
     post   "requests/:id/complement", to: "decisions#complement"
     get    "returned",             to: "returned#index"
