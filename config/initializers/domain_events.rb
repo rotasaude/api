@@ -242,11 +242,12 @@ Rails.application.config.to_prepare do
   # (local_disease_id, user_id), sem consumidor.
   DomainEvents.bind "local_disease.changed", to: []
   # Módulo 26a (ADR 0044): prazos por cor e lista do enfermeiro alterados; só
-  # ids (user_id). O envio da regulação à RNDS (26c) recalcula todos os pedidos.
-  DomainEvents.bind "care_regulation.settings_changed", to: [ Regulation::RndsSyncJob ]
+  # trilha, só ids (user_id), sem consumidor. Nenhum campo do documento RIRA
+  # depende deles: não é gatilho do envio à RNDS (26c, Q27).
+  DomainEvents.bind "care_regulation.settings_changed", to: []
   # Módulo 26c (ADR 0044): envio da regulação à RNDS; só ids. Os de envio são
   # trilha, sem consumidor; a mudança dos ajustes recalcula todos os pedidos
-  # (Regulation::RndsSyncJob).
+  # (Regulation::RndsSyncJob enfileira o Regulation::RndsRecomputeAllJob).
   %w[regulation_rnds.queued regulation_rnds.accepted regulation_rnds.blocked regulation_rnds.rejected
      regulation_rnds.excluded].each { |name| DomainEvents.bind name, to: [] }
   DomainEvents.bind "regulation_rnds.settings_changed", to: [ Regulation::RndsSyncJob ]

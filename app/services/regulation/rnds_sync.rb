@@ -81,7 +81,8 @@ module Regulation
       when "care_offer.changed" then by_offers(payload[:care_offer_id])
       when "care_provider.changed" then by_providers(payload[:care_provider_id])
       when "health_unit.changed" then by_unit(payload[:health_unit_id])
-      when "care_regulation.settings_changed", "regulation_rnds.settings_changed" then :all
+      # Q27: o care_regulation.settings_changed (prazos, lista do enfermeiro) não é gatilho.
+      when "regulation_rnds.settings_changed" then :all
       else
         resolver = CareRegulation::AppointmentSyncJob::RESOLVERS.fetch(event_name) { raise ArgumentError, "evento não consumido: #{event_name}" }
         id = resolver.call(payload)
@@ -91,20 +92,16 @@ module Regulation
       end
     end
 
-    # As linhas existentes; com o interruptor (`create`) e `send_external`
-    # ligados, também os regulados pelo estado não terminais sem linha
-    # (`initial_load`).
-    def recompute_all!(now:, create: RndsGate.enabled?(Current.city))
-      settings = RegulationRndsSetting.current
-      RegulationRequest.where(id: RegulationRndsSync.select(:regulation_request_id)).find_each do |request|
-        recompute!(request, create: false, now: now, settings: settings)
-      end
-      return unless create && settings.send_external
+    # Os pedidos que um recálculo em massa (por ajuste) olha, dentro de `scope`.
+    def bulk_requests(scope, now:)
+      _ = now
+      scope
+    end
 
+    # Os regulados pelo estado não terminais (fora do rascunho) ainda sem linha.
+    def uncovered_state_regulated
       RegulationRequest.where(state_regulated: true).where.not(status: [ "draft", *CareRegulation::Catalog::TERMINAL_STATUSES ])
-                       .where.not(id: RegulationRndsSync.select(:regulation_request_id)).find_each do |request|
-        recompute!(request, create: true, initial_load: true, now: now, settings: settings)
-      end
+                       .where.not(id: RegulationRndsSync.select(:regulation_request_id))
     end
 
     def apply!(sync, request, target, settings, now)

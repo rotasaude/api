@@ -96,7 +96,8 @@ RSpec.describe Regulation::RndsSyncJob, type: :job do
     expect(sync.desired_digest).not_to eq(sync.sent_digest)
   end
 
-  it "regulation_rnds.settings_changed recalcula todos (e, com send_external, cria os regulados pelo estado)" do
+  # I1: o recálculo de todos sai da transação do consumidor (Regulation::RndsRecomputeAllJob).
+  it "regulation_rnds.settings_changed enfileira o recálculo de todos (e, com send_external, cria os regulados pelo estado)" do
     first = regulation_request!
     second = regulation_request!
     syncs = [ first, second ].map { |request| accept!(row!(request)) }
@@ -105,8 +106,11 @@ RSpec.describe Regulation::RndsSyncJob, type: :job do
 
     rnds_settings!(priority_by_color: { "red" => "urgent", "yellow" => "urgent", "green" => "routine", "blue" => "routine" },
                    send_external: true)
-    deliver(last_event("regulation_rnds.settings_changed"))
+    expect { deliver(last_event("regulation_rnds.settings_changed")) }.to have_enqueued_job(Regulation::RndsRecomputeAllJob).with(no_args)
+    expect(ids).to be_empty # nada na transação do consumidor
+    syncs.each { |sync| expect(sync.reload.status).to eq("idle") }
 
+    Regulation::RndsRecomputeAllJob.perform_now
     expect(ids).to contain_exactly(first.id, second.id, external.id)
     syncs.each { |sync| expect(sync.reload).to have_attributes(status: "queued", sent_status: "pending") }
     expect(RegulationRndsSync.find_by!(regulation_request_id: external.id))
@@ -120,7 +124,16 @@ RSpec.describe Regulation::RndsSyncJob, type: :job do
 
     rnds_settings!(send_external: true)
     deliver(last_event("regulation_rnds.settings_changed"))
+    Regulation::RndsRecomputeAllJob.perform_now
     expect(RegulationRndsSync.find_by(regulation_request_id: external.id)).to be_nil
+  end
+
+  # Q27: prazos e lista do enfermeiro não entram no documento.
+  it "care_regulation.settings_changed não enfileira o consumidor" do
+    admin = regulation_admin!
+    expect { CareRegulation::SaveDeadlines.call(attrs: { "red" => 2, "yellow" => 30, "green" => 90, "blue" => 180 }, by: admin) }
+      .not_to have_enqueued_job(described_class)
+    expect(DomainEvent.where(name: "care_regulation.settings_changed").count).to eq(1) # controle: o evento saiu
   end
 
   it "o mesmo evento duas vezes não duplica" do

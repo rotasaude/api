@@ -406,7 +406,8 @@ RSpec.describe Regulation::RndsSync, type: :model do
     it "regulation_request.* → o pedido; settings → :all" do
       id = SecureRandom.uuid
       expect(described_class.affected_request_ids("regulation_request.authorized", regulation_request_id: id)).to eq([ id ])
-      expect(described_class.affected_request_ids("care_regulation.settings_changed", user_id: id)).to eq(:all)
+      # Q27: prazos e lista do enfermeiro não são gatilho.
+      expect { described_class.affected_request_ids("care_regulation.settings_changed", user_id: id) }.to raise_error(ArgumentError)
       expect(described_class.affected_request_ids("regulation_rnds.settings_changed", user_id: id)).to eq(:all)
     end
 

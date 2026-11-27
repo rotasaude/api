@@ -23,10 +23,11 @@ module Regulation
     def handle(**payload)
       now = Time.current
       ids = RndsSync.affected_request_ids(@event_name, payload)
-      enabled = RndsGate.enabled?(Current.city)
-      return RndsSync.recompute_all!(now: now, create: enabled) if ids == :all
+      # Todos os pedidos (ajustes do envio): fora desta transação (I1), no
+      # RndsRecomputeAllJob, enfileirado depois do commit.
+      return RndsRecomputeAllJob.perform_later if ids == :all
 
-      create = enabled && RndsSync::CREATING_EVENT.match?(@event_name)
+      create = RndsGate.enabled?(Current.city) && RndsSync::CREATING_EVENT.match?(@event_name)
       RegulationRequest.where(id: ids).order(:id).each do |request|
         RndsSync.recompute!(request, create: create, now: now)
       end
