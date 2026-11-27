@@ -83,6 +83,28 @@ RSpec.describe Regulation::RndsAlert, type: :model do
         expect(late_count(now)).to eq(1)
       end
 
+      # Final wave, item 6: a fronteira das 72 h é a mesma no late? e no SQL (fora só ANTES de completar 72 h).
+      it "carga inicial com exatamente 72 h → atrasa, no late? e na contagem" do
+        now = at(15, 12)
+        row = sync!(initial_load: true, enqueued_at: now - 72.hours, created_at: now - 72.hours)
+        expect(late?(row, now)).to be(true)
+        expect(late_count(now)).to eq(1)
+      end
+
+      it "late? casa com a contagem SQL linha a linha" do
+        now = at(15, 12)
+        offsets = [ 72.hours - 1.second, 72.hours, 73.hours, 20.hours ]
+        rows = %w[queued idle erased].product([ true, false ], offsets).map do |status, initial, offset|
+          sync!(status: status, initial_load: initial, enqueued_at: now - offset, created_at: now - offset)
+        end
+        rows.each do |row|
+          sql = described_class.counts(RegulationRndsSync.where(id: row.id), now: now)[:late] == 1
+          expect(late?(row, now)).to eq(sql), "#{row.status} initial_load=#{row.initial_load} created_at=#{row.created_at}"
+        end
+        expect(rows.count { |row| late?(row, now) }).to eq(late_count(now))
+        expect(late_count(now)).to be_positive
+      end
+
       it "linha comum não ganha a carência da carga inicial" do
         now = at(15, 12)
         sync!(initial_load: false, enqueued_at: now - 71.hours, created_at: now - 71.hours)

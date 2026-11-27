@@ -43,7 +43,7 @@ module Regulation
                      "+ interval '1 day' + make_interval(hours => :hour)) AT TIME ZONE :zone) <= :now"
       scope.where(status: LATE_STATUSES)
            .where(RegulationRndsSync.sanitize_sql_array([ deadline_sql, { zone: zone, hour: RndsLimits::LATE_HOUR, now: now.utc } ]))
-           .where.not(initial_load: true, created_at: (now - RndsLimits::INITIAL_GRACE)..)
+           .where.not("regulation_rnds_syncs.initial_load AND regulation_rnds_syncs.created_at > ?", now - RndsLimits::INITIAL_GRACE)
     end
     private_class_method :late_scope
   end
