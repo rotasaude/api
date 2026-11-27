@@ -336,6 +336,37 @@ RSpec.describe Regulation::RndsSync, type: :model do
       end
     end
 
+    # Q26: a faixa (initial_load) da linha que entra na fila: ajuste → a da carga inicial; mudança do próprio pedido → a normal.
+    describe "faixa do reenfileiramento (Q26)" do
+      it "ajuste (lane: :bulk) leva o aceito à faixa da carga inicial; a mudança do pedido (lane: :live) o devolve à normal" do
+        request = municipal_request!
+        sync = accept!(recompute(request))
+        rnds_settings!(priority_by_color: settings.priority_by_color.transform_values { "urgent" })
+        expect(recompute(request, lane: :bulk)).to have_attributes(status: "queued", initial_load: true, enqueued_at: Time.current)
+        travel 1.minute
+        decide!(request, "return")
+        expect(recompute(request, lane: :live)).to have_attributes(status: "queued", initial_load: false, enqueued_at: Time.current)
+        expect(sync.reload.desired_status).to eq("returned-to-requester")
+      end
+
+      it "a mudança viva já na fila segue na faixa normal quando um ajuste chega depois" do
+        request = municipal_request!
+        accept!(recompute(request))
+        decide!(request, "return")
+        expect(recompute(request, lane: :live)).to have_attributes(status: "queued", initial_load: false)
+        rnds_settings!(priority_by_color: settings.priority_by_color.transform_values { "urgent" })
+        expect(recompute(request, lane: :bulk)).to have_attributes(status: "queued", initial_load: false)
+      end
+
+      it "sem lane (o envio relendo o desejado), a faixa não muda" do
+        request = municipal_request!
+        sync = accept!(recompute(request))
+        sync.update_columns(initial_load: true)
+        decide!(request, "return")
+        expect(recompute(request)).to have_attributes(status: "queued", initial_load: true)
+      end
+    end
+
     it "linha sending não perde o status (só o desejado muda)" do
       request = municipal_request!
       sync = recompute(request)

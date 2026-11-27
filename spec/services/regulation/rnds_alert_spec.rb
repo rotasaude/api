@@ -105,6 +105,15 @@ RSpec.describe Regulation::RndsAlert, type: :model do
         expect(late_count(now)).to be_positive
       end
 
+      # Q26: a linha reenfileirada por ajuste entra na faixa da carga inicial com a carência a contar do reenfileiramento.
+      it "faixa da carga inicial com created_at antigo: a carência conta do enqueued_at" do
+        now = at(15, 12)
+        fresh = sync!(initial_load: true, enqueued_at: now - 71.hours, created_at: now - 60.days)
+        old = sync!(initial_load: true, enqueued_at: now - 73.hours, created_at: now - 60.days)
+        expect([ late?(fresh, now), late?(old, now) ]).to eq([ false, true ])
+        expect(late_count(now)).to eq(1)
+      end
+
       it "linha comum não ganha a carência da carga inicial" do
         now = at(15, 12)
         sync!(initial_load: false, enqueued_at: now - 71.hours, created_at: now - 71.hours)

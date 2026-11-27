@@ -30,7 +30,8 @@ RSpec.describe "Regulação — situação, lista e reenvio do envio à RNDS", t
       sync!(status: "rejected", last_error_codes: [ "EHR-ERR906" ])
       sync!(status: "idle", last_rnds_id: "doc-1", last_accepted_at: now - 2.days)
       sync!(status: "queued", enqueued_at: now - 3.days)
-      sync!(status: "queued", initial_load: true, created_at: now - 1.hour, enqueued_at: now - 3.days)
+      # Faixa da carga inicial (Q26): a carência de 72 h conta do enqueued_at.
+      sync!(status: "queued", initial_load: true, created_at: now - 40.days, enqueued_at: now - 71.hours)
       sign_in_as(regulator)
       get "/regulation/rnds/status"
       expect([ response.status, json_body ]).to eq(

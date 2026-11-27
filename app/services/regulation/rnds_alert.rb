@@ -3,8 +3,10 @@ module Regulation
   # portaria federal pede o envio diário: a mudança de um dia tem até as
   # `RndsLimits::LATE_HOUR`:00 do dia seguinte, no fuso da cidade (`Time.zone`,
   # dentro de `CityConnection.with`), para chegar à RNDS. O `enqueued_at` é a
-  # régua (desistir de uma linha não muda o alarme). A linha da carga inicial
-  # ganha `INITIAL_GRACE` a contar do `created_at`. `idle`, `excluded` e
+  # régua (desistir de uma linha não muda o alarme). A linha na faixa da carga
+  # inicial (`initial_load`: a carga e o reenfileiramento por ajuste, Q26) fica
+  # fora do alarme nas primeiras `INITIAL_GRACE`, a contar do `enqueued_at` (a
+  # entrada na fila; na carga, o próprio nascimento). `idle`, `excluded` e
   # `erased` nunca atrasam. As contagens são em SQL, por status.
   module RndsAlert
     LATE_STATUSES = (RndsCatalog::SYNC_STATUSES - %w[idle excluded erased]).freeze
@@ -27,7 +29,7 @@ module Regulation
     # O mesmo critério, para a linha da lista.
     def late?(sync, now:)
       return false unless LATE_STATUSES.include?(sync.status)
-      return false if sync.initial_load && sync.created_at > now - RndsLimits::INITIAL_GRACE
+      return false if sync.initial_load && sync.enqueued_at > now - RndsLimits::INITIAL_GRACE
 
       now >= deadline(sync.enqueued_at)
     end
@@ -43,7 +45,7 @@ module Regulation
                      "+ interval '1 day' + make_interval(hours => :hour)) AT TIME ZONE :zone) <= :now"
       scope.where(status: LATE_STATUSES)
            .where(RegulationRndsSync.sanitize_sql_array([ deadline_sql, { zone: zone, hour: RndsLimits::LATE_HOUR, now: now.utc } ]))
-           .where.not("regulation_rnds_syncs.initial_load AND regulation_rnds_syncs.created_at > ?", now - RndsLimits::INITIAL_GRACE)
+           .where.not("regulation_rnds_syncs.initial_load AND regulation_rnds_syncs.enqueued_at > ?", now - RndsLimits::INITIAL_GRACE)
     end
     private_class_method :late_scope
   end

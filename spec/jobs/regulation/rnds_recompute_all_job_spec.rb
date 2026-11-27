@@ -24,6 +24,33 @@ RSpec.describe Regulation::RndsRecomputeAllJob, type: :job do
     expect(described_class.concurrency_limit).to eq(1)
   end
 
+  # Q26: o reenfileiramento por ajuste vai na faixa da carga inicial e pula o terminal com aceite de mais de 30 dias.
+  it "linhas reenfileiradas na faixa da carga inicial; terminal com último aceite de mais de 30 dias fica de fora" do
+    live = regulation_request!
+    recent_end = regulation_request!
+    old_end = regulation_request!
+    never_accepted_end = regulation_request!
+    [ live, recent_end, old_end, never_accepted_end ].each { |request| row!(request) }
+    [ recent_end, old_end, never_accepted_end ].each { |request| request.update_columns(status: "cancelled") }
+    accepted_at = { live => now - 40.days, recent_end => now - 29.days, old_end => now - 31.days }
+    accepted_at.each do |request, at|
+      sync = RegulationRndsSync.find_by!(regulation_request_id: request.id)
+      sync.update_columns(status: "idle", next_attempt_at: nil, last_rnds_id: "RA#{SecureRandom.hex(4)}", last_accepted_at: at,
+                          sent_status: sync.desired_status, sent_digest: sync.desired_digest)
+    end
+    RegulationRndsSync.find_by!(regulation_request_id: never_accepted_end.id).update_columns(status: "blocked", blocked_reasons: [ "missing_diagnosis" ])
+    digests = RegulationRndsSync.pluck(:regulation_request_id, :desired_digest).to_h
+
+    rnds_settings!(priority_by_color: RegulationRndsSetting.current.priority_by_color.transform_values { "urgent" })
+    described_class.perform_now
+
+    rows = RegulationRndsSync.all.index_by(&:regulation_request_id)
+    expect(rows.fetch(live.id)).to have_attributes(status: "queued", initial_load: true, enqueued_at: Time.current)
+    expect(rows.fetch(recent_end.id)).to have_attributes(status: "queued", initial_load: true)
+    expect(rows.fetch(old_end.id)).to have_attributes(status: "idle", initial_load: false, desired_digest: digests.fetch(old_end.id))
+    expect(rows.fetch(never_accepted_end.id).desired_digest).not_to eq(digests.fetch(never_accepted_end.id))
+  end
+
   it "cada recálculo na sua transação: nenhuma transação aberta em volta, e a linha que levanta não desfaz as outras" do
     requests = Array.new(3) { regulation_request! }
     requests.each { |request| row!(request) }

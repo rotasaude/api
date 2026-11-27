@@ -24,6 +24,13 @@ module Regulation
   #   do último aceite (`sent_status`, `sent_digest`); senão `idle`.
   # Entrar em `queued`: `next_attempt_at = now`, `attempts = 0` e o evento
   # `regulation_rnds.queued` (só ids). Desejado mudou → `enqueued_at = now`.
+  #
+  # Faixa (Q26, `initial_load`): uma mudança de ajuste (`lane: :bulk`, o
+  # recálculo em massa) que põe a linha na fila a manda para a faixa da carga
+  # inicial (60 por minuto, depois das vivas, carência de 72 h do alarme D-1 a
+  # contar do `enqueued_at`); a linha que já estava na fila fica na sua. A
+  # mudança do próprio pedido (`lane: :live`) a devolve à faixa normal. Sem
+  # `lane` (o envio relendo o desejado), a faixa não muda.
   module RndsSync
     EXCLUDED = "excluded".freeze
     REFUSED = %w[rejected failed].freeze
@@ -37,7 +44,7 @@ module Regulation
 
     # -> RegulationRndsSync | nil (sem linha e sem criar, rascunho, ou
     # `excluded` sem linha).
-    def recompute!(request, create:, now:, initial_load: false, settings: RegulationRndsSetting.current)
+    def recompute!(request, create:, now:, initial_load: false, lane: nil, settings: RegulationRndsSetting.current)
       RegulationRndsSync.transaction(requires_new: true) do
         sync = RegulationRndsSync.lock.find_by(regulation_request_id: request.id)
         next sync if sync.nil? && !create
@@ -47,7 +54,7 @@ module Regulation
         next nil if sync.nil? && target.status == EXCLUDED
 
         sync ||= RegulationRndsSync.new(regulation_request: request, initial_load: initial_load, enqueued_at: now)
-        apply!(sync, request, target, settings, now)
+        apply!(sync, request, target, settings, now, lane)
       end
     end
 
@@ -92,10 +99,12 @@ module Regulation
       end
     end
 
-    # Os pedidos que um recálculo em massa (por ajuste) olha, dentro de `scope`.
+    # Os pedidos que um recálculo por ajuste olha, dentro de `scope` (Q26 b):
+    # fora os terminais cujo último aceite tem mais de INITIAL_LOAD_DAYS dias
+    # (o que nunca foi aceito segue: ainda não chegou à RNDS).
     def bulk_requests(scope, now:)
-      _ = now
-      scope
+      stale = RegulationRndsSync.where(last_accepted_at: ...(now - RndsLimits::INITIAL_LOAD_DAYS.days)).select(:regulation_request_id)
+      scope.where.not(id: RegulationRequest.where(status: CareRegulation::Catalog::TERMINAL_STATUSES, id: stale).select(:id))
     end
 
     # Os regulados pelo estado não terminais (fora do rascunho) ainda sem linha.
@@ -104,7 +113,7 @@ module Regulation
                        .where.not(id: RegulationRndsSync.select(:regulation_request_id))
     end
 
-    def apply!(sync, request, target, settings, now)
+    def apply!(sync, request, target, settings, now, lane)
       facts = RiraFacts.for(request: request, settings: settings, credential: nil)
       excluded = target.status == EXCLUDED
       erased = sync.last_rnds_id.present? && facts.patient_cpf.blank? && facts.patient_cns.blank?
@@ -125,6 +134,7 @@ module Regulation
                                          refused_digest: refused_digest, next_digest: next_digest)
         sync.enqueued_at = now if changed
         queued = status == "queued" && was != "queued"
+        sync.initial_load = lane_of(sync, lane, changed: changed, queued: queued)
         sync.assign_attributes(next_attempt_at: now, attempts: 0) if queued
         sync.next_attempt_at = nil if %w[idle excluded erased].include?(status)
         sync.blocked_reasons = [] unless status == "blocked"
@@ -153,6 +163,14 @@ module Regulation
 
       differs = pending || steps.any? || [ sync.desired_status, sync.desired_digest ] != [ sync.sent_status, sync.sent_digest ]
       differs ? "queued" : "idle"
+    end
+
+    # A faixa da linha depois do recálculo (Q26).
+    def lane_of(sync, lane, changed:, queued:)
+      return false if lane == :live && changed
+      return true if lane == :bulk && changed && queued
+
+      sync.initial_load
     end
 
     # O digest da última remessa de documento (a recusada ou falha).
@@ -187,6 +205,6 @@ module Regulation
                    .distinct.pluck("appointment_requests.origin_regulation_request_id")
     end
 
-    private_class_method :apply!, :next_status, :last_delivery_digest, :accepted_since, :by_offers, :by_providers, :by_unit
+    private_class_method :apply!, :lane_of, :next_status, :last_delivery_digest, :accepted_since, :by_offers, :by_providers, :by_unit
   end
 end

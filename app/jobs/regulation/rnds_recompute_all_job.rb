@@ -1,5 +1,8 @@
 # Recálculo de todos os pedidos de uma cidade depois de uma mudança dos ajustes
-# do envio à RNDS (módulo 26c; revisão final I1; Q26). O consumidor
+# do envio à RNDS (módulo 26c; revisão final I1; Q26). Mudança de ajuste não é
+# mudança do pedido: o que volta à fila vai na faixa da carga inicial
+# (`lane: :bulk`), e o terminal com último aceite de mais de INITIAL_LOAD_DAYS
+# dias fica de fora (`RndsSync.bulk_requests`). O consumidor
 # (RndsSyncJob) só o enfileira, sem argumentos: o recálculo lê o estado atual,
 # então é idempotente por construção e dispensa o IdempotentConsumer.
 #
@@ -26,7 +29,7 @@ module Regulation
       create = RndsGate.enabled?(Current.city) # fora da transação da cidade
       settings = RegulationRndsSetting.current
       RndsSync.bulk_requests(RegulationRequest.where(id: RegulationRndsSync.select(:regulation_request_id)), now: now).find_each do |request|
-        recompute(request, create: false, now: now, settings: settings)
+        recompute(request, create: false, now: now, settings: settings, lane: :bulk)
       end
       return unless create && settings.send_external
 

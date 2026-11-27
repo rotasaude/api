@@ -34,6 +34,12 @@ RSpec.describe Regulation::RndsDeliverJob, type: :job do
 
   def municipal_request!(**over) = regulation_request!(unit: create_unit("UBS #{SecureRandom.hex(3)}", cnes: regulation_cnes), **over)
 
+  # O consumidor real (RndsSyncJob) para o último evento de cada nome.
+  def consume!(name)
+    event = DomainEvent.where(name: name).order(:occurred_at, :id).last!
+    Regulation::RndsSyncJob.new.perform(event_id: event.id, event_name: event.name, city_slug: Current.city.slug, payload: event.payload)
+  end
+
   # Marcador do simulado no identificador fixo do Bundle (RECUSA, TIMEOUT, DUPLICADO).
   def mark!(sync, marker)
     sync.update_columns(bundle_identifier: "#{marker}-#{SecureRandom.hex(8)}")
@@ -732,6 +738,42 @@ RSpec.describe Regulation::RndsDeliverJob, type: :job do
     end
 
     # I1: o RndsSyncJob recalcula a linha `sending` durante o HTTP.
+    # Q26 (revisão final I2): o reenfileiramento por ajuste vai na faixa da carga inicial, depois das vivas.
+    it "troca de priority_by_color com 1 mudança viva na fila → a viva sai antes da massa" do
+      mass = Array.new(3) { municipal_request! }
+      live = municipal_request!
+      [ *mass, live ].each { |request| sync!(request) }
+      run!
+      expect(RegulationRndsSync.pluck(:status).uniq).to eq([ "idle" ])
+      stub_const("Regulation::RndsLimits::BATCH_SIZE", 1)
+      stub_const("Regulation::RndsLimits::INITIAL_RATE_PER_MINUTE", 1)
+
+      travel 1.minute
+      rnds_settings!(priority_by_color: settings.priority_by_color.transform_values { "urgent" })
+      consume!("regulation_rnds.settings_changed")
+      Regulation::RndsRecomputeAllJob.perform_now
+      expect(RegulationRndsSync.pluck(:status, :initial_load).uniq).to eq([ [ "queued", true ] ])
+
+      travel 1.minute
+      decide!(live, "return") # a mudança do próprio pedido, depois da massa
+      consume!("regulation_request.returned")
+      live_sync = RegulationRndsSync.find_by!(regulation_request_id: live.id)
+      expect(live_sync).to have_attributes(status: "queued", initial_load: false, desired_status: "returned-to-requester")
+
+      accepted = fake.accepted.size
+      run!
+      sent = fake.accepted.drop(accepted).map { |doc| doc[:bundle].dig("identifier", "value") }
+      expect(sent.size).to eq(2) # uma viva (faixa normal, BATCH_SIZE) e uma da massa (faixa da carga inicial)
+      expect(sent.first).to eq(live_sync.bundle_identifier)
+      expect(live_sync.reload).to have_attributes(status: "idle", sent_status: "returned-to-requester")
+      mass_rows = RegulationRndsSync.where(regulation_request_id: mass.map(&:id))
+      expect(mass_rows.pluck(:status).tally).to eq("idle" => 1, "queued" => 2)
+
+      # a massa ganha a carência de 72 h do alarme D-1, a contar do reenfileiramento
+      travel_to Time.current.tomorrow.change(hour: 23, min: 30)
+      expect(Regulation::RndsAlert.counts(now: Time.current)[:late]).to eq(0)
+    end
+
     it "evento durante o POST → depois do 201 a linha fica queued com o conteúdo novo" do
       request = reauthorize!(municipal_request!, offer: offer)
       sync = sync!(request)

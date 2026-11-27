@@ -27,9 +27,15 @@ module Regulation
       # RndsRecomputeAllJob, enfileirado depois do commit.
       return RndsRecomputeAllJob.perform_later if ids == :all
 
-      create = RndsGate.enabled?(Current.city) && RndsSync::CREATING_EVENT.match?(@event_name)
-      RegulationRequest.where(id: ids).order(:id).each do |request|
-        RndsSync.recompute!(request, create: create, now: now)
+      # O evento do próprio pedido (ou do horário dele) é mudança viva, na faixa
+      # normal; oferta, prestador e unidade são ajuste (Q26): faixa da carga
+      # inicial, sem os terminais de aceite antigo.
+      live = RndsSync::CREATING_EVENT.match?(@event_name)
+      create = live && RndsGate.enabled?(Current.city)
+      scope = RegulationRequest.where(id: ids)
+      scope = RndsSync.bulk_requests(scope, now: now) unless live
+      scope.order(:id).each do |request|
+        RndsSync.recompute!(request, create: create, now: now, lane: live ? :live : :bulk)
       end
     end
   end
