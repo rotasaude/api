@@ -5526,7 +5526,10 @@ $do$;
 --     a resposta inteira vai num UPDATE, e a adoção pela reconciliação
 --     (`accepted_at` + `rnds_id`, `http_status` segue NULL) passa. O
 --     `unanswered_closed_at` (Q25: a reconciliação não achou o documento)
---     grava-se uma vez, só na remessa sem resposta e sem aceite. O resto
+--     grava-se uma vez, só na remessa sem resposta e sem aceite. A remessa
+--     adotada (aceite sem `http_status`) nunca ganha `http_status` nem
+--     `error_codes` depois, e a fechada pela reconciliação nunca é adotada
+--     (`accepted_at`/`rnds_id`). O resto
 --     (pedido, tipo, situação, impressão digital, `sent_at`) nunca muda.
 CREATE OR REPLACE FUNCTION rota_regulation_rnds_delivery_guard() RETURNS trigger AS $fn$
 DECLARE
@@ -5556,6 +5559,14 @@ BEGIN
   IF NEW.unanswered_closed_at IS DISTINCT FROM OLD.unanswered_closed_at
      AND (OLD.unanswered_closed_at IS NOT NULL OR OLD.http_status IS NOT NULL OR OLD.accepted_at IS NOT NULL) THEN
     RAISE EXCEPTION 'regulation_rnds_deliveries: unanswered_closed_at is recorded once, only on an unanswered delivery';
+  END IF;
+  IF OLD.accepted_at IS NOT NULL
+     AND (NEW.http_status IS DISTINCT FROM OLD.http_status OR NEW.error_codes IS DISTINCT FROM OLD.error_codes) THEN
+    RAISE EXCEPTION 'regulation_rnds_deliveries: an accepted or adopted delivery records no later http_status or error_codes';
+  END IF;
+  IF OLD.unanswered_closed_at IS NOT NULL
+     AND (NEW.accepted_at IS DISTINCT FROM OLD.accepted_at OR NEW.rnds_id IS DISTINCT FROM OLD.rnds_id) THEN
+    RAISE EXCEPTION 'regulation_rnds_deliveries: a delivery closed by reconciliation is never adopted';
   END IF;
   RETURN NEW;
 END;

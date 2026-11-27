@@ -154,6 +154,22 @@ RSpec.describe "Esquema do envio da regulação à RNDS (módulo 26c)", type: :m
       expect(accepted.reload).to have_attributes(http_status: 201, rnds_id: "rnds-10")
     end
 
+    # Final wave, item 3: a adotada não ganha resposta depois; a fechada pela reconciliação não é adotada.
+    it "adotada (accepted_at sem http_status) não grava http_status nem error_codes; fechada (unanswered_closed_at) não é adotada" do
+      adopted = delivery!(sync)
+      adopted.update_columns(accepted_at: Time.current, rnds_id: "rnds-12")
+      refused(/adopted/) { adopted.update_columns(http_status: 201) }
+      refused(/adopted/) { adopted.update_columns(error_codes: %w[EHR-ERR999]) }
+      expect(adopted.reload).to have_attributes(http_status: nil, error_codes: [])
+
+      closed = delivery!(sync)
+      closed.update_columns(unanswered_closed_at: Time.current)
+      refused(/closed/) { closed.update_columns(accepted_at: Time.current, rnds_id: "rnds-13") }
+      refused(/closed/) { closed.update_columns(accepted_at: Time.current) }
+      expect(closed.reload).to have_attributes(accepted_at: nil, rnds_id: nil)
+      closed.update_columns(payload: nil) # Q17: a purga segue valendo
+    end
+
     it "unanswered_closed_at: uma vez, só na remessa sem resposta nem aceite; depois dela a payload ainda some" do
       columns = RegulationRndsDelivery.columns_hash
       expect([ columns["unanswered_closed_at"].sql_type, columns["unanswered_closed_at"].null ]).to eq([ "timestamp with time zone", true ])
