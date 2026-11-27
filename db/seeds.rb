@@ -21,6 +21,7 @@
 #     Linhas de cuidado (módulo 23): care_lines ligado em Curitiba, linhas adotadas e a própria de saúde mental, a técnica de enfermagem (tecnica@<slug>.demo, também na recepção) e as pessoas das provas na UBS Jardim das Flores — ver lib/care_lines_crew.rb.
 #     Cadastro territorial (módulo 24a): territory_registry ligado em Curitiba, a ACS (acs@<slug>.demo), as microáreas 01 e 02 da equipe da UBS Jardim das Flores, quatro domicílios e os cadastros da prova (válido, a vencer, vencido, sem identificador, recusa, óbito, mudança) — ver lib/territory_registry_crew.rb.
 #     Regulação municipal (módulo 26a): care_regulation ligado em Curitiba, a reguladora (regulacao.municipal@<slug>.demo), o Centro Municipal de Especialidades Vila Hauer e três prestadores, as ofertas do mês e os dez pedidos da prova — ver lib/regulation_crew.rb.
+#     Envio da regulação à RNDS (módulo 26c): rnds_regulation e rnds_mock ligados em Curitiba, a credencial de teste, as configurações, um pedido por motivo de parado e os marcadores RECUSA e TIMEOUT do simulado — ver lib/regulation_rnds_crew.rb.
 #     Farmácia e almoxarifado (módulo 27a): pharmacy ligado em Curitiba, o almoxarifado central e a farmácia da UBS Jardim das Flores, a farmacêutica (farmacia@<slug>.demo), a auxiliar, dois almoxarifes, o estoque com lotes, as transferências e as receitas da prova — ver lib/pharmacy_crew.rb.
 #     Saúde bucal (módulo 28): dental_care ligado em Curitiba, o CEO tipo II, a eSB associada à eSF, a dentista (dentista@<slug>.demo), a auxiliar (asb@), a endodontista (endodontista@), consultas, planos, produção do CEO e prótese da prova — ver lib/oral_health_crew.rb.
 #     Sala de vacina (módulo 29): vaccination, rnds_immunization e rnds_mock ligados em Curitiba, a sala da UBS Jardim das Flores, a vacinadora (vacinadora@<slug>.demo) e a responsável (vacina.responsavel@), a rede de frio com 4 lotes, a geladeira, a credencial rnds de teste e uma dose de exemplo na fila da RNDS simulada — ver lib/vaccination_crew.rb.
@@ -74,6 +75,7 @@ else
   require Rails.root.join("lib/vector_control_crew").to_s
   require Rails.root.join("lib/zoonoses_crew").to_s
   require Rails.root.join("lib/bnafar_crew").to_s
+  require Rails.root.join("lib/regulation_rnds_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -492,6 +494,14 @@ else
         # qualquer Basic); nunca segredo de staging nem de produção.
         bnafar = BnafarCrew.seed_current_city(slug: slug)
         BnafarCrew.summary_lines(bnafar).each { |line| puts line }
+
+        # ── Envio da regulação à RNDS (módulo 26c) ───────────────────────────
+        # Depois do RegulationCrew (os pedidos da 26a) e dos CNES das unidades
+        # (BillingCrew, VaccinationCrew). Só em Curitiba. Credencial de teste
+        # autoassinada (o simulado aceita qualquer uma); nunca segredo de
+        # staging nem de produção.
+        regulation_rnds = RegulationRndsCrew.seed_current_city(slug: slug, ddd: ddd)
+        RegulationRndsCrew.summary_lines(regulation_rnds).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"

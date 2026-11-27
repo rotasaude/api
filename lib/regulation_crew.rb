@@ -332,8 +332,10 @@ class RegulationCrew
       end
 
       key = spec[:who]
-      person = PEOPLE.fetch(key)
-      registered = Citizens::RegisterPerson.call(phone: phone_for(ddd, key), cpf: cpf_for(slug, key),
+      # `person:` no pedido (RegulationRndsCrew, 26c): pessoa própria, com o prefixo de celular dela.
+      person = spec[:person] || PEOPLE.fetch(key)
+      phone = spec[:person] ? format("+55%s%s%04d", ddd, person.fetch(:phone_prefix), person.fetch(:phone)) : phone_for(ddd, key)
+      registered = Citizens::RegisterPerson.call(phone: phone, cpf: cpf_for(slug, key),
                                                  profile: { birth_date: person[:birth], sex: person[:sex], gender_identity: nil })
       raise "semente da regulação: pessoa #{key} recusada (#{registered.reason})" if registered.failure?
 
