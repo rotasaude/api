@@ -38,9 +38,19 @@ class RegulationRndsSync < ApplicationRecord
   end
 
   # Devolve a `queued` sem contar tentativa (pausa, orçamento esgotado,
-  # ensure): só as linhas ainda deste lote (`token`).
-  def self.release!(ids, token:, now: Time.current)
-    where(id: ids, status: "sending", claimed_at: token).update_all(status: "queued", updated_at: now)
+  # ensure): só as linhas ainda deste lote (`token`). Na pausa por 401/403
+  # (`reset_window`), a janela de desistência zera (nota da Q25).
+  def self.release!(ids, token:, now: Time.current, reset_window: false)
+    changes = { status: "queued", updated_at: now }
+    changes[:retry_window_started_at] = nil if reset_window
+    where(id: ids, status: "sending", claimed_at: token).update_all(changes)
+  end
+
+  # Envio não utilizável (desligado, sem credencial, credencial recusada; Q16):
+  # o tempo parado não conta, então a janela das linhas na fila zera e recomeça
+  # no próximo envio. Em geral zero linhas.
+  def self.stop_retry_windows!(now: Time.current)
+    where(status: CLAIMABLE).where.not(retry_window_started_at: nil).update_all(retry_window_started_at: nil, updated_at: now)
   end
 
   # `sending` esquecido (processo morto no meio do lote) volta à fila. Pela

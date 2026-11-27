@@ -7,7 +7,8 @@
 # o payload de TODA remessa com COALESCE(accepted_at, sent_at) anterior a
 # PAYLOAD_DAYS dias vira NULL; os metadados ficam. Depois, só com
 # `rnds_regulation` UTILIZÁVEL (ligado, regulação, credencial ok, IBGE e UF;
-# lido fora da transação da cidade): devolve o `sending` esquecido, reivindica
+# lido fora da transação da cidade; senão, zera a janela de desistência das
+# linhas na fila, Q16): devolve o `sending` esquecido, reivindica
 # até BATCH_SIZE linhas e, depois delas, até INITIAL_RATE_PER_MINUTE da carga
 # inicial, e envia. Nunca atribui Current.city.
 module Regulation
@@ -24,7 +25,9 @@ module Regulation
       city = Current.city
       now = Time.current
       purge_payloads!(now)
-      return unless RndsGate.usable?(city) # interruptores: fora da transação da cidade
+      # Interruptores: fora da transação da cidade. Parado, a janela de
+      # desistência não corre (Q16, I3).
+      return RegulationRndsSync.stop_retry_windows!(now: now) unless RndsGate.usable?(city)
 
       RegulationRndsSync.release_stale!(before: now - RndsLimits::STALE_SENDING)
       syncs = RegulationRndsSync.claim!(limit: RndsLimits::BATCH_SIZE, initial_limit: RndsLimits::INITIAL_RATE_PER_MINUTE, now: now)

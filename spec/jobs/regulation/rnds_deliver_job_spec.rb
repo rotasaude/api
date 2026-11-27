@@ -545,6 +545,93 @@ RSpec.describe Regulation::RndsDeliverJob, type: :job do
       expect(reported).to be_empty
     end
 
+    # Nota da Q25: a recusa é parada não transitória; a janela recomeça no próximo envio.
+    it "rejected corrigido 15 dias depois → uma 5xx não vira failed" do
+      unit = create_unit("UBS #{SecureRandom.hex(3)}", cnes: regulation_cnes)
+      physician = doctor!(unit)
+      request = regulation_request!(unit: unit, doctor: physician)
+      sync = sync!(request)
+      warm_token!
+      fake.failures.push(503)
+      run!
+      expect(sync.reload.retry_window_started_at).to be_present
+      travel 1.minute
+      fake.failures.push(422)
+      run!
+      expect(sync.reload).to have_attributes(status: "rejected", retry_window_started_at: nil)
+
+      travel 15.days
+      decide!(request, "return")
+      complement!(request, by: physician, cid10: "E119")
+      expect(sync!(request)).to have_attributes(status: "queued")
+      warm_token!
+      fake.failures.push(503)
+      run!
+      expect(sync.reload).to have_attributes(status: "queued", attempts: 1, retry_window_started_at: sync.deliveries.last.sent_at)
+    end
+
+    # Nota da Q25: o bloqueio com motivo e a pausa por 401/403 também são paradas.
+    it "parado com motivo e pausa por 401 zeram a janela; ela recomeça no próximo envio" do
+      unit = create_unit("UBS #{SecureRandom.hex(3)}", cnes: regulation_cnes)
+      blocked = sync!(regulation_request!(unit: unit))
+      paused = sync!(municipal_request!)
+      warm_token!
+      fake.failures.push(503, 503)
+      run!
+      expect([ blocked, paused ].map { |sync| sync.reload.retry_window_started_at }).to all(be_present)
+
+      unit.update_columns(cnes: nil)
+      travel 1.minute
+      fake.failures.push(401, 401) # o POST da segunda e o token novo recusam
+      run!
+      expect(blocked.reload).to have_attributes(status: "blocked", blocked_reasons: [ "requester_unit_without_cnes" ], retry_window_started_at: nil)
+      expect(paused.reload).to have_attributes(status: "queued", retry_window_started_at: nil)
+    end
+
+    # Task 12, Minor: a linha reaberta com a remessa sem resposta e o GET sempre 5xx desiste.
+    it "Reenviar com remessa sem resposta e GET /identifier sempre 5xx → a janela abre no transitório e desiste em 15 dias" do
+      sync = mark!(sync!(municipal_request!), "TIMEOUT")
+      run!
+      expect(Regulation::RndsSync.unanswered_delivery?(sync.reload)).to be(true)
+      sync.reopen_retry_window!
+      sync.update!(status: "queued", attempts: 0, next_attempt_at: Time.current)
+
+      warm_token!
+      fake.failures.push(503)
+      run!
+      expect(sync.reload).to have_attributes(status: "queued", attempts: 1, retry_window_started_at: Time.current)
+
+      travel 16.days
+      warm_token!
+      fake.failures.push(503)
+      run!
+      expect(sync.reload).to have_attributes(status: "failed", attempts: 2)
+      expect(posts.size).to eq(1)
+    end
+
+    # I3 (Q16): desligado ou sem credencial, o tempo parado não conta.
+    it "credencial ausente 20 dias com janela aberta → religa → uma 5xx não vira failed" do
+      sync = sync!(municipal_request!)
+      warm_token!
+      fake.failures.push(503)
+      run!
+      expect(sync.reload.retry_window_started_at).to be_present
+
+      IntegrationCredential.where(kind: "rnds_regulation").delete_all
+      travel 1.minute
+      run!
+      expect(sync.reload).to have_attributes(status: "queued", retry_window_started_at: nil)
+
+      travel 20.days
+      run!
+      rnds_regulation_credential!
+      Rnds::Client.reset_cache!
+      warm_token!
+      fake.failures.push(503)
+      run!
+      expect(sync.reload).to have_attributes(status: "queued", attempts: 2, retry_window_started_at: sync.deliveries.last.sent_at)
+    end
+
     it "aceite zera retry_window_started_at" do
       sync = sync!(municipal_request!)
       warm_token!

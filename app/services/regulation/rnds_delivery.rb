@@ -35,8 +35,12 @@ module Regulation
   #        as demais voltam a `queued` sem tentativa, `:paused`;
   #      - 5xx/timeout → `attempts + 1`, espera do Rnds::Backoff; `failed`
   #        quando `retry_window_started_at` (o `sent_at` da 1ª remessa sem
-  #        aceite depois do último aceite, Q16/Q25) passou de GIVE_UP_AFTER.
-  #        O aceite e o "Reenviar" manual (`reopen_retry_window!`) a zeram.
+  #        aceite depois do último aceite, Q16/Q25; o transitório a abre se
+  #        ainda não havia) passou de GIVE_UP_AFTER. O aceite, o "Reenviar"
+  #        manual (`reopen_retry_window!`) e toda parada não transitória (a
+  #        recusa, a substituição recusada, o bloqueio, a pausa por 401/403 e,
+  #        no RndsDeliverJob, o interruptor desligado ou sem credencial) a
+  #        zeram: o tempo parado não conta (nota da Q25, Q16).
   #
   # `error_codes` e `last_error_codes` guardam só códigos da RNDS (Q25).
   #
@@ -70,7 +74,8 @@ module Regulation
         end
         next unless deliver(sync, token) == :paused
 
-        RegulationRndsSync.release!(syncs[index..].map(&:id), token: token)
+        # A pausa por 401/403 é parada (nota da Q25): a janela recomeça no próximo envio.
+        RegulationRndsSync.release!(syncs[index..].map(&:id), token: token, reset_window: true)
         return :paused
       end
       :done
@@ -175,7 +180,7 @@ module Regulation
       when :unauthorized then pause!(now)
       else
         own!(sync, token) do |locked|
-          locked.update!(status: "rejected", last_error_codes: codes)
+          locked.update!(status: "rejected", last_error_codes: codes, retry_window_started_at: nil)
           event!("regulation_rnds.rejected", locked)
         end
         :rejected
@@ -187,7 +192,7 @@ module Regulation
       own!(sync, token) do |locked|
         refresh!(locked, now)
         if desired_of(locked) == snapshot
-          locked.update!(status: "rejected", last_error_codes: codes)
+          locked.update!(status: "rejected", last_error_codes: codes, retry_window_started_at: nil)
           event!("regulation_rnds.rejected", locked)
         else
           locked.update!(status: "queued", next_attempt_at: now)
@@ -199,21 +204,25 @@ module Regulation
     def block!(sync, token, reasons, now)
       own!(sync, token) do |locked|
         was_blocked = locked.blocked_reasons.any?
-        locked.update!(status: "blocked", blocked_reasons: reasons, next_attempt_at: now + RndsLimits::BLOCKED_RECHECK)
+        locked.update!(status: "blocked", blocked_reasons: reasons, next_attempt_at: now + RndsLimits::BLOCKED_RECHECK,
+                       retry_window_started_at: nil)
         event!("regulation_rnds.blocked", locked) unless was_blocked
       end
       :blocked
     end
 
     # Falha transitória (5xx, timeout, rede, erro nosso): nova tentativa com
-    # espera; `failed` quando a janela (Q16/Q25) passou de GIVE_UP_AFTER. Só
-    # a linha muda: a remessa já respondida nunca é tocada de novo (trigger).
+    # espera; `failed` quando a janela (Q16/Q25) passou de GIVE_UP_AFTER. Sem
+    # janela aberta (a reconciliação que falha depois do "Reenviar", antes de
+    # qualquer POST), ela abre aqui. Só a linha muda: a remessa já respondida
+    # nunca é tocada de novo (trigger).
     def transient!(sync, token, now)
       own!(sync, token) do |locked|
         attempts = locked.attempts + 1
-        start = locked.retry_window_started_at
-        gave_up = start.present? && start <= now - RndsLimits::GIVE_UP_AFTER
-        locked.update!(status: gave_up ? "failed" : "queued", attempts: attempts, next_attempt_at: now + Rnds::Backoff.wait(attempts))
+        start = locked.retry_window_started_at || now
+        gave_up = start <= now - RndsLimits::GIVE_UP_AFTER
+        locked.update!(status: gave_up ? "failed" : "queued", attempts: attempts, next_attempt_at: now + Rnds::Backoff.wait(attempts),
+                       retry_window_started_at: start)
       end
       :transient
     end
