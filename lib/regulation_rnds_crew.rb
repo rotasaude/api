@@ -40,9 +40,11 @@ require_relative "vaccination_crew"
 #                                           Municipal do Cajuru, que perdeu o CNES (*)
 #   16  performer_cbo_missing               exérese (0401010074, grupo 04) agendada no consórcio,
 #                                           sem performer_cbo na oferta nem default no prestador
-#   17  external_absence_without_schedule   oftalmologia regulada pelo estado, com uma falta
-#                                           gravada sem as colunas da Q24 (o formato de antes do
-#                                           deploy; INSERT, o andamento nunca é alterado)
+#   17  external_absence_without_schedule   oftalmologia regulada pelo estado, encerrada por duas
+#                                           faltas gravadas sem as colunas da Q24 (o formato de
+#                                           antes do deploy; INSERT, o andamento nunca é alterado).
+#                                           Q31: a falta antiga só bloqueia quando é a situação
+#                                           desejada (pedido encerrado); intermediária, é pulada
 #
 #   (*) o app não deixa chegar aí pelos comandos: dado de antes da regra (11), mapa de
 #       SIGTAP de uma competência anterior (14), CNES retirado depois do cadastro (15). A
@@ -309,12 +311,16 @@ class RegulationRndsCrew
       unit.update!(cnes: nil) if unit.cnes.present?
     end
 
-    # Uma falta gravada como antes da Q24: sem horário, sem fim e sem prestador (INSERT; o andamento nunca muda).
+    # Faltas gravadas como antes da Q24 (sem horário, sem fim e sem prestador; INSERT, o andamento nunca muda) e o
+    # pedido encerrado por elas: a última situação é a falta antiga, a única que ainda bloqueia (Q31).
     def legacy_absence!(request, regulator)
       return if request.events.any? { |event| event.status == "missed" }
 
-      RegulationRequestEvent.create!(regulation_request: request, status: "missed", by_user: regulator, created_at: Time.current - 1.hour)
-      request.update_columns(misses: 1)
+      [ 2.hours, 1.hour ].each do |ago|
+        RegulationRequestEvent.create!(regulation_request: request, status: "missed", by_user: regulator, created_at: Time.current - ago)
+      end
+      RegulationRequestEvent.create!(regulation_request: request, status: "closed", by_user: regulator)
+      request.update_columns(status: "closed", misses: CareRegulation::Catalog::MAX_MISSES)
     end
 
     # --- marcadores do simulado e linhas de envio -----------------------------

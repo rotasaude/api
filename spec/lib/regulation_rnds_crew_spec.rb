@@ -121,15 +121,16 @@ RSpec.describe RegulationRndsCrew, type: :model do
       end
     end
 
-    it "a falta externa nasce sem as colunas da Q24 (o formato anterior ao deploy)" do
+    it "a falta externa nasce sem as colunas da Q24 (o formato anterior ao deploy) e o pedido encerra nela (Q31)" do
       request = scenario_request(:external_absence)
       missed = request.events.select { |event| event.status == "missed" }
 
       aggregate_failures do
         expect(request.state_regulated).to be(true)
-        expect(missed.size).to eq(1)
-        expect([ missed.first.scheduled_at, missed.first.ends_at, missed.first.care_provider_id ]).to all(be_nil)
-        expect(sync_of(request).pending_steps.map { |step| step["status"] }).to eq(%w[absence])
+        expect(request.status).to eq("closed")
+        expect(missed.size).to eq(CareRegulation::Catalog::MAX_MISSES)
+        expect(missed.flat_map { |m| [ m.scheduled_at, m.ends_at, m.care_provider_id ] }).to all(be_nil)
+        expect(sync_of(request)).to have_attributes(desired_status: "absence", pending_steps: [])
       end
     end
 
