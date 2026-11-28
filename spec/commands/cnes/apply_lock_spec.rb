@@ -36,6 +36,8 @@ RSpec.describe "Cnes::Apply sob concorrência" do
       ApplicationRecord.transaction do
         ApplicationRecord.connection.execute("SET LOCAL session_replication_role = replica")
         DomainEvent.where(name: "cnes.proposals_applied").where("payload->>'user_id' = ?", by.id).delete_all
+        # after_update :publish_cnes_change (26c) commita health_unit.changed da unidade.
+        DomainEvent.where(name: "health_unit.changed").where("payload->>'health_unit_id' = ?", ids[:unit]).delete_all
         HealthUnit.where(id: ids[:unit]).delete_all
         ids[:profile_created] ? CityProfile.delete_all : CityProfile.update_all(ibge_code: ids[:previous_ibge])
       end

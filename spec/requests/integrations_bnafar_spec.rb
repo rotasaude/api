@@ -109,7 +109,7 @@ RSpec.describe "Integrações da cidade: bnafar", type: :request do
                                   set_by_user: admin, set_at: Time.current)
     get "/integrations"
     kinds = json["credentials"].map { |c| c["kind"] }
-    expect(kinds).to eq(%w[ledi cadsus rnds bnafar])
+    expect(kinds).to eq(%w[ledi cadsus rnds bnafar rnds_regulation])
     bnafar = json["credentials"].find { |c| c["kind"] == "bnafar" }
     expect(bnafar).to include("set" => false, "environment" => "production")
     expect(json["credentials"].reject { |c| c["kind"] == "bnafar" }.map { |c| c["environment"] }.uniq).to eq([ "production" ])
