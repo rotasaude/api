@@ -1,6 +1,7 @@
 require "rails_helper"
 
 RSpec.describe Attendances::CheckInByException do
+  include ActiveSupport::Testing::TimeHelpers
   before { Current.city = TEST_CITY_A }
   after { Current.reset; Rails.cache.clear }
 
@@ -82,23 +83,27 @@ RSpec.describe Attendances::CheckInByException do
     end
 
     it "horário: outro check-in commitou entre a checagem e o INSERT" do
-      doctor = staff_with("medica@cidade.gov.br", "health_professional")
-      link_professional!(doctor, unit)
-      first = in_care!(waiting_attendance(citizen, unit: unit, by: staff), by: doctor)
-      req = Attendances::Close.call(attendance: first, outcome: "return", referral_unit_id: nil, referral_note: nil,
-                                    by: doctor).payload.fetch(:appointment_request)
-      appt = Appointments::Schedule.call(request: req, scheduled_at: 1.hour.from_now.iso8601, health_unit_id: unit.id,
-                                         by: staff).payload.fetch(:appointment)
-      reason = "cidadão sem celular"
-      earlier = described_class.call(cpf: citizen.cpf, appointment_id: appt.id, health_unit_id: unit.id, reason: reason,
-                                     by: staff).payload.fetch(:attendance)
-      allow(Attendances::AppointmentCheckInEligibility).to receive(:check).and_return(:ok)
+      # O horário precisa ser de hoje no fuso da cidade: depois das 23h,
+      # `1.hour.from_now` cairia amanhã e o check-in recusaria com :not_today.
+      travel_to(Time.zone.now.change(hour: 9)) do
+        doctor = staff_with("medica@cidade.gov.br", "health_professional")
+        link_professional!(doctor, unit)
+        first = in_care!(waiting_attendance(citizen, unit: unit, by: staff), by: doctor)
+        req = Attendances::Close.call(attendance: first, outcome: "return", referral_unit_id: nil, referral_note: nil,
+                                      by: doctor).payload.fetch(:appointment_request)
+        appt = Appointments::Schedule.call(request: req, scheduled_at: 1.hour.from_now.iso8601, health_unit_id: unit.id,
+                                           by: staff).payload.fetch(:appointment)
+        reason = "cidadão sem celular"
+        earlier = described_class.call(cpf: citizen.cpf, appointment_id: appt.id, health_unit_id: unit.id, reason: reason,
+                                       by: staff).payload.fetch(:attendance)
+        allow(Attendances::AppointmentCheckInEligibility).to receive(:check).and_return(:ok)
 
-      result = described_class.call(cpf: citizen.cpf, appointment_id: appt.id, health_unit_id: unit.id, reason: reason,
-                                    by: staff)
-      expect(result.reason).to eq(:already_checked_in)
-      expect(result.details).to eq(unit_name: unit.name, checked_in_at: earlier.reload.checked_in_at)
-      expect(Attendance.where(appointment_id: appt.id).count).to eq(1)
+        result = described_class.call(cpf: citizen.cpf, appointment_id: appt.id, health_unit_id: unit.id, reason: reason,
+                                      by: staff)
+        expect(result.reason).to eq(:already_checked_in)
+        expect(result.details).to eq(unit_name: unit.name, checked_in_at: earlier.reload.checked_in_at)
+        expect(Attendance.where(appointment_id: appt.id).count).to eq(1)
+      end
     end
 
     it "outra violação de unicidade não vira already_checked_in" do
