@@ -35,15 +35,23 @@ module Regulation
     # -> [{ "status" => "absence", "at" => iso8601(6) }]: uma por linha `missed`
     # depois de `since` (nil = todas), menos a última se o pedido está
     # fechado (é a situação desejada), sem repetir o desejado no fim. `settings`
-    # evita reler os ajustes quando o chamador já os tem.
-    def steps(request, since:, settings: nil)
+    # e `facts` evitam reler o que o chamador já tem.
+    #
+    # Q31: a falta intermediária que nunca sai (sem horário nem prestador na
+    # linha e sem no_show da cadeia, a `external_absence_without_schedule`) é
+    # pulada aqui, calculada a cada chamada, sem marcador gravado. Só a falta
+    # antiga que é a situação desejada (o último passo) segue bloqueando, na
+    # validação do envio.
+    def steps(request, since:, settings: nil, facts: nil)
+      settings ||= RegulationRndsSetting.current
       rows = request.events.select { |e| e.status == "missed" && (since.nil? || e.created_at > since) }
       rows = rows.first(rows.size - 1) if request.status == "closed" && rows.any?
+      rows = sendable(request, rows, settings, facts)
       # Com os microssegundos (N1): o `at` é a chave da linha `missed` na
       # montagem (RiraBundle.absence_slot); sem eles, a linha ficaria "depois".
       steps = rows.map { |e| { "status" => ABSENCE, "at" => e.created_at.iso8601(6) } }
       steps = steps.chunk_while { |a, b| a["status"] == b["status"] }.map(&:first)
-      desired = self.for(request, settings: settings || RegulationRndsSetting.current)
+      desired = self.for(request, settings: settings)
       steps.pop if desired.is_a?(Target) && desired.status == steps.last&.fetch("status")
       steps
     end
@@ -52,9 +60,18 @@ module Regulation
     # MAX_MISSES faltas, `absence`; senão `cancelled`.
     def closed_status(request) = request.misses >= CareRegulation::Catalog::MAX_MISSES ? ABSENCE : "cancelled"
 
+    # As faltas com horário resolvível (a mesma regra da validação: o
+    # `RiraBundle.absence_slot` do instante da falta).
+    def sendable(request, rows, settings, facts)
+      return rows if rows.empty?
+
+      facts ||= RiraFacts.for(request: request, settings: settings, credential: nil)
+      rows.reject { |e| RiraBundle.absence_slot(facts, e.created_at).nil? }
+    end
+
     def last_at(request, statuses)
       request.events.select { |e| statuses.include?(e.status) }.map(&:created_at).max
     end
-    private_class_method :last_at
+    private_class_method :last_at, :sendable
   end
 end

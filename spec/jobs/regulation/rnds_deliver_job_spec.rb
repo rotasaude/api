@@ -178,6 +178,70 @@ RSpec.describe Regulation::RndsDeliverJob, type: :job do
       expect(posts.size).to eq(3)
     end
 
+    # Q31: a falta registrada antes da Q24 (sem horário e prestador na linha)
+    # nunca sai; como passo intermediário ela é pulada no cálculo dos passos
+    # (sem marcador gravado), e o pedido segue para o documento seguinte.
+    # A falta nasce como as de antes da Q24 (a linha do andamento é só de
+    # acréscimo; o horário e o prestador do pedido somem antes da falta).
+    def old_miss!(request)
+      request.update_columns(scheduled_at: nil, care_provider_id: nil)
+      miss!(request)
+    end
+
+    it "Q31: falta antiga intermediária + reagendado → sai o booked, sem bloquear" do
+      request = reauthorize!(municipal_request!, offer: offer)
+      schedule!(request)
+      old_miss!(request)
+      reauthorize!(request.reload, offer: offer)
+      schedule!(request, at: Time.current + 5.days)
+      sync = sync!(request)
+      expect(sync).to have_attributes(status: "queued", desired_status: "booked", pending_steps: [])
+
+      run!
+      expect(sync.reload).to have_attributes(status: "idle", sent_status: "booked", blocked_reasons: [])
+      expect(composition(fake.accepted.last[:bundle]).dig("event", 0, "code", 0, "coding", 0, "code")).to eq("booked")
+    end
+
+    it "Q31: carga inicial de pedido ativo com faltas antigas → sai a situação atual" do
+      request = reauthorize!(municipal_request!, offer: offer)
+      schedule!(request)
+      old_miss!(request)
+      reauthorize!(request.reload, offer: offer)
+      expect(request.reload).to have_attributes(status: "authorized", misses: 1)
+      sync = Regulation::RndsSync.recompute!(request, create: true, initial_load: true, now: Time.current)
+      expect(sync).to have_attributes(status: "queued", desired_status: "pending", pending_steps: [])
+
+      run!
+      expect(sync.reload).to have_attributes(status: "idle", sent_status: "pending", blocked_reasons: [])
+    end
+
+    it "Q31: pedido encerrado cuja última situação é falta antiga → bloqueia com external_absence_without_schedule" do
+      request = reauthorize!(municipal_request!, offer: offer)
+      schedule!(request)
+      old_miss!(request)
+      reauthorize!(request.reload, offer: offer)
+      schedule!(request, at: Time.current + 5.days)
+      old_miss!(request)
+      expect(request.status).to eq("closed")
+      sync = Regulation::RndsSync.recompute!(request, create: true, now: Time.current)
+      expect(sync.pending_steps).to eq([])
+
+      run!
+      expect(sync.reload).to have_attributes(status: "blocked", blocked_reasons: [ "external_absence_without_schedule" ])
+      expect(posts).to be_empty
+    end
+
+    it "Q31: falta nova (com as colunas da Q24) segue saindo como passo absence" do
+      request = reauthorize!(municipal_request!, offer: offer)
+      schedule!(request)
+      miss!(request)
+      reauthorize!(request.reload, offer: offer)
+      sync = sync!(request)
+      expect(sync.pending_steps.map { |step| step["status"] }).to eq(%w[absence])
+      run!
+      expect(composition(fake.accepted.first[:bundle]).dig("event", 0, "code", 0, "coding", 0, "code")).to eq("absence")
+    end
+
     it "aceito e depois desligado o envio dos regulados pelo estado → substituição excluded, linha excluded, eventos accepted e excluded" do
       rnds_settings!(send_external: true)
       request = municipal_request!(status: "external")

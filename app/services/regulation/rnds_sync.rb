@@ -117,7 +117,7 @@ module Regulation
       facts = RiraFacts.for(request: request, settings: settings, credential: nil)
       excluded = target.status == EXCLUDED
       erased = erased?(sync, facts)
-      steps = excluded || erased ? [] : RndsStatus.steps(request, since: accepted_since(sync), settings: settings)
+      steps = excluded || erased ? [] : RndsStatus.steps(request, since: accepted_since(sync), settings: settings, facts: facts)
       digest = RiraBundle.digest(RiraBundle.build(facts: facts, sync: sync, status: target, now: now))
       digest_changed = sync.desired_digest != digest
       refused_digest = last_delivery_digest(sync)

@@ -573,7 +573,10 @@ RSpec.describe Regulation::RiraBundle, type: :model do
       request = outcome_missed!(request)
       expect(request.events.find { |e| e.status == "missed" }.scheduled_at).to be_nil
       read_facts = read(request, credential: rnds_regulation_credential!)
-      step = Regulation::RndsStatus.steps(request, since: nil, settings: settings).first
+      # Q31: como passo intermediário ela é pulada; só bloqueia como situação desejada.
+      expect(Regulation::RndsStatus.steps(request, since: nil, settings: settings)).to eq([])
+      missed_at = request.events.find { |e| e.status == "missed" }.created_at
+      step = { "status" => "absence", "at" => missed_at.iso8601(6) }
       expect(Regulation::RndsValidation.call(facts: read_facts, status: step)).to eq([ :blocked, %w[external_absence_without_schedule] ])
       bundle = described_class.build(facts: read_facts, sync: sync_row, status: step, now: Time.current)
       expect(res(bundle, "Appointment").keys).not_to include("start", "end")

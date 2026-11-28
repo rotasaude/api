@@ -18,6 +18,7 @@ RSpec.describe Regulation::RndsStatus, type: :model do
     tick_regulation_events!
   end
 
+  def slot_columns = { scheduled_at: Time.current - 1.day, ends_at: Time.current - 1.day + 15.minutes, care_provider_id: offer.care_provider_id }
   def target(request, config = settings) = described_class.for(request.reload, settings: config)
   def last_event_at(request, status) = request.events.select { |e| e.status == status }.last.created_at
 
@@ -200,13 +201,13 @@ RSpec.describe Regulation::RndsStatus, type: :model do
 
     it "com settings: não lê RegulationRndsSetting.current e os ajustes passados decidem o desejado" do
       request = regulation_request!(status: "external")
-      2.times { RegulationRequestEvent.create!(regulation_request: request, status: "missed", by_user: regulator) }
+      2.times { RegulationRequestEvent.create!(regulation_request: request, status: "missed", by_user: regulator, **slot_columns) }
       RegulationRequestEvent.create!(regulation_request: request, status: "closed", by_user: regulator)
       request.update_columns(status: "closed", misses: 2)
       request.reload
       expect(RegulationRndsSetting).not_to receive(:current)
-      on = instance_double(RegulationRndsSetting, send_external: true)
-      off = instance_double(RegulationRndsSetting, send_external: false)
+      on = instance_double(RegulationRndsSetting, send_external: true, specialty_sigtap: {}, priority_by_color: {})
+      off = instance_double(RegulationRndsSetting, send_external: false, specialty_sigtap: {}, priority_by_color: {})
       expect(described_class.steps(request, since: nil, settings: on)).to eq([])
       expect(described_class.steps(request, since: nil, settings: off).map { |s| s["status"] }).to eq(%w[absence])
     end
@@ -217,8 +218,27 @@ RSpec.describe Regulation::RndsStatus, type: :model do
 
     it "passos consecutivos iguais viram um" do
       request = regulation_request!
-      3.times { RegulationRequestEvent.create!(regulation_request: request, status: "missed", by_user: regulator) }
+      3.times { RegulationRequestEvent.create!(regulation_request: request, status: "missed", by_user: regulator, **slot_columns) }
       expect(described_class.steps(request.reload, since: nil).size).to eq(1)
+    end
+
+    # Q31: a falta sem horário e prestador (anterior à Q24) nunca sai; calculada
+    # a cada chamada, sem marcador gravado. A nova (com as colunas) segue.
+    it "Q31: falta antiga intermediária é pulada; a nova continua como passo" do
+      request = regulation_request!
+      old = RegulationRequestEvent.create!(regulation_request: request, status: "missed", by_user: regulator)
+      travel(1.minute)
+      fresh = RegulationRequestEvent.create!(regulation_request: request, status: "missed", by_user: regulator, **slot_columns)
+      steps = described_class.steps(request.reload, since: nil)
+      expect(steps).to eq([ { "status" => "absence", "at" => fresh.created_at.iso8601(6) } ])
+      expect(steps.first["at"]).not_to eq(old.created_at.iso8601(6))
+      expect(described_class.steps(request.reload, since: nil)).to eq(steps) # determinístico: o mesmo resultado a cada cálculo
+    end
+
+    it "Q31: só falta antiga → []" do
+      request = regulation_request!
+      RegulationRequestEvent.create!(regulation_request: request, status: "missed", by_user: regulator)
+      expect(described_class.steps(request.reload, since: nil)).to eq([])
     end
   end
 
